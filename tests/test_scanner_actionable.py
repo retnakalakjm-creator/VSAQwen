@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pandas as pd
 
 from background.qualification import PatternQualification, PatternQualificationResult
+from models import EvidenceCode
 from scanner import ScannerCandidate, ScannerEngine, rank_actionable_candidates
 
 
@@ -127,3 +128,41 @@ def test_stale_qualification_is_invalidated() -> None:
     assert result.qualification is PatternQualification.PERSISTENT_BEARISH
     assert result.is_actionable_evidence is False
     assert result.evidence_bar_indices == (100, 110, 120)
+
+
+def test_scoring_evidence_uses_target_bar_only() -> None:
+    result = SimpleNamespace(
+        evidence=(
+            SimpleNamespace(
+                bar_index=1219,
+                code=EvidenceCode.HIDDEN_SUPPLY,
+            ),
+            SimpleNamespace(
+                bar_index=1223,
+                code=EvidenceCode.INCREASING_SUPPLY,
+            ),
+            SimpleNamespace(
+                bar_index=1223,
+                code=EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
+            ),
+        )
+    )
+
+    scoring = ScannerEngine._scoring_evidence(result, 1223)
+
+    assert [(item.bar_index, item.code) for item in scoring] == [
+        (1223, EvidenceCode.INCREASING_SUPPLY),
+    ]
+
+
+def test_scoring_evidence_is_empty_without_target_bar() -> None:
+    result = SimpleNamespace(
+        evidence=(
+            SimpleNamespace(
+                bar_index=1219,
+                code=EvidenceCode.HIDDEN_SUPPLY,
+            ),
+        )
+    )
+
+    assert ScannerEngine._scoring_evidence(result, 1223) == ()

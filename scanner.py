@@ -139,22 +139,25 @@ class ScannerEngine:
     def _meaningful_vsa_evidence(
         cls,
         result: EvidenceResult,
+        bar_index: int,
     ) -> tuple[Evidence, ...]:
-        """Return current VSA observations, excluding structural markers."""
+        """Return only target-bar VSA observations, excluding structural markers."""
 
         return tuple(
             item
             for item in result.evidence
-            if item.code not in cls._STRUCTURAL_CODES
+            if item.bar_index == bar_index
+            and item.code not in cls._STRUCTURAL_CODES
         )
 
     @classmethod
     def _scoring_evidence(
         cls,
         current: EvidenceResult,
+        bar_index: int | None,
     ) -> tuple[Evidence, ...]:
         """
-        Select evidence for professional scoring from the target snapshot only.
+        Select evidence for professional scoring from the target bar only.
 
         Historical evidence is intentionally never substituted here. Historical
         snapshots belong to persistence qualification, not current-bar scoring.
@@ -162,7 +165,9 @@ class ScannerEngine:
         professional supply/demand/effort scoring.
         """
 
-        return cls._meaningful_vsa_evidence(current)
+        if bar_index is None:
+            return ()
+        return cls._meaningful_vsa_evidence(current, bar_index)
 
     @staticmethod
     def _scoring_bar_index(
@@ -251,7 +256,7 @@ class ScannerEngine:
             history,
             qualification,
         )
-        scoring_evidence = self._scoring_evidence(evidence)
+        scoring_evidence = self._scoring_evidence(evidence, bar_index)
         professional = self._professional.calculate(
             trend=trend,
             evidence=EvidenceResult(
