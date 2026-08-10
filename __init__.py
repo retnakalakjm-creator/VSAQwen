@@ -1,0 +1,1 @@
+"""Professional VSA Swing Scanner."""

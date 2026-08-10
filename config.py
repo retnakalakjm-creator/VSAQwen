@@ -1,0 +1,621 @@
+"""
+Professional VSA Swing Scanner
+Configuration
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from models import EvidenceCode, TrendState
+from utils.scoring import ScoreBand
+
+# =============================================================================
+# PROJECT
+# =============================================================================
+
+APP_NAME = "Professional VSA Swing Scanner"
+
+APP_VERSION = "1.0.0"
+
+# =============================================================================
+# PATHS
+# =============================================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+CACHE_DIR = BASE_DIR / "cache"
+
+ASSETS_DIR = BASE_DIR / "assets"
+
+CACHE_DIR.mkdir(exist_ok=True)
+
+ASSETS_DIR.mkdir(exist_ok=True)
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+
+LOG_LEVEL = "DEBUG"  #"INFO"
+
+LOG_TO_FILE = True
+
+LOG_FILE = CACHE_DIR / "vsa.log"
+
+# =============================================================================
+# DATA
+# =============================================================================
+
+DEFAULT_PERIOD = "max"
+
+DEFAULT_INTERVAL = "1d"
+
+AUTO_ADJUST = False
+
+MIN_DAILY_BARS = 250
+
+# =============================================================================
+# ANALYSIS
+# =============================================================================
+
+LOOKBACK_PERIOD = 20
+
+WEEK_RULE = "W-FRI"
+
+# =============================================================================
+# THRESHOLD CLASSES
+# =============================================================================
+VOLUME_EXPANSION_THRESHOLD = 0.25    
+# MIN_SIGNIFICANT_SPREAD = SpreadClass.WIDE
+# MIN_SIGNIFICANT_VOLUME = VolumeClass.HIGH
+
+# =============================================================================
+# Evidence Weights
+# =============================================================================
+
+WEIGHT_EXCEPTIONAL = 0.95
+WEIGHT_STRONG = 0.85
+WEIGHT_MODERATE = 0.75
+WEIGHT_WEAK = 0.60
+
+# =============================================================================
+# Swing Weights
+# =============================================================================
+
+SWING_REVERSAL_ATR = 1.0
+MIN_SWING_BARS = 2
+MIN_SWING_DISTANCE = 3
+
+# =============================================================================
+# BACKGROUND ANALYSIS
+# =============================================================================
+
+# Number of completed weekly bars used for background analysis
+BACKGROUND_LOOKBACK = 10
+
+# Number of recent bars used for immediate context
+RECENT_LOOKBACK = 3
+
+# Ignore the currently forming weekly bar
+USE_COMPLETED_BARS_ONLY = True
+
+# =============================================================================
+# Trend Engine
+# =============================================================================
+
+# Minimum reversal required to confirm a swing.
+# Expressed as a multiple of the rolling average spread.
+SWING_REVERSAL_SPREAD_MULTIPLIER: float = 1.0
+
+# Minimum number of bars between two confirmed swings.
+# MIN_SWING_DISTANCE: int = 2
+MIN_SWING_CONFIRMATION_BARS = 2
+
+# Minimum bars required before a candidate swing can be confirmed.
+MIN_SWING_BARS: int = 2
+
+TREND_STATE_LOOKBACK = 4
+
+TREND_RECENT_SWINGS = 8
+
+TREND_WEIGHT_MODE = "linear"
+
+
+# Minimum normalized dominance required
+# to declare an uptrend or downtrend.
+#
+# Range:
+#   0.00 = extremely sensitive
+#   1.00 = impossible to satisfy
+TREND_DIRECTION_MARGIN = 0.20
+
+TREND_CONFIDENCE_STRENGTH_WEIGHT = 0.40
+
+TREND_CONFIDENCE_STATE_WEIGHT = 0.30
+
+TREND_CONFIDENCE_MATURITY_WEIGHT = 0.30
+
+TREND_STATE_SCORES = {
+    TrendState.UNKNOWN: 0.00,
+    TrendState.DEVELOPING: 0.40,
+    TrendState.HEALTHY: 1.00,
+    TrendState.CORRECTING: 0.75,
+    TrendState.EXHAUSTED: 0.50,
+    TrendState.REVERSING: 0.30,
+}
+
+
+# ============================================================================
+# Background Engine Weights
+# ============================================================================
+
+EFFORT_MAJOR_WEIGHT = 2.5
+
+EFFORT_MINOR_WEIGHT = 1.5
+
+ABSORPTION_WEIGHT = 3.0
+
+TREND_STRONG_WEIGHT = 3.0
+
+TREND_WEAK_WEIGHT = 1.5
+
+TREND_RANGE_WEIGHT = 1.0
+
+
+# =============================================================================
+# Scoring
+# =============================================================================
+
+BACKGROUND_BIAS_MARGIN = 1.0
+
+
+
+# ============================================================================
+# Spread Classification (Rolling Percentile)
+# ============================================================================
+
+SPREAD_NARROW_MAX = 10.0
+
+SPREAD_BELOW_AVERAGE_MAX = 35.0
+
+SPREAD_AVERAGE_MAX = 65.0
+
+SPREAD_ABOVE_AVERAGE_MAX = 85.0
+
+SPREAD_WIDE_MAX = 95.0
+# >95 => VERY_WIDE
+
+
+# ============================================================================
+# Volume Classification (Rolling Percentile)
+# ============================================================================
+
+VOLUME_VERY_LOW_MAX = 10.0
+
+VOLUME_LOW_MAX = 35.0
+
+VOLUME_AVERAGE_MAX = 65.0
+
+VOLUME_ABOVE_AVERAGE_MAX = 85.0
+
+VOLUME_HIGH_MAX = 95.0
+# >95 => VERY_HIGH
+
+
+# ============================================================================
+# CAMPAIGN
+# ============================================================================
+CAMPAIGN_REQUIRED_SCORE = 4
+
+CAMPAIGN_MIN_UP_BARS = 3
+CAMPAIGN_MIN_DOWN_BARS = 3
+
+CAMPAIGN_MIN_HIGHER_CLOSES = 3
+CAMPAIGN_MIN_LOWER_CLOSES = 3
+
+CAMPAIGN_MIN_STRONG_CLOSES = 3
+CAMPAIGN_MIN_WEAK_CLOSES = 3
+
+
+
+
+# ============================================================
+# STOPPING VOLUME
+# ============================================================
+STOPPING_VOLUME_MIN_VOLUME_PERCENTILE = 85.0
+STOPPING_VOLUME_MIN_SPREAD_PERCENTILE = 70.0
+STOPPING_VOLUME_MIN_CLOSE_RATIO = 0.60
+STOPPING_VOLUME_WEIGHT = 1.00
+
+# -------------------------------------------------
+# Professional Trend Scoring
+# -------------------------------------------------
+
+TREND_SCORE_WEIGHT = 0.40
+STATE_SCORE_WEIGHT = 0.30
+CONFIDENCE_SCORE_WEIGHT = 0.30
+
+
+# ---------------------------------------------------------
+# Professional Scoring
+# ---------------------------------------------------------
+
+SUPPLY_EVIDENCE_WEIGHTS = {
+
+    EvidenceCode.BUYING_CLIMAX:      1.00,
+    EvidenceCode.UPTHRUST:           0.90,
+    EvidenceCode.SUPPLY_COMING_IN:   0.80,
+    EvidenceCode.INCREASING_SUPPLY:  0.70,
+    EvidenceCode.SUPPLY_DRYING_UP:   0.60,
+    EvidenceCode.NO_DEMAND:          0.60,
+
+}
+
+DEMAND_EVIDENCE_WEIGHTS = {
+
+    EvidenceCode.STOPPING_VOLUME: 1.00,
+
+    EvidenceCode.SHAKEOUT: 0.90,
+
+    EvidenceCode.NO_SUPPLY: 0.60,
+
+}
+
+EFFORT_EVIDENCE_WEIGHTS = {
+
+    EvidenceCode.EFFORT_GT_RESULT: 1.00,
+
+    EvidenceCode.RESULT_GT_EFFORT: 0.90,
+
+    EvidenceCode.ABSORPTION: 0.80,
+
+}
+
+PROFESSIONAL_CONFIDENCE_TREND_WEIGHT = 0.40
+PROFESSIONAL_CONFIDENCE_AGREEMENT_WEIGHT = 0.40
+PROFESSIONAL_CONFIDENCE_EFFORT_WEIGHT = 0.20
+# STRENGTH_EVIDENCE_WEIGHTS = {}
+# WEAKNESS_EVIDENCE_WEIGHTS = {}
+
+
+# ---------------------------------------------------------
+# Wyckoff Phase Detection
+# ---------------------------------------------------------
+
+WYCKOFF_PHASE_MARGIN = 0.10
+
+# ---------------------------------------------------------
+# Wyckoff Strength
+# ---------------------------------------------------------
+
+WYCKOFF_STRENGTH_DEMAND_WEIGHT = 0.60
+
+WYCKOFF_STRENGTH_TREND_WEIGHT = 0.40
+
+# ---------------------------------------------------------
+# Wyckoff Weakness
+# ---------------------------------------------------------
+
+WYCKOFF_WEAKNESS_SUPPLY_WEIGHT = 0.60
+
+WYCKOFF_WEAKNESS_TREND_WEIGHT = 0.40
+
+# ---------------------------------------------------------
+# Wyckoff Bias
+# ---------------------------------------------------------
+
+WYCKOFF_BIAS_MARGIN = 0.10
+
+# ---------------------------------------------------------
+# Wyckoff Confidence
+# ---------------------------------------------------------
+
+WYCKOFF_CONFIDENCE_PROFESSIONAL_WEIGHT = 0.50
+
+WYCKOFF_CONFIDENCE_STRUCTURE_WEIGHT = 0.50
+
+# ==========================================================
+# Wyckoff Engine
+# ==========================================================
+
+WYCKOFF_MIN_CONFIDENCE = 0.60
+
+WYCKOFF_PHASE_MARGIN = 0.15
+
+WYCKOFF_EVENT_CONFIDENCE_BONUS = 0.10
+
+WYCKOFF_UNKNOWN_CONFIDENCE_PENALTY = 0.50
+
+
+RECENT_WINDOW_SIZE = 5
+
+STRENGTH_TREND_WEIGHT = 0.40
+STRENGTH_DEMAND_WEIGHT = 0.40
+STRENGTH_EFFORT_WEIGHT = 0.20
+
+WEAKNESS_TREND_WEIGHT = 0.40
+WEAKNESS_SUPPLY_WEIGHT = 0.40
+WEAKNESS_EFFORT_WEIGHT = 0.20
+
+
+WYCKOFF_UNKNOWN_PHASE_PENALTY = 0.50
+WYCKOFF_EVENT_CONFIDENCE_BONUS = 0.10
+
+MIN_STRUCTURE_SCORE = 0.50
+
+
+
+STRUCTURE_PRICE_WEIGHT = 0.30
+STRUCTURE_STRUCTURAL_SIZE_WEIGHT = 0.25
+STRUCTURE_DURATION_WEIGHT = 0.10
+STRUCTURE_VOLUME_WEIGHT = 0.20
+STRUCTURE_SPREAD_WEIGHT = 0.15
+
+STRUCTURE_SMART_MONEY_WEIGHT = 0.20
+
+SMART_MONEY_STOPPING_WEIGHT = 0.50
+SMART_MONEY_CLIMACTIC_WEIGHT = 0.50
+
+CONFLUENCE_BONUS = 0.30
+
+# ---------------------------------------------------------
+# VSA Spread Ratios
+# ---------------------------------------------------------
+
+NARROW_SPREAD_RATIO = 0.85
+
+BELOW_AVERAGE_SPREAD_RATIO = 0.90
+
+AVERAGE_SPREAD_RATIO = 1.10
+
+WIDE_SPREAD_RATIO = 1.30
+
+VERY_WIDE_SPREAD_RATIO = 1.70
+
+# -------------------------------------------------
+# Structural Swing Scoring
+# -------------------------------------------------
+
+STRUCTURE_LOOKBACK = 20
+PROFESSIONAL_STRUCTURE_WEIGHT = 0.80
+PROFESSIONAL_SMART_MONEY_WEIGHT = 0.20
+
+
+SHAKEOUT_MIN_VOLUME_RATIO = 1.5
+SHAKEOUT_CLOSE_RATIO = 0.70
+
+STOPPING_VOLUME_BANDS = (
+    ScoreBand(
+        threshold=2.00,
+        score=0.40,
+    ),
+    ScoreBand(
+        threshold=1.50,
+        score=0.20,
+    ),
+)
+
+STOPPING_CLOSE_POSITION_BANDS = (
+    ScoreBand(
+        threshold=0.70,
+        score=0.30,
+    ),
+    ScoreBand(
+        threshold=0.60,
+        score=0.15,
+    ),
+)
+
+STOPPING_LOWER_TAIL_BANDS = (
+    ScoreBand(
+        threshold=0.35,
+        score=0.30,
+    ),
+    ScoreBand(
+        threshold=0.25,
+        score=0.15,
+    ),
+)
+
+
+CLIMACTIC_VOLUME_BANDS = (
+    ScoreBand(2.50, 1.00),
+    ScoreBand(2.00, 0.70),
+    ScoreBand(1.50, 0.40),
+)
+
+CLIMACTIC_SPREAD_BANDS = (
+    ScoreBand(2.00, 1.00),
+    ScoreBand(1.50, 0.70),
+    ScoreBand(1.20, 0.40),
+)
+
+CLIMACTIC_CLOSE_POSITION_BANDS = (
+    ScoreBand(0.90, 1.00),
+    ScoreBand(0.80, 0.70),
+    ScoreBand(0.70, 0.40),
+)
+
+
+# -------------------------------------------------
+# Smart Money Scoring
+# -------------------------------------------------
+
+SMART_MONEY_STOPPING_VOLUME_WEIGHT = 0.50
+
+SMART_MONEY_STOPPING_CLOSE_WEIGHT = 0.30
+
+SMART_MONEY_STOPPING_TAIL_WEIGHT = 0.20
+
+SMART_MONEY_CLIMACTIC_VOLUME_WEIGHT = 0.45
+
+SMART_MONEY_CLIMACTIC_SPREAD_WEIGHT = 0.35
+
+SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT = 0.20
+
+
+DEBUG_PROFESSIONAL_SCORING = True
+MIN_PROFESSIONAL_SWING_SCORE = 0.50
+
+PROGRESSION_NEUTRAL_MARGIN = 0.05
+
+EVIDENCE_BIAS_THRESHOLD = 2.0
+
+
+#SHAKEOUT TESTS
+SHAKEOUT_TEST_LOOKAHEAD = 15
+SHAKEOUT_TEST_MAX_DISTANCE_RATIO = 0.05
+SHAKEOUT_TEST_MAX_PENETRATION_RATIO = 0.10
+SHAKEOUT_TEST_MAX_VOLUME_RATIO = 1.00
+SHAKEOUT_TEST_MAX_SPREAD_RATIO = 1.00
+SHAKEOUT_TEST_MIN_CLOSE_POSITION = 3
+
+SHAKEOUT_RECOVERY_LOOKAHEAD = 5
+SHAKEOUT_RECOVERY_MIN_UP_BARS = 3
+SHAKEOUT_RECOVERY_MIN_STRONG_CLOSES = 1
+SHAKEOUT_RECOVERY_MIN_CLOSE_POSITION = 3
+
+
+SHAKEOUT_RECOVERY_SPREAD_TARGET = 0.75
+SHAKEOUT_RECOVERY_VOLUME_TARGET = 0.75
+SHAKEOUT_RECOVERY_CLOSE_CHANGE_TARGET = 0.10
+SHAKEOUT_RECOVERY_LOW_CLEARANCE_TARGET = 0.25
+
+COMBINED_SUPPLY_EVENT_MULTIPLIER = 1.15
+MAX_COMBINED_EVENT_CONTRIBUTION = 1.50
+
+PRIMARY_SUPPORTING_MODIFIER = 0.15
+PRIMARY_EFFORT_RESULT_MODIFIER = 0.15
+PRIMARY_STRUCTURAL_MODIFIER = 0.10
+
+SUPPORTING_BASE_WEIGHT = 0.60
+EFFORT_RESULT_BASE_WEIGHT = 0.25
+STRUCTURAL_BASE_WEIGHT = 0.15
+
+PRIMARY_VSA_CODES = {
+    EvidenceCode.BUYING_CLIMAX,
+    EvidenceCode.SELLING_CLIMAX,
+    EvidenceCode.UPTHRUST,
+    EvidenceCode.SHAKEOUT,
+    EvidenceCode.SPRING,
+    EvidenceCode.TEST,
+}
+
+SUPPORTING_VSA_CODES = {
+    EvidenceCode.SUPPLY_COMING_IN,
+    EvidenceCode.INCREASING_SUPPLY,
+    EvidenceCode.HIDDEN_SUPPLY,
+    EvidenceCode.SUPPLY_DRYING_UP,
+    EvidenceCode.SUPPLY_HIGH_VOLUME,
+    EvidenceCode.SUPPLY_WIDE_SPREAD,
+    EvidenceCode.SUPPLY_ABSORPTION,
+
+    EvidenceCode.STOPPING_VOLUME,
+    EvidenceCode.DEMAND_COMING_IN,
+    EvidenceCode.INCREASING_DEMAND,
+    EvidenceCode.HIDDEN_DEMAND,
+    EvidenceCode.DEMAND_DRYING_UP,
+    EvidenceCode.NO_SUPPLY,
+    EvidenceCode.NO_DEMAND,
+}
+
+EFFORT_RESULT_CODES = {
+    EvidenceCode.EFFORT_GT_RESULT,
+    EvidenceCode.RESULT_GT_EFFORT,
+    EvidenceCode.ABSORPTION,
+    EvidenceCode.EFFORT_RESULT,
+}
+
+STRUCTURAL_CODES = {
+    EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING,
+    EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
+}
+
+CONTEXT_CODES = {
+    EvidenceCode.STRONG_UPTREND,
+    EvidenceCode.WEAK_UPTREND,
+    EvidenceCode.STRONG_DOWNTREND,
+    EvidenceCode.WEAK_DOWNTREND,
+    EvidenceCode.SIDEWAYS_MARKET,
+
+    EvidenceCode.ACCUMULATION,
+    EvidenceCode.REACCUMULATION,
+    EvidenceCode.MARKUP,
+    EvidenceCode.DISTRIBUTION,
+    EvidenceCode.REDISTRIBUTION,
+    EvidenceCode.MARKDOWN,
+}
+
+COMBINED_PRIMARY_MULTIPLIER = 1.15
+PRIMARY_SUPPORTING_MULTIPLIER = 1.10
+PRIMARY_STRUCTURAL_MULTIPLIER = 1.05
+COMBINED_SUPPORTING_MULTIPLIER = 1.05
+SUPPORTING_STRUCTURAL_MULTIPLIER = 1.03
+
+MAX_COMBINED_EVENT_CONTRIBUTION = 1.50
+
+@dataclass(frozen=True, slots=True)
+class PercentileThresholds:
+    """
+    Rolling percentile thresholds for six-level classification.
+    """
+    ultra_low: float
+    very_low: float
+    low: float
+
+    high: float
+    very_high: float
+    ultra_high: float
+
+
+SPREAD_THRESHOLDS = PercentileThresholds(
+    ultra_low=2.5,
+    very_low=10.0,
+    low=30.0,
+    high=70.0,
+    very_high=90.0,
+    ultra_high=97.5,
+)
+
+VOLUME_THRESHOLDS = PercentileThresholds(
+    ultra_low=2.5,
+    very_low=10.0,
+    low=30.0,
+    high=70.0,
+    very_high=90.0,
+    ultra_high=97.5,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CloseThresholds:
+
+    on_low: float
+    lower: float
+    upper: float
+    on_high: float
+
+
+# =============================================================================
+# CLOSE POSITION
+# =============================================================================
+
+CLOSE = CloseThresholds(
+
+    on_low=0.10,
+
+    lower=0.30,
+
+    upper=0.70,
+
+    on_high=0.90,
+)
+
+# =============================================================================
+# GUI
+# =============================================================================
+
+WINDOW_WIDTH = 1400
+
+WINDOW_HEIGHT = 900
