@@ -66,6 +66,8 @@ def main() -> None:
                 "confidence": candidate.confidence,
                 "current_evidence_codes": candidate.current_evidence_codes,
                 "qualifying_evidence_codes": candidate.qualifying_evidence_codes,
+                "scoring_evidence_codes": candidate.scoring_evidence_codes,
+                "scoring_bar_index": candidate.scoring_bar_index,
             },
         )
 

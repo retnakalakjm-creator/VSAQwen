@@ -12,7 +12,7 @@ from background.qualification import (
 from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
 from model.score_model import ProfessionalScoreResult
-from models import Evidence
+from models import Evidence, EvidenceCode
 from professional.scoring_engine import ProfessionalScoringEngine
 from trend import TrendAnalyzer, TrendResult
 
@@ -31,6 +31,8 @@ class ScannerCandidate:
         )
     )
     qualifying_evidence: tuple[Evidence, ...] = ()
+    scoring_evidence: tuple[Evidence, ...] = ()
+    scoring_bar_index: int | None = None
     bar_index: int | None = None
     week: str | None = None
 
@@ -75,6 +77,10 @@ class ScannerCandidate:
     def qualifying_evidence_codes(self) -> tuple[str, ...]:
         return tuple(str(item.code) for item in self.qualifying_evidence)
 
+    @property
+    def scoring_evidence_codes(self) -> tuple[str, ...]:
+        return tuple(str(item.code) for item in self.scoring_evidence)
+
 
 def rank_candidates(
     candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate],
@@ -118,9 +124,64 @@ class ScannerEngine:
 
     MIN_REPLAY_BARS = 20
 
+    _STRUCTURAL_CODES = frozenset(
+        {
+            EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING,
+            EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
+        }
+    )
+
     def __init__(self) -> None:
         self._qualification = PatternQualificationEngine()
         self._professional = ProfessionalScoringEngine()
+
+    @classmethod
+    def _meaningful_vsa_evidence(
+        cls,
+        result: EvidenceResult,
+    ) -> tuple[Evidence, ...]:
+        """Return current VSA observations, excluding structural markers."""
+
+        return tuple(
+            item
+            for item in result.evidence
+            if item.code not in cls._STRUCTURAL_CODES
+        )
+
+    @classmethod
+    def _scoring_evidence(
+        cls,
+        current: EvidenceResult,
+        history: tuple[EvidenceResult, ...] | list[EvidenceResult],
+    ) -> tuple[Evidence, ...]:
+        """
+        Select evidence for professional scoring without inventing evidence
+        on the target bar.
+
+        Prefer actual VSA observations on the current bar. When the target
+        bar contains only structural/no evidence, use the most recent prior
+        point-in-time VSA observation. Structural progression markers never
+        contribute directly to professional supply/demand/effort scoring.
+        """
+
+        current_evidence = cls._meaningful_vsa_evidence(current)
+        if current_evidence:
+            return current_evidence
+
+        for result in reversed(history):
+            evidence = cls._meaningful_vsa_evidence(result)
+            if evidence:
+                return evidence
+
+        return ()
+
+    @staticmethod
+    def _scoring_bar_index(
+        evidence: tuple[Evidence, ...],
+    ) -> int | None:
+        if not evidence:
+            return None
+        return max(item.bar_index for item in evidence)
 
     @staticmethod
     def _qualifying_evidence(
@@ -166,9 +227,16 @@ class ScannerEngine:
             history,
             qualification,
         )
+        scoring_evidence = self._scoring_evidence(
+            evidence,
+            history,
+        )
         professional = self._professional.calculate(
             trend=trend,
-            evidence=evidence,
+            evidence=EvidenceResult(
+                context=evidence.context,
+                evidence=scoring_evidence,
+            ),
         )
 
         return ScannerCandidate(
@@ -176,6 +244,8 @@ class ScannerEngine:
             professional=professional,
             qualification_result=qualification,
             qualifying_evidence=qualifying_evidence,
+            scoring_evidence=scoring_evidence,
+            scoring_bar_index=self._scoring_bar_index(scoring_evidence),
             bar_index=bar_index,
             week=week,
         )
