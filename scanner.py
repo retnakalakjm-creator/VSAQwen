@@ -152,28 +152,17 @@ class ScannerEngine:
     def _scoring_evidence(
         cls,
         current: EvidenceResult,
-        history: tuple[EvidenceResult, ...] | list[EvidenceResult],
     ) -> tuple[Evidence, ...]:
         """
-        Select evidence for professional scoring without inventing evidence
-        on the target bar.
+        Select evidence for professional scoring from the target snapshot only.
 
-        Prefer actual VSA observations on the current bar. When the target
-        bar contains only structural/no evidence, use the most recent prior
-        point-in-time VSA observation. Structural progression markers never
-        contribute directly to professional supply/demand/effort scoring.
+        Historical evidence is intentionally never substituted here. Historical
+        snapshots belong to persistence qualification, not current-bar scoring.
+        Structural progression markers also never contribute directly to
+        professional supply/demand/effort scoring.
         """
 
-        current_evidence = cls._meaningful_vsa_evidence(current)
-        if current_evidence:
-            return current_evidence
-
-        for result in reversed(history):
-            evidence = cls._meaningful_vsa_evidence(result)
-            if evidence:
-                return evidence
-
-        return ()
+        return cls._meaningful_vsa_evidence(current)
 
     @staticmethod
     def _scoring_bar_index(
@@ -213,6 +202,36 @@ class ScannerEngine:
         selected.sort(key=lambda item: item.bar_index)
         return tuple(selected)
 
+    @staticmethod
+    def _qualification_is_current(
+        qualification: PatternQualificationResult,
+        bar_index: int | None,
+    ) -> bool:
+        """Require the latest qualifying structural event to be the target bar."""
+
+        if not qualification.is_actionable_evidence:
+            return False
+        if bar_index is None:
+            return True
+        if not qualification.evidence_bar_indices:
+            return False
+        return max(qualification.evidence_bar_indices) == bar_index
+
+    @staticmethod
+    def _invalidate_stale_qualification(
+        qualification: PatternQualificationResult,
+    ) -> PatternQualificationResult:
+        return PatternQualificationResult(
+            qualification=qualification.qualification,
+            is_actionable_evidence=False,
+            reason=(
+                "Historical persistence was validated, but no qualifying "
+                "structural progression event occurred on the target bar."
+            ),
+            evidence_codes=qualification.evidence_codes,
+            evidence_bar_indices=qualification.evidence_bar_indices,
+        )
+
     def evaluate(
         self,
         *,
@@ -223,14 +242,16 @@ class ScannerEngine:
         week: str | None = None,
     ) -> ScannerCandidate:
         qualification = self._qualification.evaluate(history)
+
+        if not self._qualification_is_current(qualification, bar_index):
+            if qualification.is_actionable_evidence:
+                qualification = self._invalidate_stale_qualification(qualification)
+
         qualifying_evidence = self._qualifying_evidence(
             history,
             qualification,
         )
-        scoring_evidence = self._scoring_evidence(
-            evidence,
-            history,
-        )
+        scoring_evidence = self._scoring_evidence(evidence)
         professional = self._professional.calculate(
             trend=trend,
             evidence=EvidenceResult(

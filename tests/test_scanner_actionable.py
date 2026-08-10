@@ -90,3 +90,40 @@ def test_scan_preserves_candidate_bar_metadata(monkeypatch) -> None:
 
     assert len(result) == 1
     assert captured == [(20, str(metrics.iloc[20]["week_beginning"]))]
+
+
+def test_qualification_is_current_only_on_latest_event_bar() -> None:
+    qualification = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BEARISH,
+        is_actionable_evidence=True,
+        reason="test",
+        evidence_codes=(
+            "structural_progression_weakening",
+            "structural_progression_weakening",
+            "structural_progression_weakening",
+        ),
+        evidence_bar_indices=(100, 110, 120),
+    )
+
+    assert ScannerEngine._qualification_is_current(qualification, 120)
+    assert not ScannerEngine._qualification_is_current(qualification, 121)
+
+
+def test_stale_qualification_is_invalidated() -> None:
+    qualification = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BEARISH,
+        is_actionable_evidence=True,
+        reason="test",
+        evidence_codes=(
+            "structural_progression_weakening",
+            "structural_progression_weakening",
+            "structural_progression_weakening",
+        ),
+        evidence_bar_indices=(100, 110, 120),
+    )
+
+    result = ScannerEngine._invalidate_stale_qualification(qualification)
+
+    assert result.qualification is PatternQualification.PERSISTENT_BEARISH
+    assert result.is_actionable_evidence is False
+    assert result.evidence_bar_indices == (100, 110, 120)
