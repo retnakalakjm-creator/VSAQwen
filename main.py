@@ -29,6 +29,7 @@ def main() -> None:
     print("=" * 60)
     print("Professional VSA Swing Scanner")
     print("=" * 60)
+
     print(f"\nSymbol: {symbol}")
 
     print("\nDownloading data...")
@@ -63,7 +64,8 @@ def main() -> None:
                 "net_strength": candidate.net_strength,
                 "net_pressure": candidate.net_pressure,
                 "confidence": candidate.confidence,
-                "evidence_codes": candidate.evidence_codes,
+                "current_evidence_codes": candidate.current_evidence_codes,
+                "qualifying_evidence_codes": candidate.qualifying_evidence_codes,
             },
         )
 

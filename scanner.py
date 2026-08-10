@@ -12,13 +12,14 @@ from background.qualification import (
 from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
 from model.score_model import ProfessionalScoreResult
+from models import Evidence
 from professional.scoring_engine import ProfessionalScoringEngine
 from trend import TrendAnalyzer, TrendResult
 
 
 @dataclass(slots=True, frozen=True)
 class ScannerCandidate:
-    """Final scanner candidate assembled from evidence and qualification."""
+    """Final scanner candidate assembled from current and qualifying evidence."""
 
     evidence: EvidenceResult
     professional: ProfessionalScoreResult
@@ -29,6 +30,7 @@ class ScannerCandidate:
             reason="No validated persistent structural qualification applies.",
         )
     )
+    qualifying_evidence: tuple[Evidence, ...] = ()
     bar_index: int | None = None
     week: str | None = None
 
@@ -62,7 +64,16 @@ class ScannerCandidate:
 
     @property
     def evidence_codes(self) -> tuple[str, ...]:
+        """Current-bar evidence codes; kept for backward compatibility."""
+        return self.current_evidence_codes
+
+    @property
+    def current_evidence_codes(self) -> tuple[str, ...]:
         return tuple(str(item.code) for item in self.evidence.evidence)
+
+    @property
+    def qualifying_evidence_codes(self) -> tuple[str, ...]:
+        return tuple(str(item.code) for item in self.qualifying_evidence)
 
 
 def rank_candidates(
@@ -111,6 +122,36 @@ class ScannerEngine:
         self._qualification = PatternQualificationEngine()
         self._professional = ProfessionalScoringEngine()
 
+    @staticmethod
+    def _qualifying_evidence(
+        history: tuple[EvidenceResult, ...] | list[EvidenceResult],
+        qualification: PatternQualificationResult,
+    ) -> tuple[Evidence, ...]:
+        """Return the exact evidence events used to qualify persistence."""
+
+        if not qualification.evidence_codes or not qualification.evidence_bar_indices:
+            return ()
+
+        wanted = set(
+            zip(
+                qualification.evidence_bar_indices,
+                qualification.evidence_codes,
+            )
+        )
+
+        selected: list[Evidence] = []
+        seen: set[tuple[int, object]] = set()
+
+        for result in history:
+            for item in result.evidence:
+                key = (item.bar_index, item.code)
+                if key in wanted and key not in seen:
+                    selected.append(item)
+                    seen.add(key)
+
+        selected.sort(key=lambda item: item.bar_index)
+        return tuple(selected)
+
     def evaluate(
         self,
         *,
@@ -121,6 +162,10 @@ class ScannerEngine:
         week: str | None = None,
     ) -> ScannerCandidate:
         qualification = self._qualification.evaluate(history)
+        qualifying_evidence = self._qualifying_evidence(
+            history,
+            qualification,
+        )
         professional = self._professional.calculate(
             trend=trend,
             evidence=evidence,
@@ -130,6 +175,7 @@ class ScannerEngine:
             evidence=evidence,
             professional=professional,
             qualification_result=qualification,
+            qualifying_evidence=qualifying_evidence,
             bar_index=bar_index,
             week=week,
         )
