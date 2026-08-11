@@ -166,3 +166,59 @@ def test_scoring_evidence_is_empty_without_target_bar() -> None:
     )
 
     assert ScannerEngine._scoring_evidence(result, 1223) == ()
+
+
+def test_candidate_separates_target_campaign_and_qualifying_evidence() -> None:
+    target = SimpleNamespace(
+        bar_index=1223,
+        code=EvidenceCode.INCREASING_SUPPLY,
+    )
+    campaign_only = SimpleNamespace(
+        bar_index=1219,
+        code=EvidenceCode.HIDDEN_SUPPLY,
+    )
+    structural = SimpleNamespace(
+        bar_index=1223,
+        code=EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
+    )
+
+    candidate = ScannerCandidate(
+        evidence=SimpleNamespace(evidence=(campaign_only, target, structural)),
+        professional=SimpleNamespace(
+            scores=SimpleNamespace(net_strength=-0.1, net_pressure=-0.7),
+            confidence=0.8,
+        ),
+        target_bar_evidence=(target, structural),
+        campaign_evidence=(campaign_only, target, structural),
+        qualifying_evidence=(structural,),
+    )
+
+    assert candidate.current_evidence_codes == ("increasing_supply", "structural_progression_weakening")
+    assert candidate.campaign_evidence_codes == (
+        "hidden_supply",
+        "increasing_supply",
+        "structural_progression_weakening",
+    )
+    assert candidate.qualifying_evidence_codes == (
+        "structural_progression_weakening",
+    )
+
+
+def test_target_bar_evidence_selects_only_target_bar() -> None:
+    result = SimpleNamespace(
+        evidence=(
+            SimpleNamespace(bar_index=1219, code=EvidenceCode.HIDDEN_SUPPLY),
+            SimpleNamespace(bar_index=1223, code=EvidenceCode.INCREASING_SUPPLY),
+            SimpleNamespace(
+                bar_index=1223,
+                code=EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
+            ),
+        )
+    )
+
+    target = ScannerEngine._target_bar_evidence(result, 1223)
+
+    assert [(item.bar_index, item.code) for item in target] == [
+        (1223, EvidenceCode.INCREASING_SUPPLY),
+        (1223, EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING),
+    ]

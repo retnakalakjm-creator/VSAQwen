@@ -30,6 +30,8 @@ class ScannerCandidate:
             reason="No validated persistent structural qualification applies.",
         )
     )
+    target_bar_evidence: tuple[Evidence, ...] = ()
+    campaign_evidence: tuple[Evidence, ...] = ()
     qualifying_evidence: tuple[Evidence, ...] = ()
     scoring_evidence: tuple[Evidence, ...] = ()
     scoring_bar_index: int | None = None
@@ -66,12 +68,23 @@ class ScannerCandidate:
 
     @property
     def evidence_codes(self) -> tuple[str, ...]:
-        """Current-bar evidence codes; kept for backward compatibility."""
+        """Target-bar evidence codes; kept for backward compatibility."""
         return self.current_evidence_codes
 
     @property
     def current_evidence_codes(self) -> tuple[str, ...]:
-        return tuple(str(item.code) for item in self.evidence.evidence)
+        """Evidence observed exactly on the scanner target bar."""
+        return tuple(str(item.code) for item in self.target_bar_evidence)
+
+    @property
+    def campaign_evidence_codes(self) -> tuple[str, ...]:
+        """All evidence observed in the current replay/campaign window."""
+        return tuple(str(item.code) for item in self.campaign_evidence)
+
+    @property
+    def target_bar_evidence_codes(self) -> tuple[str, ...]:
+        """Explicit alias for target-bar evidence codes."""
+        return self.current_evidence_codes
 
     @property
     def qualifying_evidence_codes(self) -> tuple[str, ...]:
@@ -149,6 +162,29 @@ class ScannerEngine:
             if item.bar_index == bar_index
             and item.code not in cls._STRUCTURAL_CODES
         )
+
+    @staticmethod
+    def _target_bar_evidence(
+        result: EvidenceResult,
+        bar_index: int | None,
+    ) -> tuple[Evidence, ...]:
+        """Return every evidence observation generated on the target bar."""
+
+        if bar_index is None:
+            return ()
+        return tuple(
+            item
+            for item in result.evidence
+            if item.bar_index == bar_index
+        )
+
+    @staticmethod
+    def _campaign_evidence(
+        result: EvidenceResult,
+    ) -> tuple[Evidence, ...]:
+        """Return the complete evidence snapshot for the current replay window."""
+
+        return tuple(result.evidence)
 
     @classmethod
     def _scoring_evidence(
@@ -252,6 +288,11 @@ class ScannerEngine:
             if qualification.is_actionable_evidence:
                 qualification = self._invalidate_stale_qualification(qualification)
 
+        target_bar_evidence = self._target_bar_evidence(
+            evidence,
+            bar_index,
+        )
+        campaign_evidence = self._campaign_evidence(evidence)
         qualifying_evidence = self._qualifying_evidence(
             history,
             qualification,
@@ -269,6 +310,8 @@ class ScannerEngine:
             evidence=evidence,
             professional=professional,
             qualification_result=qualification,
+            target_bar_evidence=target_bar_evidence,
+            campaign_evidence=campaign_evidence,
             qualifying_evidence=qualifying_evidence,
             scoring_evidence=scoring_evidence,
             scoring_bar_index=self._scoring_bar_index(scoring_evidence),
