@@ -35,6 +35,8 @@ class ScannerCandidate:
     qualifying_evidence: tuple[Evidence, ...] = ()
     scoring_evidence: tuple[Evidence, ...] = ()
     scoring_bar_index: int | None = None
+    scoring_evidence_age: int | None = None
+    used_fallback_evidence: bool = False
     bar_index: int | None = None
     week: str | None = None
 
@@ -68,22 +70,18 @@ class ScannerCandidate:
 
     @property
     def evidence_codes(self) -> tuple[str, ...]:
-        """Target-bar evidence codes; kept for backward compatibility."""
         return self.current_evidence_codes
 
     @property
     def current_evidence_codes(self) -> tuple[str, ...]:
-        """Evidence observed exactly on the scanner target bar."""
         return tuple(str(item.code) for item in self.target_bar_evidence)
 
     @property
     def campaign_evidence_codes(self) -> tuple[str, ...]:
-        """All evidence observed in the current replay/campaign window."""
         return tuple(str(item.code) for item in self.campaign_evidence)
 
     @property
     def target_bar_evidence_codes(self) -> tuple[str, ...]:
-        """Explicit alias for target-bar evidence codes."""
         return self.current_evidence_codes
 
     @property
@@ -95,95 +93,46 @@ class ScannerCandidate:
         return tuple(str(item.code) for item in self.scoring_evidence)
 
 
-def rank_candidates(
-    candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate],
-) -> list[ScannerCandidate]:
-    """
-    Rank scanner candidates without discarding diagnostics.
-
-    Qualification is the primary gate. Professional net strength is only
-    used to rank candidates inside the same qualification class.
-    """
-
-    return sorted(
-        candidates,
-        key=lambda candidate: (
-            candidate.actionable,
-            candidate.base_score,
-        ),
-        reverse=True,
-    )
+def rank_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:
+    return sorted(candidates, key=lambda candidate: (candidate.actionable, candidate.base_score), reverse=True)
 
 
-def rank_actionable_candidates(
-    candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate],
-) -> list[ScannerCandidate]:
-    """Return only actionable candidates, ranked by professional strength."""
-
-    return rank_candidates(
-        [candidate for candidate in candidates if candidate.actionable]
-    )
+def rank_actionable_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:
+    return rank_candidates([candidate for candidate in candidates if candidate.actionable])
 
 
 class ScannerEngine:
-    """
-    Point-in-time scanner pipeline.
-
-    Evidence is collected from the current replay window only. Qualification
-    is evaluated separately over the chronological history of point-in-time
-    EvidenceResult snapshots, so structural persistence cannot be inferred
-    from a single snapshot.
-    """
+    """Point-in-time scanner pipeline."""
 
     MIN_REPLAY_BARS = 20
+    SCORING_LOOKBACK_BARS = 10
 
-    _STRUCTURAL_CODES = frozenset(
-        {
-            EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING,
-            EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
-        }
-    )
+    _STRUCTURAL_CODES = frozenset({
+        EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING,
+        EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
+    })
 
     def __init__(self) -> None:
         self._qualification = PatternQualificationEngine()
         self._professional = ProfessionalScoringEngine()
 
     @classmethod
-    def _meaningful_vsa_evidence(
-        cls,
-        result: EvidenceResult,
-        bar_index: int,
-    ) -> tuple[Evidence, ...]:
-        """Return only target-bar VSA observations, excluding structural markers."""
-
+    def _meaningful_vsa_evidence(cls, result: EvidenceResult, bar_index: int, *, earliest_bar_index: int | None = None) -> tuple[Evidence, ...]:
         return tuple(
-            item
-            for item in result.evidence
+            item for item in result.evidence
             if item.bar_index == bar_index
             and item.code not in cls._STRUCTURAL_CODES
+            and (earliest_bar_index is None or item.bar_index >= earliest_bar_index)
         )
 
     @staticmethod
-    def _target_bar_evidence(
-        result: EvidenceResult,
-        bar_index: int | None,
-    ) -> tuple[Evidence, ...]:
-        """Return every evidence observation generated on the target bar."""
-
+    def _target_bar_evidence(result: EvidenceResult, bar_index: int | None) -> tuple[Evidence, ...]:
         if bar_index is None:
             return ()
-        return tuple(
-            item
-            for item in result.evidence
-            if item.bar_index == bar_index
-        )
+        return tuple(item for item in result.evidence if item.bar_index == bar_index)
 
     @staticmethod
-    def _campaign_evidence(
-        result: EvidenceResult,
-    ) -> tuple[Evidence, ...]:
-        """Return the complete evidence snapshot for the current replay window."""
-
+    def _campaign_evidence(result: EvidenceResult) -> tuple[Evidence, ...]:
         return tuple(result.evidence)
 
     @classmethod
@@ -191,84 +140,63 @@ class ScannerEngine:
         cls,
         current: EvidenceResult,
         bar_index: int | None,
+        qualifying_evidence: tuple[Evidence, ...] = (),
     ) -> tuple[Evidence, ...]:
-        """
-        Select evidence for professional scoring from the target bar only.
-
-        Historical evidence is intentionally never substituted here. Historical
-        snapshots belong to persistence qualification, not current-bar scoring.
-        Structural progression markers also never contribute directly to
-        professional supply/demand/effort scoring.
-        """
-
+        """Use target-bar VSA evidence, otherwise the latest recent VSA event."""
         if bar_index is None:
             return ()
-        return cls._meaningful_vsa_evidence(current, bar_index)
+
+        earliest_bar_index = min((item.bar_index for item in qualifying_evidence), default=None)
+
+        for candidate_bar in range(
+            bar_index,
+            max(-1, bar_index - cls.SCORING_LOOKBACK_BARS - 1),
+            -1,
+        ):
+            evidence = cls._meaningful_vsa_evidence(
+                current,
+                candidate_bar,
+                earliest_bar_index=earliest_bar_index,
+            )
+            if evidence:
+                return evidence
+
+        return ()
 
     @staticmethod
-    def _scoring_bar_index(
-        evidence: tuple[Evidence, ...],
-    ) -> int | None:
-        if not evidence:
-            return None
-        return max(item.bar_index for item in evidence)
+    def _scoring_bar_index(evidence: tuple[Evidence, ...]) -> int | None:
+        return max((item.bar_index for item in evidence), default=None)
 
     @staticmethod
-    def _qualifying_evidence(
-        history: tuple[EvidenceResult, ...] | list[EvidenceResult],
-        qualification: PatternQualificationResult,
-    ) -> tuple[Evidence, ...]:
-        """Return the exact evidence events used to qualify persistence."""
-
+    def _qualifying_evidence(history, qualification: PatternQualificationResult) -> tuple[Evidence, ...]:
         if not qualification.evidence_codes or not qualification.evidence_bar_indices:
             return ()
-
-        wanted = set(
-            zip(
-                qualification.evidence_bar_indices,
-                qualification.evidence_codes,
-            )
-        )
-
+        wanted = set(zip(qualification.evidence_bar_indices, qualification.evidence_codes))
         selected: list[Evidence] = []
         seen: set[tuple[int, object]] = set()
-
         for result in history:
             for item in result.evidence:
                 key = (item.bar_index, item.code)
                 if key in wanted and key not in seen:
                     selected.append(item)
                     seen.add(key)
-
         selected.sort(key=lambda item: item.bar_index)
         return tuple(selected)
 
     @staticmethod
-    def _qualification_is_current(
-        qualification: PatternQualificationResult,
-        bar_index: int | None,
-    ) -> bool:
-        """Require the latest qualifying structural event to be the target bar."""
-
+    def _qualification_is_current(qualification: PatternQualificationResult, bar_index: int | None) -> bool:
         if not qualification.is_actionable_evidence:
             return False
         if bar_index is None:
             return True
-        if not qualification.evidence_bar_indices:
-            return False
-        return max(qualification.evidence_bar_indices) == bar_index
+        return bool(qualification.evidence_bar_indices) and max(qualification.evidence_bar_indices) == bar_index
 
     @staticmethod
-    def _invalidate_stale_qualification(
-        qualification: PatternQualificationResult,
-    ) -> PatternQualificationResult:
+    def _invalidate_stale_qualification(qualification: PatternQualificationResult) -> PatternQualificationResult:
         return PatternQualificationResult(
             qualification=qualification.qualification,
             is_actionable_evidence=False,
-            reason=(
-                "Historical persistence was validated, but no qualifying "
-                "structural progression event occurred on the target bar."
-            ),
+            reason="Historical persistence was validated, but no qualifying structural progression event occurred on the target bar.",
             evidence_codes=qualification.evidence_codes,
             evidence_bar_indices=qualification.evidence_bar_indices,
         )
@@ -279,79 +207,54 @@ class ScannerEngine:
         professional: ProfessionalScoreResult,
         scoring_evidence: tuple[Evidence, ...],
     ) -> bool:
-        """
-        Detect a current-bar professional VSA pressure conflict.
-
-        Structural qualification remains unchanged. A contradiction only
-        affects actionability, and only when meaningful current-bar VSA evidence
-        exists. Missing VSA evidence is therefore not treated as a conflict.
-        """
-
+        """Current VSA pressure must not contradict the qualified direction."""
         if not qualification.is_actionable_evidence or not scoring_evidence:
             return False
 
+        pressure = professional.scores.net_pressure
+
         if qualification.qualification is PatternQualification.PERSISTENT_BULLISH:
-            return professional.scores.net_pressure < 0.0
-
+            return pressure < 0.0
         if qualification.qualification is PatternQualification.PERSISTENT_BEARISH:
-            return professional.scores.net_pressure > 0.0
-
+            return pressure > 0.0
         return False
 
     @staticmethod
     def _invalidate_vsa_conflict(
         qualification: PatternQualificationResult,
+        professional: ProfessionalScoreResult,
     ) -> PatternQualificationResult:
+        direction = "bullish" if qualification.qualification is PatternQualification.PERSISTENT_BULLISH else "bearish"
+        pressure = professional.scores.net_pressure
+        side = "supply" if pressure < 0.0 else "demand"
         return PatternQualificationResult(
             qualification=qualification.qualification,
             is_actionable_evidence=False,
-            reason=(
-                "Structural qualification is valid, but current-bar professional "
-                "VSA pressure contradicts the qualified direction."
-            ),
+            reason=f"Persistent {direction} structure is contradicted by current VSA {side} pressure (net pressure={pressure:.3f}).",
             evidence_codes=qualification.evidence_codes,
             evidence_bar_indices=qualification.evidence_bar_indices,
         )
 
-    def evaluate(
-        self,
-        *,
-        trend: TrendResult,
-        evidence: EvidenceResult,
-        history: tuple[EvidenceResult, ...] | list[EvidenceResult],
-        bar_index: int | None = None,
-        week: str | None = None,
-    ) -> ScannerCandidate:
+    def evaluate(self, *, trend: TrendResult, evidence: EvidenceResult, history, bar_index: int | None = None, week: str | None = None) -> ScannerCandidate:
         qualification = self._qualification.evaluate(history)
 
-        if not self._qualification_is_current(qualification, bar_index):
-            if qualification.is_actionable_evidence:
-                qualification = self._invalidate_stale_qualification(qualification)
+        if not self._qualification_is_current(qualification, bar_index) and qualification.is_actionable_evidence:
+            qualification = self._invalidate_stale_qualification(qualification)
 
-        target_bar_evidence = self._target_bar_evidence(
-            evidence,
-            bar_index,
-        )
+        target_bar_evidence = self._target_bar_evidence(evidence, bar_index)
         campaign_evidence = self._campaign_evidence(evidence)
-        qualifying_evidence = self._qualifying_evidence(
-            history,
-            qualification,
-        )
-        scoring_evidence = self._scoring_evidence(evidence, bar_index)
+        qualifying_evidence = self._qualifying_evidence(history, qualification)
+        scoring_evidence = self._scoring_evidence(evidence, bar_index, qualifying_evidence)
+
         professional = self._professional.calculate(
             trend=trend,
-            evidence=EvidenceResult(
-                context=evidence.context,
-                evidence=scoring_evidence,
-            ),
+            evidence=EvidenceResult(context=evidence.context, evidence=scoring_evidence),
         )
 
-        if self._vsa_conflicts_with_qualification(
-            qualification,
-            professional,
-            scoring_evidence,
-        ):
-            qualification = self._invalidate_vsa_conflict(qualification)
+        if self._vsa_conflicts_with_qualification(qualification, professional, scoring_evidence):
+            qualification = self._invalidate_vsa_conflict(qualification, professional)
+
+        scoring_bar_index = self._scoring_bar_index(scoring_evidence)
 
         return ScannerCandidate(
             evidence=evidence,
@@ -361,7 +264,9 @@ class ScannerEngine:
             campaign_evidence=campaign_evidence,
             qualifying_evidence=qualifying_evidence,
             scoring_evidence=scoring_evidence,
-            scoring_bar_index=self._scoring_bar_index(scoring_evidence),
+            scoring_bar_index=scoring_bar_index,
+            scoring_evidence_age=(None if scoring_bar_index is None or bar_index is None else bar_index - scoring_bar_index),
+            used_fallback_evidence=(scoring_bar_index is not None and bar_index is not None and scoring_bar_index != bar_index),
             bar_index=bar_index,
             week=week,
         )
@@ -373,88 +278,39 @@ class ScannerEngine:
             return None
         return str(value)
 
-    def scan_to_index(
-        self,
-        metrics: pd.DataFrame,
-        target_index: int,
-    ) -> ScannerCandidate:
-        """
-        Replay from the beginning through target_index and return its
-        point-in-time scanner candidate.
-        """
-
+    def scan_to_index(self, metrics: pd.DataFrame, target_index: int) -> ScannerCandidate:
         if target_index < self.MIN_REPLAY_BARS:
-            raise ValueError(
-                f"target_index must be >= {self.MIN_REPLAY_BARS}"
-            )
+            raise ValueError(f"target_index must be >= {self.MIN_REPLAY_BARS}")
         if target_index >= len(metrics):
             raise IndexError("target_index is outside metrics")
 
-        history: list[EvidenceResult] = []
-        current_trend: TrendResult | None = None
-        current_evidence: EvidenceResult | None = None
-
+        history = []
+        current_trend = None
+        current_evidence = None
         for index in range(self.MIN_REPLAY_BARS, target_index + 1):
             replay = metrics.iloc[: index + 1].copy()
             trend = TrendAnalyzer().analyze(replay)
             structural_swings = list(trend.structure.structural_swings)
-            evidence = EvidenceEngine().collect(
-                metrics=replay,
-                trend=trend,
-                structural_swings=structural_swings,
-            )
-
+            evidence = EvidenceEngine().collect(metrics=replay, trend=trend, structural_swings=structural_swings)
             history.append(evidence)
             current_trend = trend
             current_evidence = evidence
 
         assert current_trend is not None
         assert current_evidence is not None
+        return self.evaluate(trend=current_trend, evidence=current_evidence, history=history, bar_index=target_index, week=self._week_at(metrics, target_index))
 
-        return self.evaluate(
-            trend=current_trend,
-            evidence=current_evidence,
-            history=history,
-            bar_index=target_index,
-            week=self._week_at(metrics, target_index),
-        )
-
-    def scan(
-        self,
-        metrics: pd.DataFrame,
-    ) -> list[ScannerCandidate]:
-        """Scan every eligible bar while preserving chronological evidence."""
-
-        history: list[EvidenceResult] = []
-        candidates: list[ScannerCandidate] = []
-
+    def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
+        history = []
+        candidates = []
         for index in range(self.MIN_REPLAY_BARS, len(metrics)):
             replay = metrics.iloc[: index + 1].copy()
             trend = TrendAnalyzer().analyze(replay)
             structural_swings = list(trend.structure.structural_swings)
-            evidence = EvidenceEngine().collect(
-                metrics=replay,
-                trend=trend,
-                structural_swings=structural_swings,
-            )
-
+            evidence = EvidenceEngine().collect(metrics=replay, trend=trend, structural_swings=structural_swings)
             history.append(evidence)
-            candidates.append(
-                self.evaluate(
-                    trend=trend,
-                    evidence=evidence,
-                    history=history,
-                    bar_index=index,
-                    week=self._week_at(metrics, index),
-                )
-            )
-
+            candidates.append(self.evaluate(trend=trend, evidence=evidence, history=history, bar_index=index, week=self._week_at(metrics, index)))
         return candidates
 
-    def scan_actionable(
-        self,
-        metrics: pd.DataFrame,
-    ) -> list[ScannerCandidate]:
-        """Scan all eligible bars and return only actionable candidates."""
-
+    def scan_actionable(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
         return rank_actionable_candidates(self.scan(metrics))
