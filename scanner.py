@@ -40,7 +40,10 @@ class ScannerCandidate:
 
     @property
     def actionable(self) -> bool:
-        return self.qualification_result.is_actionable_evidence
+        return (
+            self.qualification_result.is_actionable_evidence
+            and self.professional.confidence > 0.0
+        )
 
     @property
     def reason(self) -> str:
