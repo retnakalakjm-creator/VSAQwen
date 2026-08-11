@@ -359,4 +359,16 @@ class ScannerEngine:
         return candidates
 
     def scan_actionable(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
-        return rank_actionable_candidates(self.scan(metrics))
+        """Return actionable evidence for the latest bar only.
+
+        ``scan()`` intentionally replays every historical bar so persistence
+        qualification and diagnostics remain available. The production
+        actionable scanner must not rank old actionable bars as current trades.
+        It evaluates the latest point-in-time candidate and applies the normal
+        actionable gate there.
+        """
+        if len(metrics) <= self.MIN_REPLAY_BARS:
+            return []
+
+        candidate = self.scan_to_index(metrics, len(metrics) - 1)
+        return [candidate] if candidate.actionable else []
