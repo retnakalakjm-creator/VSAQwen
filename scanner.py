@@ -4,11 +4,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from background.qualification import (
-    PatternQualification,
-    PatternQualificationEngine,
-    PatternQualificationResult,
-)
+from background.qualification import PatternQualification, PatternQualificationEngine, PatternQualificationResult
 from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
 from model.score_model import ProfessionalScoreResult
@@ -23,13 +19,11 @@ class ScannerCandidate:
 
     evidence: EvidenceResult
     professional: ProfessionalScoreResult
-    qualification_result: PatternQualificationResult = field(
-        default_factory=lambda: PatternQualificationResult(
-            qualification=PatternQualification.UNQUALIFIED,
-            is_actionable_evidence=False,
-            reason="No validated persistent structural qualification applies.",
-        )
-    )
+    qualification_result: PatternQualificationResult = field(default_factory=lambda: PatternQualificationResult(
+        qualification=PatternQualification.UNQUALIFIED,
+        is_actionable_evidence=False,
+        reason="No validated persistent structural qualification applies.",
+    ))
     target_bar_evidence: tuple[Evidence, ...] = ()
     campaign_evidence: tuple[Evidence, ...] = ()
     qualifying_evidence: tuple[Evidence, ...] = ()
@@ -112,18 +106,39 @@ class ScannerEngine:
         EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
     })
 
+    _BULLISH_VSA_CODES = frozenset({
+        EvidenceCode.STOPPING_VOLUME,
+        EvidenceCode.DEMAND_COMING_IN,
+        EvidenceCode.INCREASING_DEMAND,
+        EvidenceCode.HIDDEN_DEMAND,
+        EvidenceCode.DEMAND_DRYING_UP,
+        EvidenceCode.NO_SUPPLY,
+        EvidenceCode.SPRING,
+        EvidenceCode.TEST,
+        EvidenceCode.SELLING_CLIMAX,
+        EvidenceCode.SHAKEOUT,
+    })
+
+    _BEARISH_VSA_CODES = frozenset({
+        EvidenceCode.BUYING_CLIMAX,
+        EvidenceCode.SUPPLY_COMING_IN,
+        EvidenceCode.INCREASING_SUPPLY,
+        EvidenceCode.HIDDEN_SUPPLY,
+        EvidenceCode.SUPPLY_HIGH_VOLUME,
+        EvidenceCode.SUPPLY_WIDE_SPREAD,
+        EvidenceCode.SUPPLY_ABSORPTION,
+        EvidenceCode.UPTHRUST,
+        EvidenceCode.NO_DEMAND,
+    })
+
     def __init__(self) -> None:
+        """Create the state-free engines used by the scanner pipeline."""
         self._qualification = PatternQualificationEngine()
         self._professional = ProfessionalScoringEngine()
 
     @classmethod
     def _meaningful_vsa_evidence(cls, result: EvidenceResult, bar_index: int, *, earliest_bar_index: int | None = None) -> tuple[Evidence, ...]:
-        return tuple(
-            item for item in result.evidence
-            if item.bar_index == bar_index
-            and item.code not in cls._STRUCTURAL_CODES
-            and (earliest_bar_index is None or item.bar_index >= earliest_bar_index)
-        )
+        return tuple(item for item in result.evidence if item.bar_index == bar_index and item.code not in cls._STRUCTURAL_CODES and (earliest_bar_index is None or item.bar_index >= earliest_bar_index))
 
     @staticmethod
     def _target_bar_evidence(result: EvidenceResult, bar_index: int | None) -> tuple[Evidence, ...]:
@@ -136,31 +151,15 @@ class ScannerEngine:
         return tuple(result.evidence)
 
     @classmethod
-    def _scoring_evidence(
-        cls,
-        current: EvidenceResult,
-        bar_index: int | None,
-        qualifying_evidence: tuple[Evidence, ...] = (),
-    ) -> tuple[Evidence, ...]:
+    def _scoring_evidence(cls, current: EvidenceResult, bar_index: int | None, qualifying_evidence: tuple[Evidence, ...] = ()) -> tuple[Evidence, ...]:
         """Use target-bar VSA evidence, otherwise the latest recent VSA event."""
         if bar_index is None:
             return ()
-
         earliest_bar_index = min((item.bar_index for item in qualifying_evidence), default=None)
-
-        for candidate_bar in range(
-            bar_index,
-            max(-1, bar_index - cls.SCORING_LOOKBACK_BARS - 1),
-            -1,
-        ):
-            evidence = cls._meaningful_vsa_evidence(
-                current,
-                candidate_bar,
-                earliest_bar_index=earliest_bar_index,
-            )
+        for candidate_bar in range(bar_index, max(-1, bar_index - cls.SCORING_LOOKBACK_BARS - 1), -1):
+            evidence = cls._meaningful_vsa_evidence(current, candidate_bar, earliest_bar_index=earliest_bar_index)
             if evidence:
                 return evidence
-
         return ()
 
     @staticmethod
@@ -201,43 +200,62 @@ class ScannerEngine:
             evidence_bar_indices=qualification.evidence_bar_indices,
         )
 
-    @staticmethod
-    def _vsa_conflicts_with_qualification(
-        qualification: PatternQualificationResult,
-        professional: ProfessionalScoreResult,
-        scoring_evidence: tuple[Evidence, ...],
-    ) -> bool:
-        """Current VSA pressure must not contradict the qualified direction."""
+    @classmethod
+    def _vsa_directional_evidence(cls, scoring_evidence: tuple[Evidence, ...]) -> tuple[tuple[Evidence, ...], tuple[Evidence, ...]]:
+        bullish = tuple(item for item in scoring_evidence if item.code in cls._BULLISH_VSA_CODES)
+        bearish = tuple(item for item in scoring_evidence if item.code in cls._BEARISH_VSA_CODES)
+        return bullish, bearish
+
+    @classmethod
+    def _vsa_conflicts_with_qualification(cls, qualification: PatternQualificationResult, professional: ProfessionalScoreResult, scoring_evidence: tuple[Evidence, ...]) -> bool:
         if not qualification.is_actionable_evidence or not scoring_evidence:
             return False
-
+        bullish, bearish = cls._vsa_directional_evidence(scoring_evidence)
         pressure = professional.scores.net_pressure
-
         if qualification.qualification is PatternQualification.PERSISTENT_BULLISH:
-            return pressure < 0.0
+            return bool(bearish) or (not bullish and pressure < 0.0)
         if qualification.qualification is PatternQualification.PERSISTENT_BEARISH:
-            return pressure > 0.0
+            return bool(bullish) or (not bearish and pressure > 0.0)
+        return False
+
+    @classmethod
+    def _vsa_supports_qualification(cls, qualification: PatternQualificationResult, scoring_evidence: tuple[Evidence, ...]) -> bool:
+        """Require at least one directional VSA observation supporting the structure."""
+        if not qualification.is_actionable_evidence:
+            return False
+        bullish, bearish = cls._vsa_directional_evidence(scoring_evidence)
+        if qualification.qualification is PatternQualification.PERSISTENT_BULLISH:
+            return bool(bullish) and not bearish
+        if qualification.qualification is PatternQualification.PERSISTENT_BEARISH:
+            return bool(bearish) and not bullish
         return False
 
     @staticmethod
-    def _invalidate_vsa_conflict(
-        qualification: PatternQualificationResult,
-        professional: ProfessionalScoreResult,
-    ) -> PatternQualificationResult:
+    def _invalidate_vsa_conflict(qualification: PatternQualificationResult, professional: ProfessionalScoreResult) -> PatternQualificationResult:
         direction = "bullish" if qualification.qualification is PatternQualification.PERSISTENT_BULLISH else "bearish"
         pressure = professional.scores.net_pressure
         side = "supply" if pressure < 0.0 else "demand"
         return PatternQualificationResult(
             qualification=qualification.qualification,
             is_actionable_evidence=False,
-            reason=f"Persistent {direction} structure is contradicted by current VSA {side} pressure (net pressure={pressure:.3f}).",
+            reason=f"Persistent {direction} structure is contradicted by current VSA {side} pressure or opposing VSA evidence (net pressure={pressure:.3f}).",
+            evidence_codes=qualification.evidence_codes,
+            evidence_bar_indices=qualification.evidence_bar_indices,
+        )
+
+    @staticmethod
+    def _invalidate_missing_vsa_confirmation(qualification: PatternQualificationResult) -> PatternQualificationResult:
+        direction = "bullish" if qualification.qualification is PatternQualification.PERSISTENT_BULLISH else "bearish"
+        return PatternQualificationResult(
+            qualification=qualification.qualification,
+            is_actionable_evidence=False,
+            reason=f"Persistent {direction} structure is validated, but no directional VSA confirmation is present in the current scoring window.",
             evidence_codes=qualification.evidence_codes,
             evidence_bar_indices=qualification.evidence_bar_indices,
         )
 
     def evaluate(self, *, trend: TrendResult, evidence: EvidenceResult, history, bar_index: int | None = None, week: str | None = None) -> ScannerCandidate:
         qualification = self._qualification.evaluate(history)
-
         if not self._qualification_is_current(qualification, bar_index) and qualification.is_actionable_evidence:
             qualification = self._invalidate_stale_qualification(qualification)
 
@@ -251,11 +269,13 @@ class ScannerEngine:
             evidence=EvidenceResult(context=evidence.context, evidence=scoring_evidence),
         )
 
-        if self._vsa_conflicts_with_qualification(qualification, professional, scoring_evidence):
-            qualification = self._invalidate_vsa_conflict(qualification, professional)
+        if qualification.is_actionable_evidence:
+            if self._vsa_conflicts_with_qualification(qualification, professional, scoring_evidence):
+                qualification = self._invalidate_vsa_conflict(qualification, professional)
+            elif not self._vsa_supports_qualification(qualification, scoring_evidence):
+                qualification = self._invalidate_missing_vsa_confirmation(qualification)
 
         scoring_bar_index = self._scoring_bar_index(scoring_evidence)
-
         return ScannerCandidate(
             evidence=evidence,
             professional=professional,
@@ -283,7 +303,6 @@ class ScannerEngine:
             raise ValueError(f"target_index must be >= {self.MIN_REPLAY_BARS}")
         if target_index >= len(metrics):
             raise IndexError("target_index is outside metrics")
-
         history = []
         current_trend = None
         current_evidence = None
@@ -295,7 +314,6 @@ class ScannerEngine:
             history.append(evidence)
             current_trend = trend
             current_evidence = evidence
-
         assert current_trend is not None
         assert current_evidence is not None
         return self.evaluate(trend=current_trend, evidence=current_evidence, history=history, bar_index=target_index, week=self._week_at(metrics, target_index))

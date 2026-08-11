@@ -91,43 +91,61 @@ def test_scoring_evidence_falls_back_to_recent_vsa_event() -> None:
     assert [(item.bar_index, item.code) for item in scoring] == [(1219, EvidenceCode.HIDDEN_SUPPLY)]
 
 
-def test_vsa_conflict_invalidates_bullish_qualification() -> None:
-    qualification = PatternQualificationResult(
-        qualification=PatternQualification.PERSISTENT_BULLISH,
+def _qualification(direction: PatternQualification) -> PatternQualificationResult:
+    code = (EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING if direction is PatternQualification.PERSISTENT_BULLISH else EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING)
+    return PatternQualificationResult(
+        qualification=direction,
         is_actionable_evidence=True,
-        reason="persistent bullish",
-        evidence_codes=(EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING,) * 3,
+        reason="persistent structure",
+        evidence_codes=(code,) * 3,
         evidence_bar_indices=(270, 277, 283),
     )
-    professional = SimpleNamespace(scores=SimpleNamespace(net_pressure=-1.0))
-    scoring = (SimpleNamespace(bar_index=277, code=EvidenceCode.UPTHRUST),)
-    assert ScannerEngine._vsa_conflicts_with_qualification(qualification, professional, scoring)
-    result = ScannerEngine._invalidate_vsa_conflict(qualification, professional)
-    assert result.qualification is PatternQualification.PERSISTENT_BULLISH
+
+
+def test_structural_qualification_without_directional_vsa_is_not_actionable() -> None:
+    qualification = _qualification(PatternQualification.PERSISTENT_BULLISH)
+    professional = SimpleNamespace(scores=SimpleNamespace(net_pressure=0.0))
+    scoring = (SimpleNamespace(bar_index=283, code=EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING),)
+    assert not ScannerEngine._vsa_supports_qualification(qualification, scoring)
+    result = ScannerEngine._invalidate_missing_vsa_confirmation(qualification)
     assert result.is_actionable_evidence is False
-    assert "contradicted" in result.reason
-    assert "-1.000" in result.reason
+    assert "no directional VSA confirmation" in result.reason
 
 
-def test_vsa_conflict_invalidates_bearish_qualification() -> None:
-    qualification = PatternQualificationResult(
-        qualification=PatternQualification.PERSISTENT_BEARISH,
-        is_actionable_evidence=True,
-        reason="persistent bearish",
-        evidence_codes=(EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,) * 3,
-        evidence_bar_indices=(1100, 1110, 1120),
-    )
-    professional = SimpleNamespace(scores=SimpleNamespace(net_pressure=0.8))
-    scoring = (SimpleNamespace(bar_index=1120, code=EvidenceCode.STOPPING_VOLUME),)
+def test_bullish_vsa_supports_bullish_structure() -> None:
+    qualification = _qualification(PatternQualification.PERSISTENT_BULLISH)
+    scoring = (SimpleNamespace(bar_index=283, code=EvidenceCode.NO_SUPPLY),)
+    assert ScannerEngine._vsa_supports_qualification(qualification, scoring)
+
+
+def test_bearish_vsa_supports_bearish_structure() -> None:
+    qualification = _qualification(PatternQualification.PERSISTENT_BEARISH)
+    scoring = (SimpleNamespace(bar_index=283, code=EvidenceCode.INCREASING_SUPPLY),)
+    assert ScannerEngine._vsa_supports_qualification(qualification, scoring)
+
+
+def test_opposing_vsa_invalidates_bullish_structure() -> None:
+    qualification = _qualification(PatternQualification.PERSISTENT_BULLISH)
+    professional = SimpleNamespace(scores=SimpleNamespace(net_pressure=-1.0))
+    scoring = (SimpleNamespace(bar_index=283, code=EvidenceCode.UPTHRUST),)
     assert ScannerEngine._vsa_conflicts_with_qualification(qualification, professional, scoring)
+
+
+def test_opposing_vsa_invalidates_bearish_structure() -> None:
+    qualification = _qualification(PatternQualification.PERSISTENT_BEARISH)
+    professional = SimpleNamespace(scores=SimpleNamespace(net_pressure=0.8))
+    scoring = (SimpleNamespace(bar_index=283, code=EvidenceCode.STOPPING_VOLUME),)
+    assert ScannerEngine._vsa_conflicts_with_qualification(qualification, professional, scoring)
+
+
+def test_supply_drying_up_is_not_bearish_confirmation() -> None:
+    qualification = _qualification(PatternQualification.PERSISTENT_BEARISH)
+    scoring = (SimpleNamespace(bar_index=149, code=EvidenceCode.SUPPLY_DRYING_UP),)
+    assert not ScannerEngine._vsa_supports_qualification(qualification, scoring)
 
 
 def test_vsa_conflict_does_not_invalidate_without_scoring_evidence() -> None:
-    qualification = PatternQualificationResult(
-        qualification=PatternQualification.PERSISTENT_BULLISH,
-        is_actionable_evidence=True,
-        reason="persistent bullish",
-    )
+    qualification = _qualification(PatternQualification.PERSISTENT_BULLISH)
     professional = SimpleNamespace(scores=SimpleNamespace(net_pressure=-1.0))
     assert not ScannerEngine._vsa_conflicts_with_qualification(qualification, professional, ())
 
