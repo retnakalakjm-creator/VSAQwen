@@ -35,8 +35,6 @@ class ScannerCandidate:
     qualifying_evidence: tuple[Evidence, ...] = ()
     scoring_evidence: tuple[Evidence, ...] = ()
     scoring_bar_index: int | None = None
-    scoring_evidence_age: int | None = None
-    used_fallback_evidence: bool = False
     bar_index: int | None = None
     week: str | None = None
 
@@ -100,7 +98,12 @@ class ScannerCandidate:
 def rank_candidates(
     candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate],
 ) -> list[ScannerCandidate]:
-    """Rank scanner candidates without discarding diagnostics."""
+    """
+    Rank scanner candidates without discarding diagnostics.
+
+    Qualification is the primary gate. Professional net strength is only
+    used to rank candidates inside the same qualification class.
+    """
 
     return sorted(
         candidates,
@@ -133,7 +136,6 @@ class ScannerEngine:
     """
 
     MIN_REPLAY_BARS = 20
-    SCORING_LOOKBACK_BARS = 10
 
     _STRUCTURAL_CODES = frozenset(
         {
@@ -151,20 +153,14 @@ class ScannerEngine:
         cls,
         result: EvidenceResult,
         bar_index: int,
-        *,
-        earliest_bar_index: int | None = None,
     ) -> tuple[Evidence, ...]:
-        """Return meaningful VSA observations on one bar."""
+        """Return only target-bar VSA observations, excluding structural markers."""
 
         return tuple(
             item
             for item in result.evidence
             if item.bar_index == bar_index
             and item.code not in cls._STRUCTURAL_CODES
-            and (
-                earliest_bar_index is None
-                or item.bar_index >= earliest_bar_index
-            )
         )
 
     @staticmethod
@@ -195,40 +191,19 @@ class ScannerEngine:
         cls,
         current: EvidenceResult,
         bar_index: int | None,
-        qualifying_evidence: tuple[Evidence, ...],
     ) -> tuple[Evidence, ...]:
         """
-        Select recent meaningful VSA evidence for professional scoring.
+        Select evidence for professional scoring from the target bar only.
 
-        The target bar is preferred. If it has no meaningful VSA evidence,
-        walk backward through the current point-in-time replay snapshot up to
-        SCORING_LOOKBACK_BARS, never crossing the earliest structural event
-        that established the persistent qualification.
+        Historical evidence is intentionally never substituted here. Historical
+        snapshots belong to persistence qualification, not current-bar scoring.
+        Structural progression markers also never contribute directly to
+        professional supply/demand/effort scoring.
         """
 
         if bar_index is None:
             return ()
-
-        earliest_bar_index = (
-            min(item.bar_index for item in qualifying_evidence)
-            if qualifying_evidence
-            else None
-        )
-
-        for candidate_bar in range(
-            bar_index,
-            max(-1, bar_index - cls.SCORING_LOOKBACK_BARS - 1),
-            -1,
-        ):
-            evidence = cls._meaningful_vsa_evidence(
-                current,
-                candidate_bar,
-                earliest_bar_index=earliest_bar_index,
-            )
-            if evidence:
-                return evidence
-
-        return ()
+        return cls._meaningful_vsa_evidence(current, bar_index)
 
     @staticmethod
     def _scoring_bar_index(
@@ -298,6 +273,46 @@ class ScannerEngine:
             evidence_bar_indices=qualification.evidence_bar_indices,
         )
 
+    @staticmethod
+    def _vsa_conflicts_with_qualification(
+        qualification: PatternQualificationResult,
+        professional: ProfessionalScoreResult,
+        scoring_evidence: tuple[Evidence, ...],
+    ) -> bool:
+        """
+        Detect a current-bar professional VSA pressure conflict.
+
+        Structural qualification remains unchanged. A contradiction only
+        affects actionability, and only when meaningful current-bar VSA evidence
+        exists. Missing VSA evidence is therefore not treated as a conflict.
+        """
+
+        if not qualification.is_actionable_evidence or not scoring_evidence:
+            return False
+
+        if qualification.qualification is PatternQualification.PERSISTENT_BULLISH:
+            return professional.scores.net_pressure < 0.0
+
+        if qualification.qualification is PatternQualification.PERSISTENT_BEARISH:
+            return professional.scores.net_pressure > 0.0
+
+        return False
+
+    @staticmethod
+    def _invalidate_vsa_conflict(
+        qualification: PatternQualificationResult,
+    ) -> PatternQualificationResult:
+        return PatternQualificationResult(
+            qualification=qualification.qualification,
+            is_actionable_evidence=False,
+            reason=(
+                "Structural qualification is valid, but current-bar professional "
+                "VSA pressure contradicts the qualified direction."
+            ),
+            evidence_codes=qualification.evidence_codes,
+            evidence_bar_indices=qualification.evidence_bar_indices,
+        )
+
     def evaluate(
         self,
         *,
@@ -322,12 +337,7 @@ class ScannerEngine:
             history,
             qualification,
         )
-        scoring_evidence = self._scoring_evidence(
-            evidence,
-            bar_index,
-            qualifying_evidence,
-        )
-        scoring_bar_index = self._scoring_bar_index(scoring_evidence)
+        scoring_evidence = self._scoring_evidence(evidence, bar_index)
         professional = self._professional.calculate(
             trend=trend,
             evidence=EvidenceResult(
@@ -335,6 +345,13 @@ class ScannerEngine:
                 evidence=scoring_evidence,
             ),
         )
+
+        if self._vsa_conflicts_with_qualification(
+            qualification,
+            professional,
+            scoring_evidence,
+        ):
+            qualification = self._invalidate_vsa_conflict(qualification)
 
         return ScannerCandidate(
             evidence=evidence,
@@ -344,17 +361,7 @@ class ScannerEngine:
             campaign_evidence=campaign_evidence,
             qualifying_evidence=qualifying_evidence,
             scoring_evidence=scoring_evidence,
-            scoring_bar_index=scoring_bar_index,
-            scoring_evidence_age=(
-                None
-                if scoring_bar_index is None or bar_index is None
-                else bar_index - scoring_bar_index
-            ),
-            used_fallback_evidence=(
-                scoring_bar_index is not None
-                and bar_index is not None
-                and scoring_bar_index != bar_index
-            ),
+            scoring_bar_index=self._scoring_bar_index(scoring_evidence),
             bar_index=bar_index,
             week=week,
         )
@@ -371,7 +378,10 @@ class ScannerEngine:
         metrics: pd.DataFrame,
         target_index: int,
     ) -> ScannerCandidate:
-        """Replay from the beginning through target_index and return its point-in-time candidate."""
+        """
+        Replay from the beginning through target_index and return its
+        point-in-time scanner candidate.
+        """
 
         if target_index < self.MIN_REPLAY_BARS:
             raise ValueError(

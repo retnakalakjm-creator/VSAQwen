@@ -168,7 +168,7 @@ def test_scoring_evidence_is_empty_without_target_bar() -> None:
     assert ScannerEngine._scoring_evidence(result, 1223) == ()
 
 
-def test_candidate_separates_target_campaign_and_qualifying_evidence() -> None:
+def test_candidate_separates_target_campaign_and_qualifying_evidence():
     target = SimpleNamespace(
         bar_index=1223,
         code=EvidenceCode.INCREASING_SUPPLY,
@@ -222,3 +222,93 @@ def test_target_bar_evidence_selects_only_target_bar() -> None:
         (1223, EvidenceCode.INCREASING_SUPPLY),
         (1223, EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING),
     ]
+
+
+def test_vsa_conflict_invalidates_bullish_actionability() -> None:
+    qualification = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BULLISH,
+        is_actionable_evidence=True,
+        reason="structural qualification",
+    )
+    professional = SimpleNamespace(
+        scores=SimpleNamespace(net_pressure=-1.0),
+    )
+    scoring_evidence = (SimpleNamespace(code=EvidenceCode.UPTHRUST, bar_index=100),)
+
+    assert ScannerEngine._vsa_conflicts_with_qualification(
+        qualification,
+        professional,
+        scoring_evidence,
+    )
+
+    invalidated = ScannerEngine._invalidate_vsa_conflict(qualification)
+
+    assert invalidated.qualification is PatternQualification.PERSISTENT_BULLISH
+    assert invalidated.is_actionable_evidence is False
+    assert "VSA pressure contradicts" in invalidated.reason
+
+
+def test_vsa_conflict_invalidates_bearish_actionability() -> None:
+    qualification = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BEARISH,
+        is_actionable_evidence=True,
+        reason="structural qualification",
+    )
+    professional = SimpleNamespace(
+        scores=SimpleNamespace(net_pressure=1.0),
+    )
+    scoring_evidence = (SimpleNamespace(code=EvidenceCode.NO_DEMAND, bar_index=100),)
+
+    assert ScannerEngine._vsa_conflicts_with_qualification(
+        qualification,
+        professional,
+        scoring_evidence,
+    )
+
+
+def test_missing_vsa_evidence_is_not_a_conflict() -> None:
+    qualification = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BULLISH,
+        is_actionable_evidence=True,
+        reason="structural qualification",
+    )
+    professional = SimpleNamespace(
+        scores=SimpleNamespace(net_pressure=-1.0),
+    )
+
+    assert not ScannerEngine._vsa_conflicts_with_qualification(
+        qualification,
+        professional,
+        (),
+    )
+
+
+def test_aligned_vsa_pressure_is_not_a_conflict() -> None:
+    bullish = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BULLISH,
+        is_actionable_evidence=True,
+        reason="structural qualification",
+    )
+    bearish = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BEARISH,
+        is_actionable_evidence=True,
+        reason="structural qualification",
+    )
+    bullish_professional = SimpleNamespace(
+        scores=SimpleNamespace(net_pressure=1.0),
+    )
+    bearish_professional = SimpleNamespace(
+        scores=SimpleNamespace(net_pressure=-1.0),
+    )
+    scoring_evidence = (SimpleNamespace(code=EvidenceCode.INCREASING_SUPPLY, bar_index=100),)
+
+    assert not ScannerEngine._vsa_conflicts_with_qualification(
+        bullish,
+        bullish_professional,
+        scoring_evidence,
+    )
+    assert not ScannerEngine._vsa_conflicts_with_qualification(
+        bearish,
+        bearish_professional,
+        scoring_evidence,
+    )
