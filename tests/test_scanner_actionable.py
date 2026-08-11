@@ -72,6 +72,46 @@ def test_stale_qualification_is_invalidated() -> None:
     assert result.evidence_bar_indices == (100, 110, 120)
 
 
+def test_evaluate_invalidates_historical_qualification_on_later_bar(monkeypatch) -> None:
+    qualification = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BEARISH,
+        is_actionable_evidence=True,
+        reason="historically persistent",
+        evidence_codes=(EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,) * 3,
+        evidence_bar_indices=(100, 110, 120),
+    )
+
+    monkeypatch.setattr(
+        "scanner.PatternQualificationEngine.evaluate",
+        lambda self, history: qualification,
+    )
+
+    professional = SimpleNamespace(
+        scores=SimpleNamespace(net_strength=-0.5, net_pressure=-0.5),
+        confidence=0.5,
+    )
+    monkeypatch.setattr(
+        "scanner.ProfessionalScoringEngine.calculate",
+        lambda self, *, trend, evidence: professional,
+    )
+
+    evidence = SimpleNamespace(context=None, evidence=())
+    candidate = ScannerEngine().evaluate(
+        trend=SimpleNamespace(),
+        evidence=evidence,
+        history=(evidence,),
+        bar_index=121,
+        week="2020-01-06 00:00:00",
+    )
+
+    assert candidate.qualification is PatternQualification.PERSISTENT_BEARISH
+    assert candidate.actionable is False
+    assert candidate.reason == (
+        "Historical persistence was validated, but no qualifying structural "
+        "progression event occurred on the target bar."
+    )
+
+
 def test_scoring_evidence_uses_target_bar_when_available() -> None:
     result = SimpleNamespace(evidence=(
         SimpleNamespace(bar_index=1219, code=EvidenceCode.HIDDEN_SUPPLY),
@@ -104,7 +144,6 @@ def _qualification(direction: PatternQualification) -> PatternQualificationResul
 
 def test_structural_qualification_without_directional_vsa_is_not_actionable() -> None:
     qualification = _qualification(PatternQualification.PERSISTENT_BULLISH)
-    professional = SimpleNamespace(scores=SimpleNamespace(net_pressure=0.0))
     scoring = (SimpleNamespace(bar_index=283, code=EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING),)
     assert not ScannerEngine._vsa_supports_qualification(qualification, scoring)
     result = ScannerEngine._invalidate_missing_vsa_confirmation(qualification)
