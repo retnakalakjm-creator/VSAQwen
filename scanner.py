@@ -100,6 +100,7 @@ class ScannerEngine:
 
     MIN_REPLAY_BARS = 20
     SCORING_LOOKBACK_BARS = 10
+    MAX_ACTIONABLE_VSA_AGE = 3
 
     _STRUCTURAL_CODES = frozenset({
         EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING,
@@ -132,7 +133,6 @@ class ScannerEngine:
     })
 
     def __init__(self) -> None:
-        """Create the state-free engines used by the scanner pipeline."""
         self._qualification = PatternQualificationEngine()
         self._professional = ProfessionalScoringEngine()
 
@@ -165,6 +165,14 @@ class ScannerEngine:
     @staticmethod
     def _scoring_bar_index(evidence: tuple[Evidence, ...]) -> int | None:
         return max((item.bar_index for item in evidence), default=None)
+
+    @classmethod
+    def _vsa_confirmation_is_current(cls, scoring_evidence: tuple[Evidence, ...], bar_index: int | None) -> bool:
+        """Require directional VSA confirmation to be close enough to the target bar."""
+        if bar_index is None or not scoring_evidence:
+            return False
+        scoring_bar_index = max(item.bar_index for item in scoring_evidence)
+        return 0 <= bar_index - scoring_bar_index <= cls.MAX_ACTIONABLE_VSA_AGE
 
     @staticmethod
     def _qualifying_evidence(history, qualification: PatternQualificationResult) -> tuple[Evidence, ...]:
@@ -220,7 +228,6 @@ class ScannerEngine:
 
     @classmethod
     def _vsa_supports_qualification(cls, qualification: PatternQualificationResult, scoring_evidence: tuple[Evidence, ...]) -> bool:
-        """Require at least one directional VSA observation supporting the structure."""
         if not qualification.is_actionable_evidence:
             return False
         bullish, bearish = cls._vsa_directional_evidence(scoring_evidence)
@@ -254,6 +261,17 @@ class ScannerEngine:
             evidence_bar_indices=qualification.evidence_bar_indices,
         )
 
+    @staticmethod
+    def _invalidate_stale_vsa_confirmation(qualification: PatternQualificationResult, age: int) -> PatternQualificationResult:
+        direction = "bullish" if qualification.qualification is PatternQualification.PERSISTENT_BULLISH else "bearish"
+        return PatternQualificationResult(
+            qualification=qualification.qualification,
+            is_actionable_evidence=False,
+            reason=f"Persistent {direction} structure is validated, but the supporting VSA evidence is {age} bars old and exceeds the maximum actionable age of {ScannerEngine.MAX_ACTIONABLE_VSA_AGE} bars.",
+            evidence_codes=qualification.evidence_codes,
+            evidence_bar_indices=qualification.evidence_bar_indices,
+        )
+
     def evaluate(self, *, trend: TrendResult, evidence: EvidenceResult, history, bar_index: int | None = None, week: str | None = None) -> ScannerCandidate:
         qualification = self._qualification.evaluate(history)
         if not self._qualification_is_current(qualification, bar_index) and qualification.is_actionable_evidence:
@@ -270,10 +288,17 @@ class ScannerEngine:
         )
 
         if qualification.is_actionable_evidence:
-            if self._vsa_conflicts_with_qualification(qualification, professional, scoring_evidence):
-                qualification = self._invalidate_vsa_conflict(qualification, professional)
-            elif not self._vsa_supports_qualification(qualification, scoring_evidence):
+            scoring_bar_index = self._scoring_bar_index(scoring_evidence)
+            if scoring_bar_index is None:
                 qualification = self._invalidate_missing_vsa_confirmation(qualification)
+            else:
+                scoring_age = bar_index - scoring_bar_index if bar_index is not None else None
+                if scoring_age is not None and scoring_age > self.MAX_ACTIONABLE_VSA_AGE:
+                    qualification = self._invalidate_stale_vsa_confirmation(qualification, scoring_age)
+                elif self._vsa_conflicts_with_qualification(qualification, professional, scoring_evidence):
+                    qualification = self._invalidate_vsa_conflict(qualification, professional)
+                elif not self._vsa_supports_qualification(qualification, scoring_evidence):
+                    qualification = self._invalidate_missing_vsa_confirmation(qualification)
 
         scoring_bar_index = self._scoring_bar_index(scoring_evidence)
         return ScannerCandidate(

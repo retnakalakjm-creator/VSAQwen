@@ -131,6 +131,16 @@ def test_scoring_evidence_falls_back_to_recent_vsa_event() -> None:
     assert [(item.bar_index, item.code) for item in scoring] == [(1219, EvidenceCode.HIDDEN_SUPPLY)]
 
 
+def test_vsa_confirmation_age_allows_recent_evidence() -> None:
+    scoring = (SimpleNamespace(bar_index=120, code=EvidenceCode.INCREASING_SUPPLY),)
+    assert ScannerEngine._vsa_confirmation_is_current(scoring, 123)
+
+
+def test_vsa_confirmation_age_rejects_stale_evidence() -> None:
+    scoring = (SimpleNamespace(bar_index=119, code=EvidenceCode.INCREASING_SUPPLY),)
+    assert not ScannerEngine._vsa_confirmation_is_current(scoring, 123)
+
+
 def _qualification(direction: PatternQualification) -> PatternQualificationResult:
     code = (EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING if direction is PatternQualification.PERSISTENT_BULLISH else EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING)
     return PatternQualificationResult(
