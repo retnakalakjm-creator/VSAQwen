@@ -8,10 +8,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from data import daily_to_weekly, download_data
+from engine.columns import COL_CLOSE, COL_WEEK
 from evidence.engine import EvidenceEngine
 from metrics_engine import MetricsEngine
-from model import EvidenceResult
-from professional.scoring_engine import ProfessionalScoringEngine
 from trend import TrendAnalyzer
 
 DEFAULT_SYMBOLS = (
@@ -57,19 +56,18 @@ def inspect_symbol(symbol: str) -> list[dict]:
         if not test_items:
             continue
 
-        future = metrics.iloc[index:]
         returns = {}
         for horizon in (1, 2, 4, 8):
             if index + horizon < len(metrics):
-                current = float(metrics.iloc[index].iloc[-1])
-                future_close = float(metrics.iloc[index + horizon].iloc[-1])
+                current = float(metrics.iloc[index][COL_CLOSE])
+                future_close = float(metrics.iloc[index + horizon][COL_CLOSE])
                 if current != 0:
                     returns[horizon] = future_close / current - 1.0
 
         events.append({
             "symbol": symbol,
             "bar_index": index,
-            "week": str(metrics.iloc[index][metrics.columns[-1]]),
+            "week": str(metrics.iloc[index][COL_WEEK]),
             "test_count": len(test_items),
             "test_strength": [item.strength for item in test_items],
             "test_quality": [item.quality for item in test_items],
