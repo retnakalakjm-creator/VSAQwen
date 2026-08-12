@@ -3,6 +3,7 @@ from metrics_engine import MetricsEngine
 from evidence.engine import EvidenceEngine
 from professional.scoring_engine import ProfessionalScoringEngine
 from background.qualification import PatternQualificationEngine
+from debug.confidence_diagnostics import confidence_components
 from scanner import ScannerCandidate, ScannerEngine, rank_candidates
 from models import TrendResult
 from trend import TrendAnalyzer
@@ -104,7 +105,7 @@ print()
 print("=" * 70)
 print("SCANNER DIAGNOSTIC - CHRONOLOGICAL REPLAY")
 print("=" * 70)
-print("DIAGNOSTIC_VERSION = chronological-qualification-v3")
+print("DIAGNOSTIC_VERSION = chronological-qualification-v4-confidence-components")
 
 
 target_week = replay_metrics.iloc[-1][COL_WEEK]
@@ -158,6 +159,8 @@ print({
 
 
 def _candidate_details(candidate: ScannerCandidate) -> dict:
+    confidence = confidence_components(candidate.professional.scores)
+
     return {
         "qualification": candidate.qualification,
         "actionable": candidate.actionable,
@@ -167,6 +170,7 @@ def _candidate_details(candidate: ScannerCandidate) -> dict:
         "net_strength": candidate.net_strength,
         "net_pressure": candidate.net_pressure,
         "confidence": candidate.confidence,
+        "confidence_components": confidence,
         "base_score": candidate.base_score,
         "evidence_codes": list(candidate.evidence_codes),
     }
