@@ -3,7 +3,7 @@ from metrics_engine import MetricsEngine
 from evidence.engine import EvidenceEngine
 from background.qualification import PatternQualificationEngine
 from debug.confidence_diagnostics import confidence_components, score_inputs
-from scanner import ScannerEngine, rank_candidates
+from scanner import ScannerEngine
 from trend import TrendAnalyzer
 from engine.columns import COL_WEEK
 
@@ -20,10 +20,8 @@ qualification_engine = PatternQualificationEngine()
 
 
 # ---------------------------------------------------------
-# Chronological qualification replay
+# Point-in-time chronological replay for qualification only
 # ---------------------------------------------------------
-# This history exists ONLY to validate persistence qualification.
-# It must never be passed into the current-bar professional scorer.
 point_history: list = []
 
 for index in range(scanner.MIN_REPLAY_BARS, TARGET_INDEX + 1):
@@ -31,42 +29,36 @@ for index in range(scanner.MIN_REPLAY_BARS, TARGET_INDEX + 1):
     replay_trend = TrendAnalyzer().analyze(replay_metrics)
     replay_structural_swings = list(replay_trend.structure.structural_swings)
 
-    replay_result = EvidenceEngine().collect(
-        metrics=replay_metrics,
-        trend=replay_trend,
-        structural_swings=replay_structural_swings,
+    point_history.append(
+        EvidenceEngine().collect(
+            metrics=replay_metrics,
+            trend=replay_trend,
+            structural_swings=replay_structural_swings,
+        )
     )
-
-    point_history.append(replay_result)
 
 if not point_history:
     raise RuntimeError("No point-in-time replay snapshots were produced")
 
-point_qualification = qualification_engine.evaluate(point_history)
+qualification = qualification_engine.evaluate(point_history)
 
 
 # ---------------------------------------------------------
-# Production point-in-time candidate
+# Production current-bar decision
 # ---------------------------------------------------------
-# This is the ONLY candidate used for current-bar scoring and actionability.
-# scan_to_index() owns the complete production decision path.
-point_in_time_candidate = scanner.scan_to_index(
-    metrics,
-    TARGET_INDEX,
-)
+# Do not manually reconstruct this candidate. Use the exact production
+# ScannerEngine path so the diagnostic cannot accidentally score historical
+# evidence as if it were current.
+current_candidate = scanner.scan_to_index(metrics, TARGET_INDEX)
 
 
-# ---------------------------------------------------------
-# Diagnostics
-# ---------------------------------------------------------
+target_week = metrics.iloc[TARGET_INDEX][COL_WEEK]
 
 print()
 print("=" * 70)
-print("SCANNER DIAGNOSTIC - CHRONOLOGICAL QUALIFICATION + CURRENT BAR")
+print("SCANNER DIAGNOSTIC - PRODUCTION CURRENT BAR")
 print("=" * 70)
-print("DIAGNOSTIC_VERSION = chronological-qualification-v7-separated-scopes")
-
-target_week = metrics.iloc[TARGET_INDEX][COL_WEEK]
+print("DIAGNOSTIC_VERSION = production-current-bar-v1")
 
 print()
 print("TARGET")
@@ -76,68 +68,37 @@ print({
     "week": str(target_week),
 })
 
-
-# ---------------------------------------------------------
-# 1. Historical qualification only
-# ---------------------------------------------------------
 print()
-print("QUALIFICATION HISTORY - VALIDATION ONLY")
-
-structural_history = [
-    item
-    for result in point_history
-    for item in result.evidence
-    if item.code in {
-        item.code.__class__.STRUCTURAL_PROGRESSION_IMPROVING,
-        item.code.__class__.STRUCTURAL_PROGRESSION_WEAKENING,
-    }
-]
-
-for item in structural_history:
-    print({
-        "bar_index": item.bar_index,
-        "week": item.week_beginning,
-        "code": str(item.code),
-        "direction": str(item.direction),
-        "strength": item.strength,
-        "weight": item.weight,
-        "quality": item.quality,
-    })
-
+print("QUALIFICATION HISTORY")
 print({
-    "snapshots": len(point_history),
-    "structural_events": len(structural_history),
-    "qualification": point_qualification.qualification,
-    "actionable_evidence": point_qualification.is_actionable_evidence,
-    "reason": point_qualification.reason,
-    "qualifying_codes": [str(code) for code in point_qualification.evidence_codes],
-    "qualifying_bar_indices": list(point_qualification.evidence_bar_indices),
+    "qualification": qualification.qualification,
+    "actionable_evidence": qualification.is_actionable_evidence,
+    "reason": qualification.reason,
+    "qualifying_codes": [str(code) for code in qualification.evidence_codes],
+    "qualifying_bar_indices": list(qualification.evidence_bar_indices),
 })
 
-
-# ---------------------------------------------------------
-# 2. Current-bar production decision
-# ---------------------------------------------------------
 print()
 print("CURRENT BAR - PRODUCTION SCANNER PATH")
-
-scores = point_in_time_candidate.professional.scores
-
 print({
-    "qualification": point_in_time_candidate.qualification,
-    "actionable": point_in_time_candidate.actionable,
-    "reason": point_in_time_candidate.reason,
+    "qualification": current_candidate.qualification,
+    "actionable": current_candidate.actionable,
+    "reason": current_candidate.reason,
 })
 
 print()
 print("CURRENT BAR EVIDENCE")
 print({
-    "target_bar_evidence_codes": point_in_time_candidate.target_bar_evidence_codes,
-    "campaign_evidence_codes": point_in_time_candidate.campaign_evidence_codes,
-    "qualifying_evidence_codes": point_in_time_candidate.qualifying_evidence_codes,
-    "scoring_evidence_codes": point_in_time_candidate.scoring_evidence_codes,
-    "scoring_bar_index": point_in_time_candidate.scoring_bar_index,
+    "target_bar_evidence_codes": current_candidate.target_bar_evidence_codes,
+    "campaign_evidence_codes": current_candidate.campaign_evidence_codes,
+    "qualifying_evidence_codes": current_candidate.qualifying_evidence_codes,
+    "scoring_evidence_codes": current_candidate.scoring_evidence_codes,
+    "scoring_bar_index": current_candidate.scoring_bar_index,
+    "scoring_evidence_age": current_candidate.scoring_evidence_age,
+    "used_fallback_evidence": current_candidate.used_fallback_evidence,
 })
+
+scores = current_candidate.professional.scores
 
 print()
 print("CURRENT PROFESSIONAL SCORE INPUTS")
@@ -150,58 +111,24 @@ print(confidence_components(scores))
 print()
 print("CURRENT SCORE")
 print({
-    "professional_strength": point_in_time_candidate.professional.strength,
-    "professional_weakness": point_in_time_candidate.professional.weakness,
-    "net_strength": point_in_time_candidate.net_strength,
-    "net_pressure": point_in_time_candidate.net_pressure,
-    "confidence": point_in_time_candidate.confidence,
-    "base_score": point_in_time_candidate.base_score,
+    "professional_strength": current_candidate.professional.strength,
+    "professional_weakness": current_candidate.professional.weakness,
+    "net_strength": current_candidate.net_strength,
+    "net_pressure": current_candidate.net_pressure,
+    "confidence": current_candidate.confidence,
+    "base_score": current_candidate.base_score,
 })
 
-
-# ---------------------------------------------------------
-# 3. Explicit separation check
-# ---------------------------------------------------------
 print()
 print("SCOPE SEPARATION CHECK")
 print({
     "qualification_source": "chronological replay",
-    "qualification_bars": list(point_qualification.evidence_bar_indices),
+    "qualification_bars": list(qualification.evidence_bar_indices),
     "scoring_source": "production scan_to_index",
-    "scoring_bar_index": point_in_time_candidate.scoring_bar_index,
+    "scoring_bar_index": current_candidate.scoring_bar_index,
     "current_target_bar": TARGET_INDEX,
     "historical_qualification_used_for_scoring": False,
 })
-
-
-# ---------------------------------------------------------
-# 4. Final decision and rank
-# ---------------------------------------------------------
-print()
-print("FINAL DECISION")
-print({
-    "actionable": point_in_time_candidate.actionable,
-    "qualification": point_in_time_candidate.qualification,
-    "base_score": point_in_time_candidate.base_score,
-    "confidence": point_in_time_candidate.confidence,
-    "reason": point_in_time_candidate.reason,
-})
-
-ranked = rank_candidates([point_in_time_candidate])
-
-print()
-print("RANKED ORDER")
-for index, candidate in enumerate(ranked, start=1):
-    print(
-        index,
-        {
-            "qualification": candidate.qualification,
-            "actionable": candidate.actionable,
-            "base_score": candidate.base_score,
-            "confidence": candidate.confidence,
-            "scoring_bar_index": candidate.scoring_bar_index,
-        },
-    )
 
 print()
 print("=" * 70)
