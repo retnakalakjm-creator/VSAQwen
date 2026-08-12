@@ -127,3 +127,24 @@ def test_no_supply_detector_rejects_missing_required_condition(monkeypatch) -> N
 
     assert result == []
     assert captured == []
+
+
+def test_no_supply_is_registered_in_production_demand_collection(monkeypatch) -> None:
+    ctx = _ctx()
+    captured = []
+
+    monkeypatch.setattr(
+        demand,
+        "_collect_shakeout",
+        lambda *, ctx, validation_metrics: [],
+    )
+    monkeypatch.setattr(
+        demand,
+        "_collect_no_supply",
+        lambda ctx: captured.append(EvidenceCode.NO_SUPPLY) or [],
+    )
+
+    result = demand.collect_demand(ctx, SimpleNamespace())
+
+    assert result == []
+    assert captured == [EvidenceCode.NO_SUPPLY]
