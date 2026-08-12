@@ -33,6 +33,7 @@ SYMBOL = "BHARTIARTL.NS"
 TARGET_INDEX = None
 FORWARD_HORIZONS = (1, 2, 4, 8)
 RESPONSE_LOOKAHEAD = 4
+STRUCTURAL_LOCATION_LOOKBACK = 6
 
 BULLISH_CONTEXT_CODES = {
     "no_supply",
@@ -146,6 +147,59 @@ def latest_swing_snapshot(ctx):
         "grade": str(latest.grade),
         "professional_score": evaluation.professional.overall,
         "spread_adjusted_amplitude": snapshot.current_spread_adjusted_amplitude,
+    }
+
+
+def structural_location_profile(ctx):
+    """Describe TEST location relative to confirmed prior structural lows."""
+    current_index = ctx.current.bar_index
+    current_low = float(ctx.current.low_price)
+
+    prior_lows = [
+        swing
+        for swing in ctx.structural_swings
+        if swing.swing.type.name.lower() == "low"
+        and swing.swing.confirmation_index <= current_index
+        and swing.swing.bar_index < current_index
+    ]
+
+    prior_lows = prior_lows[-STRUCTURAL_LOCATION_LOOKBACK:]
+
+    if not prior_lows:
+        return {
+            "prior_structural_lows": 0,
+            "nearest_low": None,
+            "distance_to_nearest_low": None,
+            "distance_to_nearest_low_in_spreads": None,
+            "tests_recent_structural_low": False,
+            "below_nearest_structural_low": False,
+        }
+
+    nearest = min(
+        prior_lows,
+        key=lambda swing: abs(float(swing.swing.price) - current_low),
+    )
+
+    nearest_price = float(nearest.swing.price)
+    distance = current_low - nearest_price
+    avg_spread = float(ctx.metrics.avg_spread)
+    distance_in_spreads = distance / avg_spread if avg_spread > 0 else None
+
+    return {
+        "prior_structural_lows": len(prior_lows),
+        "nearest_low": {
+            "bar_index": nearest.swing.bar_index,
+            "confirmation_index": nearest.swing.confirmation_index,
+            "price": nearest_price,
+            "grade": str(nearest.grade),
+        },
+        "distance_to_nearest_low": distance,
+        "distance_to_nearest_low_in_spreads": distance_in_spreads,
+        "tests_recent_structural_low": (
+            distance_in_spreads is not None
+            and abs(distance_in_spreads) <= 1.5
+        ),
+        "below_nearest_structural_low": distance < 0,
     }
 
 
@@ -304,7 +358,7 @@ def main() -> None:
     print("\n" + "=" * 70)
     print("AUDIT-ONLY TEST DETECTOR DIAGNOSTIC")
     print("=" * 70)
-    print("DIAGNOSTIC_VERSION = test-detector-audit-v7")
+    print("DIAGNOSTIC_VERSION = test-detector-audit-v8")
     print({
         "symbol": SYMBOL,
         "target_bar_index": target_index,
@@ -319,21 +373,21 @@ def main() -> None:
         "events_per_bar": dict(sorted(by_bar.items())),
     })
 
-    print("\nTEST POINT-IN-TIME SCORE AUDIT")
+    print("\nTEST POINT-IN-TIME LOCATION AUDIT")
     for bar_index in sorted(by_bar):
         event = next(event for index, event in test_events if index == bar_index)
         ctx = contexts_by_index[bar_index][1]
         result = contexts_by_index[bar_index][2]
         response = response_analysis(contexts_by_index, metrics, bar_index)
-        scorecard = point_in_time_scorecard(ctx)
 
         row = {
             "bar_index": bar_index,
             "week": str(metrics.iloc[bar_index][COL_WEEK]),
             "response_classification": classify_response(response),
-            "point_in_time_scorecard": scorecard,
-            "test_requirements_and_confirmations": diagnostic_test_requirements(ctx),
+            "structural_location": structural_location_profile(ctx),
+            "point_in_time_scorecard": point_in_time_scorecard(ctx),
             "campaign_profile": campaign_profile(ctx),
+            "exact_evidence_at_test": exact_bar_evidence(result, bar_index),
             "response_analysis": {
                 "holding_bars": response["holding_bars"],
                 "first_supply_bar_offset": response["first_supply_bar_offset"],
@@ -352,59 +406,43 @@ def main() -> None:
         rows.append(row)
         print(row)
 
-    print("\nTEST SCORE GROUP SUMMARY")
-    score_groups = defaultdict(list)
-    for row in rows:
-        score = row["point_in_time_scorecard"]["supportive_factor_count"]
-        score_groups[score].append(row)
-
-    score_summary = {}
-    for score, grouped_rows in sorted(score_groups.items()):
-        score_summary[score] = {
-            "events": len(grouped_rows),
-            "bars": [row["bar_index"] for row in grouped_rows],
-            "strong_hold": sum(row["response_classification"] == "STRONG_HOLD" for row in grouped_rows),
-            "partial_hold": sum(row["response_classification"] == "PARTIAL_HOLD" for row in grouped_rows),
-            "early_failure": sum(row["response_classification"] == "EARLY_AREA_FAILURE" for row in grouped_rows),
-            "positive_8_bar_return": sum(
-                row["forward_8_bar_return"] is not None
-                and row["forward_8_bar_return"] > 0
-                for row in grouped_rows
-            ),
-        }
-
-    print(score_summary)
-
-    print("\nTEST HOLD / FAILURE GROUP SUMMARY")
+    print("\nTEST LOCATION GROUP SUMMARY")
     groups = defaultdict(list)
     for row in rows:
         groups[row["response_classification"]].append(row)
 
-    group_summary = {}
+    location_summary = {}
     for classification, grouped_rows in sorted(groups.items()):
-        group_summary[classification] = {
+        location_summary[classification] = {
             "events": len(grouped_rows),
             "bars": [row["bar_index"] for row in grouped_rows],
-            "structural_weakness": sum(
-                row["campaign_profile"]["structural_weakness"]
+            "tests_recent_structural_low": sum(
+                row["structural_location"]["tests_recent_structural_low"]
                 for row in grouped_rows
             ),
-            "confirmed_downtrend": sum(
-                row["campaign_profile"]["confirmed_downtrend"]
+            "below_nearest_structural_low": sum(
+                row["structural_location"]["below_nearest_structural_low"]
                 for row in grouped_rows
             ),
-            "supportive_score_total": sum(
-                row["point_in_time_scorecard"]["supportive_factor_count"]
-                for row in grouped_rows
-            ),
-            "positive_8_bar_return": sum(
-                row["forward_8_bar_return"] is not None
-                and row["forward_8_bar_return"] > 0
-                for row in grouped_rows
+            "avg_distance_to_nearest_low_in_spreads": (
+                sum(
+                    row["structural_location"]["distance_to_nearest_low_in_spreads"]
+                    for row in grouped_rows
+                    if row["structural_location"]["distance_to_nearest_low_in_spreads"] is not None
+                )
+                / sum(
+                    row["structural_location"]["distance_to_nearest_low_in_spreads"] is not None
+                    for row in grouped_rows
+                )
+                if any(
+                    row["structural_location"]["distance_to_nearest_low_in_spreads"] is not None
+                    for row in grouped_rows
+                )
+                else None
             ),
         }
 
-    print(group_summary)
+    print(location_summary)
     print("\n" + "=" * 70)
 
 
