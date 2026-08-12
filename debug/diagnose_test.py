@@ -153,7 +153,7 @@ def latest_swing_snapshot(ctx):
 def structural_location_profile(ctx):
     """Describe TEST location relative to confirmed prior structural lows."""
     current_index = ctx.current.bar_index
-    current_low = float(ctx.current.low_price)
+    current_low = float(ctx.current.low)
 
     prior_lows = [
         swing
