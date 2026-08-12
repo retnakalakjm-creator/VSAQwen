@@ -7,12 +7,14 @@ from background.qualification import PatternQualificationEngine
 from debug.confidence_diagnostics import confidence_components, score_inputs
 from scanner import ScannerEngine
 from trend import TrendAnalyzer
-from engine.columns import COL_WEEK
+from engine.columns import COL_WEEK, COL_CLOSE
 from models import EvidenceCode
 
 
 SYMBOL = "BHARTIARTL.NS"
 TARGET_INDEX = 530
+CONTEXT_WINDOW = 5
+FORWARD_HORIZONS = (1, 2, 4, 8)
 
 
 daily = download_data(SYMBOL)
@@ -49,8 +51,6 @@ qualification = qualification_engine.evaluate(point_history)
 # ---------------------------------------------------------
 # Historical NO_SUPPLY distribution
 # ---------------------------------------------------------
-# This is deliberately based on point-in-time snapshots, so an event is counted
-# only on the bar where it was actually observable.
 no_supply_events = [
     item
     for result in point_history
@@ -58,28 +58,82 @@ no_supply_events = [
     if item.code == EvidenceCode.NO_SUPPLY
 ]
 
-no_supply_by_bar = Counter(
-    item.bar_index
-    for item in no_supply_events
-)
+no_supply_by_bar = Counter(item.bar_index for item in no_supply_events)
+
+
+def evidence_codes_for_bar(bar_index: int) -> tuple[str, ...]:
+    """Return point-in-time evidence codes observed on one historical bar."""
+    history_index = bar_index - scanner.MIN_REPLAY_BARS
+    if history_index < 0 or history_index >= len(point_history):
+        return ()
+
+    return tuple(
+        str(item.code)
+        for item in point_history[history_index].evidence
+        if item.bar_index == bar_index
+    )
+
+
+def no_supply_context(bar_index: int) -> dict:
+    """Summarize local VSA context and forward price behavior around NO_SUPPLY."""
+    start = max(scanner.MIN_REPLAY_BARS, bar_index - CONTEXT_WINDOW)
+    end = min(TARGET_INDEX, bar_index + CONTEXT_WINDOW)
+
+    local_evidence = {
+        index: evidence_codes_for_bar(index)
+        for index in range(start, end + 1)
+        if evidence_codes_for_bar(index)
+    }
+
+    close = float(metrics.iloc[bar_index][COL_CLOSE])
+    forward_returns: dict[int, float | None] = {}
+    for horizon in FORWARD_HORIZONS:
+        future_index = bar_index + horizon
+        if future_index < len(metrics):
+            future_close = float(metrics.iloc[future_index][COL_CLOSE])
+            forward_returns[horizon] = (future_close / close) - 1.0
+        else:
+            forward_returns[horizon] = None
+
+    trend = TrendAnalyzer().analyze(metrics.iloc[: bar_index + 1].copy())
+
+    event = next(
+        item
+        for item in no_supply_events
+        if item.bar_index == bar_index
+    )
+
+    return {
+        "bar_index": bar_index,
+        "week": str(metrics.iloc[bar_index][COL_WEEK]),
+        "close": close,
+        "no_supply_strength": event.strength,
+        "no_supply_quality": event.quality,
+        "no_supply_direction": str(event.direction),
+        "trend_direction": str(trend.structure.direction),
+        "trend_state": str(trend.structure.state),
+        "nearby_evidence": local_evidence,
+        "forward_returns": forward_returns,
+    }
+
+
+no_supply_contexts = [
+    no_supply_context(bar_index)
+    for bar_index in sorted(no_supply_by_bar)
+]
 
 
 # ---------------------------------------------------------
 # Production current-bar decision
 # ---------------------------------------------------------
-# Do not manually reconstruct this candidate. Use the exact production
-# ScannerEngine path so the diagnostic cannot accidentally score historical
-# evidence as if it were current.
 current_candidate = scanner.scan_to_index(metrics, TARGET_INDEX)
-
-
 target_week = metrics.iloc[TARGET_INDEX][COL_WEEK]
 
 print()
 print("=" * 70)
 print("SCANNER DIAGNOSTIC - PRODUCTION CURRENT BAR")
 print("=" * 70)
-print("DIAGNOSTIC_VERSION = production-current-bar-v2-no-supply-distribution")
+print("DIAGNOSTIC_VERSION = production-current-bar-v3-no-supply-context")
 
 print()
 print("TARGET")
@@ -107,6 +161,11 @@ print({
     "bar_indices": sorted(no_supply_by_bar),
     "events_per_bar": dict(sorted(no_supply_by_bar.items())),
 })
+
+print()
+print("NO_SUPPLY CONTEXTUAL VALIDATION")
+for context in no_supply_contexts:
+    print(context)
 
 print()
 print("CURRENT BAR - PRODUCTION SCANNER PATH")
