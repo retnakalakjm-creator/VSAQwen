@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,15 +26,12 @@ from evidence.rules import (
     volume_decreasing,
 )
 from metrics_engine import MetricsEngine
-from scanner import ScannerEngine
 from trend import TrendAnalyzer
 
 
 SYMBOL = "BHARTIARTL.NS"
 TARGET_INDEX = None
-CONTEXT_WINDOW = 5
 FORWARD_HORIZONS = (1, 2, 4, 8)
-FOLLOW_THROUGH_HORIZONS = (1, 2, 4)
 RESPONSE_LOOKAHEAD = 4
 
 BULLISH_CONTEXT_CODES = {
@@ -53,12 +50,12 @@ BEARISH_CONTEXT_CODES = {
 }
 
 
+
 def build_point_in_time_contexts(metrics, target_index: int):
     """Create audit-only contexts without enabling TEST in production."""
-    scanner = ScannerEngine()
     contexts = []
 
-    for index in range(scanner.MIN_REPLAY_BARS, target_index + 1):
+    for index in range(20, target_index + 1):
         replay_metrics = metrics.iloc[: index + 1].copy()
         trend = TrendAnalyzer().analyze(replay_metrics)
         swings = tuple(trend.structure.structural_swings)
@@ -76,8 +73,8 @@ def build_point_in_time_contexts(metrics, target_index: int):
     return contexts
 
 
+
 def diagnostic_test_requirements(ctx):
-    """Return TEST detector requirements without pytest treating this as a test."""
     bar = ctx.current
     previous = ctx.previous
 
@@ -105,13 +102,14 @@ def diagnostic_test_requirements(ctx):
     }
 
 
+
 def exact_bar_evidence(result, bar_index: int) -> tuple[str, ...]:
-    """Return evidence whose own event timestamp matches the requested bar."""
     return tuple(
         str(item.code)
         for item in result.evidence
         if item.bar_index == bar_index
     )
+
 
 
 def latest_swing_snapshot(ctx):
@@ -135,8 +133,8 @@ def latest_swing_snapshot(ctx):
     }
 
 
+
 def campaign_profile(ctx):
-    """Describe the exact recent-weakness campaign used by TEST."""
     bars = ctx.bars
 
     down_bars = sum(is_bearish_bar(bar) for bar in bars)
@@ -174,21 +172,16 @@ def campaign_profile(ctx):
     }
 
 
-def response_analysis(contexts_by_index, metrics, test_index: int):
-    """Measure TEST-area hold and speed of renewed supply."""
-    test_row = metrics.iloc[test_index]
-    test_low = float(test_row[COL_LOW])
 
+def response_analysis(contexts_by_index, metrics, test_index: int):
+    test_low = float(metrics.iloc[test_index][COL_LOW])
     first_supply_bar = None
     first_area_break_bar = None
     first_bullish_evidence_bar = None
     holding_bars = 0
     responses = []
 
-    end_index = min(
-        test_index + RESPONSE_LOOKAHEAD,
-        len(metrics) - 1,
-    )
+    end_index = min(test_index + RESPONSE_LOOKAHEAD, len(metrics) - 1)
 
     for future_index in range(test_index + 1, end_index + 1):
         item = contexts_by_index.get(future_index)
@@ -197,12 +190,8 @@ def response_analysis(contexts_by_index, metrics, test_index: int):
 
         _, ctx, result = item
         exact_codes = exact_bar_evidence(result, future_index)
-        bullish = tuple(
-            code for code in exact_codes if code in BULLISH_CONTEXT_CODES
-        )
-        bearish = tuple(
-            code for code in exact_codes if code in BEARISH_CONTEXT_CODES
-        )
+        bullish = tuple(code for code in exact_codes if code in BULLISH_CONTEXT_CODES)
+        bearish = tuple(code for code in exact_codes if code in BEARISH_CONTEXT_CODES)
 
         bar_low = float(metrics.iloc[future_index][COL_LOW])
         holds_test_area = bar_low >= test_low
@@ -239,14 +228,10 @@ def response_analysis(contexts_by_index, metrics, test_index: int):
         "holding_bars": holding_bars,
         "lookahead_bars": len(responses),
         "first_supply_bar_offset": (
-            first_supply_bar - test_index
-            if first_supply_bar is not None
-            else None
+            first_supply_bar - test_index if first_supply_bar is not None else None
         ),
         "first_area_break_offset": (
-            first_area_break_bar - test_index
-            if first_area_break_bar is not None
-            else None
+            first_area_break_bar - test_index if first_area_break_bar is not None else None
         ),
         "first_bullish_evidence_offset": (
             first_bullish_evidence_bar - test_index
@@ -257,13 +242,38 @@ def response_analysis(contexts_by_index, metrics, test_index: int):
     }
 
 
+
+def classify_response(response: dict) -> str:
+    holding_bars = response["holding_bars"]
+    lookahead = response["lookahead_bars"]
+    supply_offset = response["first_supply_bar_offset"]
+    break_offset = response["first_area_break_offset"]
+
+    if lookahead == 0:
+        return "NO_RESPONSE"
+
+    if holding_bars == lookahead and supply_offset is None:
+        return "STRONG_HOLD"
+
+    if holding_bars > 0 and (supply_offset is None or supply_offset > 2):
+        return "PARTIAL_HOLD"
+
+    if break_offset is not None and break_offset <= 2:
+        return "EARLY_AREA_FAILURE"
+
+    if supply_offset is not None and supply_offset <= 2:
+        return "EARLY_SUPPLY_FAILURE"
+
+    return "MIXED"
+
+
+
 def main() -> None:
     daily = download_data(SYMBOL)
     weekly = daily_to_weekly(daily)
     metrics = MetricsEngine().calculate(weekly)
 
     target_index = len(metrics) - 1 if TARGET_INDEX is None else TARGET_INDEX
-
     point_contexts = build_point_in_time_contexts(metrics, target_index)
 
     contexts_by_index = {
@@ -277,11 +287,12 @@ def main() -> None:
             test_events.append((index, event))
 
     by_bar = Counter(index for index, _ in test_events)
+    rows = []
 
     print("\n" + "=" * 70)
     print("AUDIT-ONLY TEST DETECTOR DIAGNOSTIC")
     print("=" * 70)
-    print("DIAGNOSTIC_VERSION = test-detector-audit-v5")
+    print("DIAGNOSTIC_VERSION = test-detector-audit-v6")
     print({
         "symbol": SYMBOL,
         "target_bar_index": target_index,
@@ -296,76 +307,99 @@ def main() -> None:
         "events_per_bar": dict(sorted(by_bar.items())),
     })
 
-    print("\nTEST CAMPAIGN / RESPONSE AUDIT")
+    print("\nTEST HOLD / FAILURE AUDIT")
     for bar_index in sorted(by_bar):
         event = next(event for index, event in test_events if index == bar_index)
         ctx = contexts_by_index[bar_index][1]
         result = contexts_by_index[bar_index][2]
         close = float(metrics.iloc[bar_index][COL_CLOSE])
+        response = response_analysis(contexts_by_index, metrics, bar_index)
+        classification = classify_response(response)
 
         forward = {}
         for horizon in FORWARD_HORIZONS:
             future_index = bar_index + horizon
-            if future_index < len(metrics):
-                future_close = float(metrics.iloc[future_index][COL_CLOSE])
-                forward[horizon] = (future_close / close) - 1.0
-            else:
-                forward[horizon] = None
+            forward[horizon] = (
+                float(metrics.iloc[future_index][COL_CLOSE]) / close - 1.0
+                if future_index < len(metrics)
+                else None
+            )
 
-        print({
+        row = {
             "bar_index": bar_index,
             "week": str(metrics.iloc[bar_index][COL_WEEK]),
+            "classification": classification,
             "test_strength": event.strength,
             "test_quality": event.quality,
             "test_requirements_and_confirmations": diagnostic_test_requirements(ctx),
             "campaign_profile": campaign_profile(ctx),
             "exact_evidence_at_test": exact_bar_evidence(result, bar_index),
-            "response_analysis": response_analysis(
-                contexts_by_index,
-                metrics,
-                bar_index,
-            ),
+            "response_analysis": response,
             "trend_direction": str(ctx.trend.direction),
             "trend_state": str(ctx.trend.state),
-            "latest_structural_swing": latest_swing_snapshot(ctx),
             "forward_returns": forward,
-        })
+        }
+        rows.append(row)
+        print(row)
 
-    print("\nTEST RESPONSE SUMMARY")
-    summary = {
-        "events": len(by_bar),
-        "supply_within_1_bar": 0,
-        "supply_within_2_bars": 0,
-        "supply_within_4_bars": 0,
-        "area_break_within_1_bar": 0,
-        "area_break_within_2_bars": 0,
-        "area_break_within_4_bars": 0,
-        "held_test_low_through_4_bars": 0,
-    }
+    print("\nTEST HOLD / FAILURE GROUP SUMMARY")
+    groups = defaultdict(list)
+    for row in rows:
+        groups[row["classification"]].append(row)
 
-    for bar_index in sorted(by_bar):
-        analysis = response_analysis(contexts_by_index, metrics, bar_index)
-        supply_offset = analysis["first_supply_bar_offset"]
-        break_offset = analysis["first_area_break_offset"]
+    group_summary = {}
+    for classification, grouped_rows in sorted(groups.items()):
+        group_summary[classification] = {
+            "events": len(grouped_rows),
+            "bars": [row["bar_index"] for row in grouped_rows],
+            "structural_weakness": sum(
+                row["campaign_profile"]["structural_weakness"]
+                for row in grouped_rows
+            ),
+            "confirmed_downtrend": sum(
+                row["campaign_profile"]["confirmed_downtrend"]
+                for row in grouped_rows
+            ),
+            "full_4_bar_hold": sum(
+                row["response_analysis"]["holding_bars"] == row["response_analysis"]["lookahead_bars"]
+                and row["response_analysis"]["lookahead_bars"] == RESPONSE_LOOKAHEAD
+                for row in grouped_rows
+            ),
+            "supply_within_2_bars": sum(
+                row["response_analysis"]["first_supply_bar_offset"] is not None
+                and row["response_analysis"]["first_supply_bar_offset"] <= 2
+                for row in grouped_rows
+            ),
+            "positive_8_bar_return": sum(
+                row["forward_returns"][8] is not None
+                and row["forward_returns"][8] > 0
+                for row in grouped_rows
+            ),
+        }
 
-        if supply_offset == 1:
-            summary["supply_within_1_bar"] += 1
-        if supply_offset is not None and supply_offset <= 2:
-            summary["supply_within_2_bars"] += 1
-        if supply_offset is not None and supply_offset <= 4:
-            summary["supply_within_4_bars"] += 1
+    print(group_summary)
 
-        if break_offset == 1:
-            summary["area_break_within_1_bar"] += 1
-        if break_offset is not None and break_offset <= 2:
-            summary["area_break_within_2_bars"] += 1
-        if break_offset is not None and break_offset <= 4:
-            summary["area_break_within_4_bars"] += 1
+    print("\nTEST FOLLOW-THROUGH SUMMARY")
+    follow_summary = {}
+    for horizon in (1, 2, 4):
+        valid = 0
+        positive_return = 0
+        for bar_index in sorted(by_bar):
+            future_index = bar_index + horizon
+            if future_index >= len(metrics):
+                continue
+            valid += 1
+            close = float(metrics.iloc[bar_index][COL_CLOSE])
+            future_close = float(metrics.iloc[future_index][COL_CLOSE])
+            if future_close > close:
+                positive_return += 1
 
-        if analysis["lookahead_bars"] == RESPONSE_LOOKAHEAD and analysis["holding_bars"] == RESPONSE_LOOKAHEAD:
-            summary["held_test_low_through_4_bars"] += 1
+        follow_summary[horizon] = {
+            "events": valid,
+            "positive_price_follow_through": positive_return,
+        }
 
-    print(summary)
+    print(follow_summary)
     print("\n" + "=" * 70)
 
 
