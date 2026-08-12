@@ -27,51 +27,70 @@ The existing implementation also evaluates:
 
 Those latter observations are currently confirmations and do not gate emission.
 
-## Audit finding
+## Audit findings
 
-The current six-event audit separates into two broad groups:
+The full-history audit currently identifies eight TEST events: `149`, `152`, `248`, `338`, `346`, `510`, `942`, and `1084`.
 
-### Structurally weakening campaign
+The audit did **not** find a single textbook checklist that reliably separates useful TESTs from failures.
 
-Bars 149, 152, and 248 showed recent weakness with structural weakness present but no confirmed downtrend.
+### Context and response
 
-- 149: partial confirmation; subsequent response was mixed but later price follow-through was positive.
-- 152: volume decreasing + higher low; subsequent upward progression improved materially.
-- 248: all three confirmations passed; subsequent bars showed immediate upward response and strong later price follow-through.
+- `149` and `152` show structural weakness without a confirmed downtrend and later positive medium-term follow-through, despite only partial immediate area holding.
+- `248` is the strongest positive example. All three contextual confirmations pass and the TEST area holds through the four-bar response window.
+- `338`, `346`, and `510` occur in confirmed downtrends without structural weakness and show early area failure.
+- `942` is an important counterexample: it has structural weakness, no confirmed downtrend, a higher low, and decreasing volume, yet it fails the TEST area immediately and is followed by renewed supply.
+- `1084` also demonstrates that structural weakness and a higher low are not sufficient by themselves.
 
-### Confirmed downtrend without structural weakening
+### Structural location
 
-Bars 338, 346, and 510 occurred inside confirmed downtrends without the same structural-weakness profile.
+Testing a recent structural low is **not required**. Some TESTs occur near prior structural lows, while `248` and other cases are materially farther away and can still produce useful outcomes. Location is context, not a mandatory gate.
 
-Each was followed quickly by renewed `INCREASING_SUPPLY`, with poor medium-term follow-through.
+### Pre-TEST change of character
 
-## Working semantic hypothesis
+A simple count of supportive changes before TEST does **not** reliably distinguish outcomes. Some failures show several apparent supportive changes, while the strongest positive example does not require a large change count.
 
-A useful TEST is more likely when:
+### Effort/result sequence
 
-1. A genuine recent selling campaign exists.
-2. The selling campaign shows evidence that its effectiveness is weakening, preferably through structural weakness rather than merely trend classification.
-3. The TEST bar itself shows reduced effort: low volume and narrow spread remain important observations.
-4. One or more contextual confirmations strengthen the interpretation, especially reduced volume, acceptable close, and/or a higher low.
-5. Subsequent price action does not quickly reintroduce strong supply and begins to show demand or structural improvement.
+The final sequence audit confirms that a preceding effort/result pattern is informative but not a mandatory textbook prerequisite:
 
-This is a working hypothesis, not yet a production rule.
+- `346`, `942`, and `1084` show descriptive selling-effectiveness loss before TEST, yet all fail shortly afterward.
+- `248` has meaningful prior high effort with weak/mixed results, but the audit classifies selling effectiveness as still effective or unclear and it becomes the strongest TEST example.
+- `149`, `152`, `338`, and `510` do not contain enough clearly defined high-effort precursor bars for the audit classification to be decisive.
 
-## Negative contextual evidence
+This means the TEST should not be forced into a rigid precursor sequence such as `high effort -> weak result -> TEST`.
 
-The following should be treated as disqualifying or strongly weakening context during future audit work, but are not production gates yet:
+## Frozen working semantics
 
-- confirmed downtrend combined with no structural weakness
-- immediate `INCREASING_SUPPLY` after the TEST
-- failure to hold the TEST area
-- persistent weak/lower closes after the TEST
+A production-quality TEST represents a **low-effort probe after meaningful recent selling pressure**. The detector may establish that event from current-bar and prior-context evidence, but it must not claim that demand has taken control merely because TEST occurred.
+
+The event should therefore be interpreted through these layers:
+
+1. **Event evidence:** down bar, low volume, narrow spread.
+2. **Campaign context:** meaningful recent selling pressure and its broader structural environment.
+3. **Supporting observations:** decreasing volume, higher low, acceptable/strong close, supply drying, or related structural context when present.
+4. **Contradiction:** persistent confirmed downtrend, obvious continuing supply, or other evidence materially inconsistent with a bullish Test interpretation should weaken the event rather than be ignored.
+5. **Response validation:** area holding and subsequent demand/supply behavior are validation evidence, not inputs available to the historical TEST detector itself.
+
+No single supporting condition is mandatory merely because it is present in textbook examples.
+
+## What TEST must not claim
+
+A TEST event alone must not imply:
+
+- confirmed accumulation,
+- confirmed demand dominance,
+- successful support,
+- immediate bullish continuation,
+- or a trade entry.
+
+Those conclusions belong to downstream contextual qualification and persistence logic.
 
 ## Production status
 
 `TEST` remains disabled in `collect_demand()`.
 
-No production threshold, weight, qualification rule, or scanner actionability has been changed as a result of this document.
+No production threshold, weight, qualification rule, or scanner actionability has been changed as a result of this audit.
 
-## Next audit
+## Enablement requirement
 
-Expand the audit sample beyond the current six events and test whether the working hypothesis consistently separates stronger and weaker TEST outcomes before modifying `_collect_test()`.
+Before enabling TEST, its historical detector population must be shown to have useful follow-through and acceptable contradiction behavior across a broader sample. The production change should be limited to semantics already supported by the audit; it must not introduce a textbook checklist or future-response leakage.

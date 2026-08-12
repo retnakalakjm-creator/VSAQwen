@@ -43,7 +43,7 @@ Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Sell
 | `HIDDEN_DEMAND` | No active production detector identified | NO | Candidate / missing | Supporting demand | Bullish | Enum exists; needs explicit detector specification. |
 | `DEMAND_DRYING_UP` | No active production detector identified | NO | Candidate / missing | Supporting / exhaustion context | Bullish observation of drying demand | Must be distinguished from bearish absence-of-demand events. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | NO (commented out) | Audit-capable | Primary demand / reversal | Bullish | Detector exists but is disabled in `collect_demand()`. |
-| `TEST` | `evidence/demand.py::_collect_test` | NO (commented out) | Audit-capable | Primary confirmation | Bullish | Detector exists but is disabled in `collect_demand()`. Audit currently shows that a low-volume/narrow-spread test bar alone is too broad; context and subsequent response matter. |
+| `TEST` | `evidence/demand.py::_collect_test` | NO (commented out) | Audit-complete / frozen semantics | Primary confirmation | Bullish | Detector remains disabled. Full-history audit shows TEST must be treated as a contextual low-effort probe after recent selling pressure; no single textbook precursor, structural location, score, or confirmation checklist reliably separates successes from failures. |
 | `SPRING` | No active production detector identified | NO | Candidate / missing | Primary trap / reversal | Bullish | Enum exists; needs explicit strict-VSA/Wyckoff definition. |
 | `ABSORPTION` | No dedicated production detector confirmed | NO | Present in model/registry | Primary/supporting absorption | Neutral / directional by context | Atomic effort-result observation; must be given one canonical production detector before use. |
 | `EFFORT_GT_RESULT` | `evidence/effort.py` | Engine invocation currently disabled | Present | Effort/result context | Neutral | Separate from primary supply/demand event detection. |
@@ -60,26 +60,42 @@ Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Sell
 1. The production event layer is currently **supply-heavy**. Multiple bearish/supply detectors are active, while several canonical bullish/demand-side VSA events are implemented but disabled or not yet implemented.
 2. `NO_DEMAND` is being collected from the supply collector. That is a semantic organization issue worth cleaning up later, but not by changing its detector behavior in this milestone.
 3. `SUPPLY_DRYING_UP` is an important semantic case: it should remain an observation/context event and should not automatically imply stronger bearish pressure.
-4. `ABSORPTION` is an atomic effort-result observation in the model/registry, but it currently lacks a single canonical production detector and should not be scored until semantics are frozen. 
+4. `ABSORPTION` is an atomic effort-result observation in the model/registry, but it currently lacks a single canonical production detector and should not be scored until semantics are frozen.
 5. `EFFORT_GT_RESULT`, `RESULT_GT_EFFORT`, trend, phase, and structural progression belong to separate analytical layers and should not be promoted into the primary VSA event set.
 6. The next implementation milestone should be **bullish/demand-side detector coverage**, beginning with `SELLING_CLIMAX` and `TEST`, because their strict-VSA detector code already exists and can be audited before introducing entirely new formulas for missing events such as `SPRING` or `INCREASING_DEMAND`.
 
 ## TEST audit findings
 
-The current audit population contains six detected TEST events: bars `149`, `152`, `248`, `338`, `346`, and `510`.
+The full-history audit currently contains eight detected TEST events: bars `149`, `152`, `248`, `338`, `346`, `510`, `942`, and `1084`.
 
-Early results indicate a meaningful separation between two real-market contexts:
+The audits establish that:
 
-- `149`, `152`, and `248` occur with recent structural weakness but without a confirmed downtrend.
-- `338`, `346`, and `510` occur inside a confirmed healthy downtrend without the same structural-weakness signature and are followed by renewed `INCREASING_SUPPLY` in the audit window.
+- textbook-perfect TEST confirmations are not required for every useful real-market instance;
+- a simple point-in-time support score does not reliably separate successful and failed TESTs;
+- structural location near a prior low is neither necessary nor sufficient;
+- a simple pre-TEST change-of-character count is not a reliable standalone discriminator;
+- a rigid `high effort -> weak result -> TEST` precursor sequence is also not required;
+- immediate area failure and renewed supply are materially important validation outcomes, but they occur after the TEST and therefore cannot be used as historical detector inputs without future leakage.
 
-The audit also shows that perfect textbook confirmation is **not required for every useful real-market TEST**. For example, `152` has low volume, narrow spread, decreasing volume, and a higher low but not a strong close, while still being followed by meaningful improvement in price. Conversely, `338`, `346`, and `510` satisfy the detector's mandatory conditions yet fail to produce convincing bullish follow-through.
+Examples:
 
-Current working interpretation:
+- `248` is the strongest positive example: all three contextual confirmations pass and the TEST area holds through the four-bar response window.
+- `942` is a critical counterexample: it has structural weakness, no confirmed downtrend, higher low, and decreasing volume, yet it fails the area immediately and renewed supply appears.
+- `346`, `942`, and `1084` show descriptive loss of selling effectiveness before TEST, but all three fail afterward. This prevents us from making “selling effectiveness is visibly losing” a mandatory TEST precursor.
 
-> A production-quality TEST should be evaluated as a **contextual market event**, not as a textbook single-bar pattern. Low-effort/narrow-spread behavior is meaningful only in relation to the preceding selling campaign, structural condition, and subsequent response to supply.
+### Frozen TEST semantic interpretation
 
-This is an **audit hypothesis, not a frozen detector rule**. It must be validated on additional history before `_collect_test()` is changed or enabled.
+> **TEST is a low-effort probe after meaningful recent selling pressure. It establishes an observation, not proof of demand control. Its meaning comes from the combined context and later validation rather than from a textbook-perfect single-bar pattern.**
+
+For implementation purposes, the layers are:
+
+1. **Event evidence:** down bar + low volume + narrow spread.
+2. **Campaign context:** meaningful recent selling pressure and broader structural environment.
+3. **Supporting evidence:** decreasing volume, higher low, acceptable/strong close, supply drying, or related structural context when present.
+4. **Contradictory context:** persistent supply, materially bearish structure, or other evidence inconsistent with a bullish Test interpretation should weaken the event rather than being ignored.
+5. **Validation:** post-TEST area holding and subsequent demand/supply response belong to downstream persistence/qualification, not to the historical detector itself.
+
+No single supporting factor is promoted to a mandatory textbook gate on the basis of this sample.
 
 ## Real-market VSA rule
 
@@ -96,4 +112,4 @@ A detector should reject an event when its broader context materially contradict
 
 ## Freeze rule
 
-Until the event-by-event tests are complete, do not change numeric weights or scanner actionability rules. The purpose of this matrix is to make detector semantics and coverage explicit before campaign aggregation is promoted into production.
+The TEST semantics are now frozen for this audit milestone. Do not add new TEST checklist conditions, numeric weights, or scanner actionability rules unless new evidence materially changes the interpretation. The next production step is to map this frozen semantic model onto the existing detector with the smallest possible change, then audit the resulting production-path behavior before enabling actionability.
