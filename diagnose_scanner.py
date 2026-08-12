@@ -14,7 +14,17 @@ from models import EvidenceCode
 SYMBOL = "BHARTIARTL.NS"
 TARGET_INDEX = 530
 CONTEXT_WINDOW = 5
+CONFIRMATION_WINDOW = 12
 FORWARD_HORIZONS = (1, 2, 4, 8)
+
+BULLISH_CONFIRMATION_CODES = {
+    EvidenceCode.NO_SUPPLY,
+    EvidenceCode.SELLING_CLIMAX,
+    EvidenceCode.TEST,
+    EvidenceCode.SHAKEOUT,
+    EvidenceCode.SUPPLY_DRYING_UP,
+    EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING,
+}
 
 
 daily = download_data(SYMBOL)
@@ -49,7 +59,7 @@ qualification = qualification_engine.evaluate(point_history)
 
 
 # ---------------------------------------------------------
-# Historical NO_SUPPLY distribution
+# Historical NO_SUPPLY distribution + contextual confirmation
 # ---------------------------------------------------------
 no_supply_events = [
     item
@@ -98,10 +108,61 @@ def no_supply_context(bar_index: int) -> dict:
     trend = TrendAnalyzer().analyze(metrics.iloc[: bar_index + 1].copy())
 
     event = next(
-        item
-        for item in no_supply_events
-        if item.bar_index == bar_index
+        item for item in no_supply_events if item.bar_index == bar_index
     )
+
+    # Look strictly after the NO_SUPPLY bar so the event cannot count as
+    # its own confirmation.
+    first_bullish_vsa_confirmation = None
+    first_structural_improvement = None
+    first_supply_reappearance = None
+    future_evidence: dict[int, tuple[str, ...]] = {}
+
+    upper = min(
+        bar_index + CONFIRMATION_WINDOW,
+        len(point_history) + scanner.MIN_REPLAY_BARS - 1,
+    )
+
+    for future_bar in range(bar_index + 1, upper + 1):
+        codes = evidence_codes_for_bar(future_bar)
+        if codes:
+            future_evidence[future_bar] = codes
+
+        if first_bullish_vsa_confirmation is None:
+            bullish_codes = [
+                code for code in codes
+                if code in {str(item) for item in BULLISH_CONFIRMATION_CODES}
+                and code != str(EvidenceCode.NO_SUPPLY)
+            ]
+            if bullish_codes:
+                first_bullish_vsa_confirmation = {
+                    "bar_index": future_bar,
+                    "codes": tuple(bullish_codes),
+                }
+
+        if first_structural_improvement is None:
+            if str(EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING) in codes:
+                first_structural_improvement = future_bar
+
+        if first_supply_reappearance is None:
+            if any(
+                code in {
+                    str(EvidenceCode.INCREASING_SUPPLY),
+                    str(EvidenceCode.SUPPLY_COMING_IN),
+                    str(EvidenceCode.HIDDEN_SUPPLY),
+                    str(EvidenceCode.BUYING_CLIMAX),
+                    str(EvidenceCode.UPTHRUST),
+                }
+                for code in codes
+            ):
+                first_supply_reappearance = future_bar
+
+    first_confirmation = first_bullish_vsa_confirmation
+    if first_confirmation is None and first_structural_improvement is not None:
+        first_confirmation = {
+            "bar_index": first_structural_improvement,
+            "codes": (str(EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING),),
+        }
 
     return {
         "bar_index": bar_index,
@@ -113,6 +174,12 @@ def no_supply_context(bar_index: int) -> dict:
         "trend_direction": str(trend.structure.direction),
         "trend_state": str(trend.structure.state),
         "nearby_evidence": local_evidence,
+        "confirmation_window": CONFIRMATION_WINDOW,
+        "first_confirmation": first_confirmation,
+        "first_bullish_vsa_confirmation": first_bullish_vsa_confirmation,
+        "first_structural_improvement": first_structural_improvement,
+        "first_supply_reappearance": first_supply_reappearance,
+        "future_evidence": future_evidence,
         "forward_returns": forward_returns,
     }
 
@@ -131,9 +198,9 @@ target_week = metrics.iloc[TARGET_INDEX][COL_WEEK]
 
 print()
 print("=" * 70)
-print("SCANNER DIAGNOSTIC - PRODUCTION CURRENT BAR")
+print("SCANNER DIAGNOSTIC - NO_SUPPLY CONFIRMATION BEHAVIOR")
 print("=" * 70)
-print("DIAGNOSTIC_VERSION = production-current-bar-v3-no-supply-context")
+print("DIAGNOSTIC_VERSION = production-current-bar-v4-no-supply-confirmation")
 
 print()
 print("TARGET")
@@ -163,9 +230,32 @@ print({
 })
 
 print()
-print("NO_SUPPLY CONTEXTUAL VALIDATION")
+print("NO_SUPPLY CONFIRMATION BEHAVIOR")
 for context in no_supply_contexts:
     print(context)
+
+confirmed = [
+    context
+    for context in no_supply_contexts
+    if context["first_confirmation"] is not None
+]
+
+print()
+print("NO_SUPPLY CONFIRMATION SUMMARY")
+print({
+    "no_supply_count": len(no_supply_contexts),
+    "confirmed_count": len(confirmed),
+    "unconfirmed_count": len(no_supply_contexts) - len(confirmed),
+    "confirmed_bars": [item["bar_index"] for item in confirmed],
+    "confirmation_bars": {
+        item["bar_index"]: item["first_confirmation"]["bar_index"]
+        for item in confirmed
+    },
+    "supply_reappearance_bars": {
+        item["bar_index"]: item["first_supply_reappearance"]
+        for item in no_supply_contexts
+    },
+})
 
 print()
 print("CURRENT BAR - PRODUCTION SCANNER PATH")
