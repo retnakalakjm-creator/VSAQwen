@@ -11,7 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import config
 from data import daily_to_weekly, download_data
-from engine.columns import COL_CLOSE, COL_LOW, COL_WEEK
+from engine.columns import COL_AVG_SPREAD, COL_CLOSE, COL_LOW, COL_WEEK
 from evidence.campaign import has_recent_weakness, _recent_structural_weakness
 from evidence.demand import _collect_test
 from evidence.engine import EvidenceEngine
@@ -150,7 +150,7 @@ def latest_swing_snapshot(ctx):
     }
 
 
-def structural_location_profile(ctx):
+def structural_location_profile(ctx, metrics):
     """Describe TEST location relative to confirmed prior structural lows."""
     current_index = ctx.current.bar_index
     current_low = float(ctx.current.low)
@@ -182,7 +182,7 @@ def structural_location_profile(ctx):
 
     nearest_price = float(nearest.swing.price)
     distance = current_low - nearest_price
-    avg_spread = float(ctx.metrics.avg_spread)
+    avg_spread = float(metrics.iloc[current_index][COL_AVG_SPREAD])
     distance_in_spreads = distance / avg_spread if avg_spread > 0 else None
 
     return {
@@ -358,7 +358,7 @@ def main() -> None:
     print("\n" + "=" * 70)
     print("AUDIT-ONLY TEST DETECTOR DIAGNOSTIC")
     print("=" * 70)
-    print("DIAGNOSTIC_VERSION = test-detector-audit-v8")
+    print("DIAGNOSTIC_VERSION = test-detector-audit-v9")
     print({
         "symbol": SYMBOL,
         "target_bar_index": target_index,
@@ -384,7 +384,7 @@ def main() -> None:
             "bar_index": bar_index,
             "week": str(metrics.iloc[bar_index][COL_WEEK]),
             "response_classification": classify_response(response),
-            "structural_location": structural_location_profile(ctx),
+            "structural_location": structural_location_profile(ctx, metrics),
             "point_in_time_scorecard": point_in_time_scorecard(ctx),
             "campaign_profile": campaign_profile(ctx),
             "exact_evidence_at_test": exact_bar_evidence(result, bar_index),
