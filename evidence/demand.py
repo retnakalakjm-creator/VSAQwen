@@ -1,6 +1,6 @@
 import pandas as pd
 
-from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, has_recent_weakness, has_selling_campaign, validate_shakeout
+from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, has_recent_weakness, has_selling_campaign, validate_shakeout, _recent_structural_weakness
 from evidence.helpers import evaluate_detector, requirement, requirements_passed
 from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing
 from models import BackgroundContext, Evidence, EvidenceCode
@@ -16,9 +16,9 @@ def collect_demand(
 
     evidence: list[Evidence] = []
 
-    # Test and Selling Climax remain disabled until their
+    evidence.extend(_collect_test(ctx))
+    # Selling Climax remains disabled until its
     # production-history validation is completed.
-    # evidence.extend(_collect_test(ctx))
     # evidence.extend(_collect_selling_climax(ctx))
 
     evidence.extend(
@@ -123,6 +123,13 @@ def _collect_test(
         requirement(
             name="Narrow Spread",
             passed=is_narrow_spread(bar),
+        ),
+        requirement(
+            name="No Strong Downtrend Contradiction",
+            passed=not (
+                is_confirmed_downtrend(ctx.trend)
+                and not _recent_structural_weakness(ctx)
+            ),
         ),
     )
 
@@ -291,7 +298,7 @@ def _collect_no_supply(
 
 # ==========================================================
 # Public API
-# ==========================================================
+# =========================================================
 __all__ = [
     "collect_demand",
 ]
