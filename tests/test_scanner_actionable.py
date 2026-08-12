@@ -20,11 +20,18 @@ def test_rank_actionable_candidates_excludes_unqualified() -> None:
     assert rank_actionable_candidates([unqualified, actionable]) == [actionable]
 
 
-def test_scan_actionable_filters_after_full_scan(monkeypatch) -> None:
-    unqualified = _candidate(actionable=False, score=10.0)
+def test_scan_actionable_returns_latest_actionable_candidate(monkeypatch) -> None:
     actionable = _candidate(actionable=True, score=-1.0)
-    monkeypatch.setattr(ScannerEngine, "scan", lambda self, metrics: [unqualified, actionable])
-    assert ScannerEngine().scan_actionable(SimpleNamespace()) == [actionable]
+    metrics = pd.DataFrame({"week_beginning": pd.date_range("2012-01-02", periods=21, freq="W-MON")})
+    captured = []
+
+    def fake_scan_to_index(self, metrics, target_index):
+        captured.append(target_index)
+        return actionable
+
+    monkeypatch.setattr(ScannerEngine, "scan_to_index", fake_scan_to_index)
+    assert ScannerEngine().scan_actionable(metrics) == [actionable]
+    assert captured == [20]
 
 
 def test_scan_preserves_candidate_bar_metadata(monkeypatch) -> None:
@@ -80,21 +87,9 @@ def test_evaluate_invalidates_historical_qualification_on_later_bar(monkeypatch)
         evidence_codes=(EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,) * 3,
         evidence_bar_indices=(100, 110, 120),
     )
-
-    monkeypatch.setattr(
-        "scanner.PatternQualificationEngine.evaluate",
-        lambda self, history: qualification,
-    )
-
-    professional = SimpleNamespace(
-        scores=SimpleNamespace(net_strength=-0.5, net_pressure=-0.5),
-        confidence=0.5,
-    )
-    monkeypatch.setattr(
-        "scanner.ProfessionalScoringEngine.calculate",
-        lambda self, *, trend, evidence: professional,
-    )
-
+    monkeypatch.setattr("scanner.PatternQualificationEngine.evaluate", lambda self, history: qualification)
+    professional = SimpleNamespace(scores=SimpleNamespace(net_strength=-0.5, net_pressure=-0.5), confidence=0.5)
+    monkeypatch.setattr("scanner.ProfessionalScoringEngine.calculate", lambda self, *, trend, evidence: professional)
     evidence = SimpleNamespace(context=None, evidence=())
     candidate = ScannerEngine().evaluate(
         trend=SimpleNamespace(),
@@ -103,13 +98,41 @@ def test_evaluate_invalidates_historical_qualification_on_later_bar(monkeypatch)
         bar_index=121,
         week="2020-01-06 00:00:00",
     )
-
     assert candidate.qualification is PatternQualification.PERSISTENT_BEARISH
     assert candidate.actionable is False
-    assert candidate.reason == (
-        "Historical persistence was validated, but no qualifying structural "
-        "progression event occurred on the target bar."
+    assert candidate.reason == "Historical persistence was validated, but no qualifying structural progression event occurred on the target bar."
+
+
+def test_evaluate_allows_persistent_bearish_continuation_with_fresh_vsa(monkeypatch) -> None:
+    qualification = PatternQualificationResult(
+        qualification=PatternQualification.PERSISTENT_BEARISH,
+        is_actionable_evidence=True,
+        reason="historically persistent",
+        evidence_codes=(EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,) * 3,
+        evidence_bar_indices=(100, 110, 120),
     )
+    monkeypatch.setattr("scanner.PatternQualificationEngine.evaluate", lambda self, history: qualification)
+    professional = SimpleNamespace(scores=SimpleNamespace(net_strength=-0.54, net_pressure=-0.7), confidence=0.45)
+    monkeypatch.setattr("scanner.ProfessionalScoringEngine.calculate", lambda self, *, trend, evidence: professional)
+    evidence = SimpleNamespace(
+        context=None,
+        evidence=(SimpleNamespace(bar_index=121, code=EvidenceCode.INCREASING_SUPPLY),),
+    )
+
+    candidate = ScannerEngine().evaluate(
+        trend=SimpleNamespace(),
+        evidence=evidence,
+        history=(evidence,),
+        bar_index=121,
+        week="2020-01-06 00:00:00",
+    )
+
+    assert candidate.actionable is True
+    assert candidate.qualification is PatternQualification.PERSISTENT_BEARISH
+    assert candidate.scoring_bar_index == 121
+    assert candidate.scoring_evidence_age == 0
+    assert candidate.used_fallback_evidence is False
+    assert "fresh directional VSA evidence" in candidate.reason
 
 
 def test_scoring_evidence_uses_target_bar_when_available() -> None:
@@ -142,7 +165,7 @@ def test_vsa_confirmation_age_rejects_stale_evidence() -> None:
 
 
 def _qualification(direction: PatternQualification) -> PatternQualificationResult:
-    code = (EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING if direction is PatternQualification.PERSISTENT_BULLISH else EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING)
+    code = EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING if direction is PatternQualification.PERSISTENT_BULLISH else EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING
     return PatternQualificationResult(
         qualification=direction,
         is_actionable_evidence=True,

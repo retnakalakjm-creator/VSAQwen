@@ -275,10 +275,20 @@ class ScannerEngine:
             evidence_bar_indices=qualification.evidence_bar_indices,
         )
 
+    @staticmethod
+    def _qualify_vsa_continuation(qualification: PatternQualificationResult, scoring_bar_index: int, age: int) -> PatternQualificationResult:
+        direction = "bullish" if qualification.qualification is PatternQualification.PERSISTENT_BULLISH else "bearish"
+        return PatternQualificationResult(
+            qualification=qualification.qualification,
+            is_actionable_evidence=True,
+            reason=f"Persistent {direction} structure remains valid and is confirmed by fresh directional VSA evidence ({age} bar{'s' if age != 1 else ''} old).",
+            evidence_codes=qualification.evidence_codes,
+            evidence_bar_indices=qualification.evidence_bar_indices,
+        )
+
     def evaluate(self, *, trend: TrendResult, evidence: EvidenceResult, history, bar_index: int | None = None, week: str | None = None) -> ScannerCandidate:
         qualification = self._qualification.evaluate(history)
-        if not self._qualification_is_current(qualification, bar_index) and qualification.is_actionable_evidence:
-            qualification = self._invalidate_stale_qualification(qualification)
+        structural_qualification_current = self._qualification_is_current(qualification, bar_index)
 
         target_bar_evidence = self._target_bar_evidence(evidence, bar_index)
         campaign_evidence = self._campaign_evidence(evidence)
@@ -292,16 +302,22 @@ class ScannerEngine:
 
         if qualification.is_actionable_evidence:
             scoring_bar_index = self._scoring_bar_index(scoring_evidence)
-            if scoring_bar_index is None:
+            if not structural_qualification_current and not scoring_evidence:
+                qualification = self._invalidate_stale_qualification(qualification)
+            elif scoring_bar_index is None:
                 qualification = self._invalidate_missing_vsa_confirmation(qualification)
             else:
                 scoring_age = bar_index - scoring_bar_index if bar_index is not None else None
-                if scoring_age is not None and scoring_age > self.MAX_ACTIONABLE_VSA_AGE:
-                    qualification = self._invalidate_stale_vsa_confirmation(qualification, scoring_age)
+                vsa_current = scoring_age is not None and 0 <= scoring_age <= self.MAX_ACTIONABLE_VSA_AGE
+
+                if not vsa_current:
+                    qualification = self._invalidate_stale_vsa_confirmation(qualification, scoring_age if scoring_age is not None else self.MAX_ACTIONABLE_VSA_AGE + 1)
                 elif self._vsa_conflicts_with_qualification(qualification, professional, scoring_evidence):
                     qualification = self._invalidate_vsa_conflict(qualification, professional)
                 elif not self._vsa_supports_qualification(qualification, scoring_evidence):
                     qualification = self._invalidate_missing_vsa_confirmation(qualification)
+                elif not structural_qualification_current:
+                    qualification = self._qualify_vsa_continuation(qualification, scoring_bar_index, scoring_age)
 
         scoring_bar_index = self._scoring_bar_index(scoring_evidence)
         return ScannerCandidate(
