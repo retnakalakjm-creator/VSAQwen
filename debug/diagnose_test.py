@@ -50,7 +50,6 @@ BEARISH_CONTEXT_CODES = {
 }
 
 
-
 def build_point_in_time_contexts(metrics, target_index: int):
     """Create audit-only contexts without enabling TEST in production."""
     contexts = []
@@ -71,7 +70,6 @@ def build_point_in_time_contexts(metrics, target_index: int):
         contexts.append((index, engine._ctx, result))
 
     return contexts
-
 
 
 def diagnostic_test_requirements(ctx):
@@ -102,6 +100,25 @@ def diagnostic_test_requirements(ctx):
     }
 
 
+def point_in_time_scorecard(ctx):
+    """Descriptive audit score using only information available at TEST bar."""
+    requirements = diagnostic_test_requirements(ctx)
+    campaign = campaign_profile(ctx)
+
+    factors = {
+        "structural_weakness": campaign["structural_weakness"],
+        "not_confirmed_downtrend": not campaign["confirmed_downtrend"],
+        "higher_low": requirements["higher_low"],
+        "volume_decreasing": requirements["volume_decreasing"],
+        "strong_close": requirements["strong_close"],
+    }
+
+    return {
+        "supportive_factor_count": sum(factors.values()),
+        "supportive_factor_total": len(factors),
+        "factors": factors,
+    }
+
 
 def exact_bar_evidence(result, bar_index: int) -> tuple[str, ...]:
     return tuple(
@@ -109,7 +126,6 @@ def exact_bar_evidence(result, bar_index: int) -> tuple[str, ...]:
         for item in result.evidence
         if item.bar_index == bar_index
     )
-
 
 
 def latest_swing_snapshot(ctx):
@@ -131,7 +147,6 @@ def latest_swing_snapshot(ctx):
         "professional_score": evaluation.professional.overall,
         "spread_adjusted_amplitude": snapshot.current_spread_adjusted_amplitude,
     }
-
 
 
 def campaign_profile(ctx):
@@ -170,7 +185,6 @@ def campaign_profile(ctx):
         "campaign_required_score": config.CAMPAIGN_REQUIRED_SCORE,
         "has_recent_weakness": has_recent_weakness(ctx),
     }
-
 
 
 def response_analysis(contexts_by_index, metrics, test_index: int):
@@ -242,7 +256,6 @@ def response_analysis(contexts_by_index, metrics, test_index: int):
     }
 
 
-
 def classify_response(response: dict) -> str:
     holding_bars = response["holding_bars"]
     lookahead = response["lookahead_bars"]
@@ -265,7 +278,6 @@ def classify_response(response: dict) -> str:
         return "EARLY_SUPPLY_FAILURE"
 
     return "MIXED"
-
 
 
 def main() -> None:
@@ -292,7 +304,7 @@ def main() -> None:
     print("\n" + "=" * 70)
     print("AUDIT-ONLY TEST DETECTOR DIAGNOSTIC")
     print("=" * 70)
-    print("DIAGNOSTIC_VERSION = test-detector-audit-v6")
+    print("DIAGNOSTIC_VERSION = test-detector-audit-v7")
     print({
         "symbol": SYMBOL,
         "target_bar_index": target_index,
@@ -307,45 +319,66 @@ def main() -> None:
         "events_per_bar": dict(sorted(by_bar.items())),
     })
 
-    print("\nTEST HOLD / FAILURE AUDIT")
+    print("\nTEST POINT-IN-TIME SCORE AUDIT")
     for bar_index in sorted(by_bar):
         event = next(event for index, event in test_events if index == bar_index)
         ctx = contexts_by_index[bar_index][1]
         result = contexts_by_index[bar_index][2]
-        close = float(metrics.iloc[bar_index][COL_CLOSE])
         response = response_analysis(contexts_by_index, metrics, bar_index)
-        classification = classify_response(response)
-
-        forward = {}
-        for horizon in FORWARD_HORIZONS:
-            future_index = bar_index + horizon
-            forward[horizon] = (
-                float(metrics.iloc[future_index][COL_CLOSE]) / close - 1.0
-                if future_index < len(metrics)
-                else None
-            )
+        scorecard = point_in_time_scorecard(ctx)
 
         row = {
             "bar_index": bar_index,
             "week": str(metrics.iloc[bar_index][COL_WEEK]),
-            "classification": classification,
-            "test_strength": event.strength,
-            "test_quality": event.quality,
+            "response_classification": classify_response(response),
+            "point_in_time_scorecard": scorecard,
             "test_requirements_and_confirmations": diagnostic_test_requirements(ctx),
             "campaign_profile": campaign_profile(ctx),
-            "exact_evidence_at_test": exact_bar_evidence(result, bar_index),
-            "response_analysis": response,
-            "trend_direction": str(ctx.trend.direction),
-            "trend_state": str(ctx.trend.state),
-            "forward_returns": forward,
+            "response_analysis": {
+                "holding_bars": response["holding_bars"],
+                "first_supply_bar_offset": response["first_supply_bar_offset"],
+                "first_area_break_offset": response["first_area_break_offset"],
+            },
+            "forward_8_bar_return": (
+                float(metrics.iloc[bar_index + 8][COL_CLOSE])
+                / float(metrics.iloc[bar_index][COL_CLOSE])
+                - 1.0
+                if bar_index + 8 < len(metrics)
+                else None
+            ),
+            "test_strength": event.strength,
+            "test_quality": event.quality,
         }
         rows.append(row)
         print(row)
 
+    print("\nTEST SCORE GROUP SUMMARY")
+    score_groups = defaultdict(list)
+    for row in rows:
+        score = row["point_in_time_scorecard"]["supportive_factor_count"]
+        score_groups[score].append(row)
+
+    score_summary = {}
+    for score, grouped_rows in sorted(score_groups.items()):
+        score_summary[score] = {
+            "events": len(grouped_rows),
+            "bars": [row["bar_index"] for row in grouped_rows],
+            "strong_hold": sum(row["response_classification"] == "STRONG_HOLD" for row in grouped_rows),
+            "partial_hold": sum(row["response_classification"] == "PARTIAL_HOLD" for row in grouped_rows),
+            "early_failure": sum(row["response_classification"] == "EARLY_AREA_FAILURE" for row in grouped_rows),
+            "positive_8_bar_return": sum(
+                row["forward_8_bar_return"] is not None
+                and row["forward_8_bar_return"] > 0
+                for row in grouped_rows
+            ),
+        }
+
+    print(score_summary)
+
     print("\nTEST HOLD / FAILURE GROUP SUMMARY")
     groups = defaultdict(list)
     for row in rows:
-        groups[row["classification"]].append(row)
+        groups[row["response_classification"]].append(row)
 
     group_summary = {}
     for classification, grouped_rows in sorted(groups.items()):
@@ -360,46 +393,18 @@ def main() -> None:
                 row["campaign_profile"]["confirmed_downtrend"]
                 for row in grouped_rows
             ),
-            "full_4_bar_hold": sum(
-                row["response_analysis"]["holding_bars"] == row["response_analysis"]["lookahead_bars"]
-                and row["response_analysis"]["lookahead_bars"] == RESPONSE_LOOKAHEAD
-                for row in grouped_rows
-            ),
-            "supply_within_2_bars": sum(
-                row["response_analysis"]["first_supply_bar_offset"] is not None
-                and row["response_analysis"]["first_supply_bar_offset"] <= 2
+            "supportive_score_total": sum(
+                row["point_in_time_scorecard"]["supportive_factor_count"]
                 for row in grouped_rows
             ),
             "positive_8_bar_return": sum(
-                row["forward_returns"][8] is not None
-                and row["forward_returns"][8] > 0
+                row["forward_8_bar_return"] is not None
+                and row["forward_8_bar_return"] > 0
                 for row in grouped_rows
             ),
         }
 
     print(group_summary)
-
-    print("\nTEST FOLLOW-THROUGH SUMMARY")
-    follow_summary = {}
-    for horizon in (1, 2, 4):
-        valid = 0
-        positive_return = 0
-        for bar_index in sorted(by_bar):
-            future_index = bar_index + horizon
-            if future_index >= len(metrics):
-                continue
-            valid += 1
-            close = float(metrics.iloc[bar_index][COL_CLOSE])
-            future_close = float(metrics.iloc[future_index][COL_CLOSE])
-            if future_close > close:
-                positive_return += 1
-
-        follow_summary[horizon] = {
-            "events": valid,
-            "positive_price_follow_through": positive_return,
-        }
-
-    print(follow_summary)
     print("\n" + "=" * 70)
 
 
