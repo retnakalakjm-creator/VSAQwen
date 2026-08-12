@@ -1,3 +1,5 @@
+from collections import Counter
+
 from data import download_data, daily_to_weekly
 from metrics_engine import MetricsEngine
 from evidence.engine import EvidenceEngine
@@ -6,6 +8,7 @@ from debug.confidence_diagnostics import confidence_components, score_inputs
 from scanner import ScannerEngine
 from trend import TrendAnalyzer
 from engine.columns import COL_WEEK
+from models import EvidenceCode
 
 
 SYMBOL = "BHARTIARTL.NS"
@@ -44,6 +47,24 @@ qualification = qualification_engine.evaluate(point_history)
 
 
 # ---------------------------------------------------------
+# Historical NO_SUPPLY distribution
+# ---------------------------------------------------------
+# This is deliberately based on point-in-time snapshots, so an event is counted
+# only on the bar where it was actually observable.
+no_supply_events = [
+    item
+    for result in point_history
+    for item in result.evidence
+    if item.code == EvidenceCode.NO_SUPPLY
+]
+
+no_supply_by_bar = Counter(
+    item.bar_index
+    for item in no_supply_events
+)
+
+
+# ---------------------------------------------------------
 # Production current-bar decision
 # ---------------------------------------------------------
 # Do not manually reconstruct this candidate. Use the exact production
@@ -58,7 +79,7 @@ print()
 print("=" * 70)
 print("SCANNER DIAGNOSTIC - PRODUCTION CURRENT BAR")
 print("=" * 70)
-print("DIAGNOSTIC_VERSION = production-current-bar-v1")
+print("DIAGNOSTIC_VERSION = production-current-bar-v2-no-supply-distribution")
 
 print()
 print("TARGET")
@@ -76,6 +97,15 @@ print({
     "reason": qualification.reason,
     "qualifying_codes": [str(code) for code in qualification.evidence_codes],
     "qualifying_bar_indices": list(qualification.evidence_bar_indices),
+})
+
+print()
+print("HISTORICAL NO_SUPPLY DISTRIBUTION")
+print({
+    "count": len(no_supply_events),
+    "unique_bars": len(no_supply_by_bar),
+    "bar_indices": sorted(no_supply_by_bar),
+    "events_per_bar": dict(sorted(no_supply_by_bar.items())),
 })
 
 print()
