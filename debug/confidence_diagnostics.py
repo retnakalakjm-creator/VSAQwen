@@ -5,11 +5,7 @@ import config
 
 
 def confidence_components(score: ProfessionalScore) -> dict[str, float]:
-    """Expose the existing confidence calculation as diagnostic components.
-
-    This helper intentionally mirrors ProfessionalScoringEngine._measure_confidence
-    without changing production scoring or weights.
-    """
+    """Expose the existing confidence calculation as diagnostic components."""
     trend_component = (
         score.trend * config.PROFESSIONAL_CONFIDENCE_TREND_WEIGHT
     )
@@ -34,4 +30,19 @@ def confidence_components(score: ProfessionalScore) -> dict[str, float]:
         "agreement_component": agreement_component,
         "effort_component": effort_component,
         "confidence": confidence,
+    }
+
+
+def score_inputs(score: ProfessionalScore) -> dict[str, float]:
+    """Return the exact normalized inputs consumed by confidence scoring."""
+    return {
+        "trend": score.trend,
+        "demand": score.demand,
+        "supply": score.supply,
+        "effort": score.effort,
+        "strength": score.strength,
+        "weakness": score.weakness,
+        "net_strength": score.net_strength,
+        "net_pressure": score.net_pressure,
+        "confidence": score.confidence,
     }

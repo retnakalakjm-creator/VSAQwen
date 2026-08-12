@@ -3,7 +3,7 @@ from metrics_engine import MetricsEngine
 from evidence.engine import EvidenceEngine
 from professional.scoring_engine import ProfessionalScoringEngine
 from background.qualification import PatternQualificationEngine
-from debug.confidence_diagnostics import confidence_components
+from debug.confidence_diagnostics import confidence_components, score_inputs
 from scanner import ScannerCandidate, ScannerEngine, rank_candidates
 from models import TrendResult
 from trend import TrendAnalyzer
@@ -24,18 +24,12 @@ qualification_engine = PatternQualificationEngine()
 # ---------------------------------------------------------
 # Point-in-time chronological replay
 # ---------------------------------------------------------
-# Each snapshot is built only from bars available at that point.
-# Structural progression is therefore recorded only when the
-# corresponding structural swing is actually confirmed.
-
 point_history: list = []
 
 for index in range(scanner.MIN_REPLAY_BARS, TARGET_INDEX + 1):
     replay_metrics = metrics.iloc[: index + 1].copy()
     replay_trend = TrendAnalyzer().analyze(replay_metrics)
-    replay_structural_swings = list(
-        replay_trend.structure.structural_swings
-    )
+    replay_structural_swings = list(replay_trend.structure.structural_swings)
 
     replay_result = EvidenceEngine().collect(
         metrics=replay_metrics,
@@ -53,25 +47,21 @@ point_in_time_trend = TrendAnalyzer().analyze(
     metrics.iloc[: TARGET_INDEX + 1].copy()
 )
 
-point_qualification = qualification_engine.evaluate(point_history)
-point_professional = ProfessionalScoringEngine().calculate(
-    trend=point_in_time_trend,
-    evidence=point_in_time_result,
+# IMPORTANT: use the production scanner path for the point-in-time candidate.
+# This keeps the diagnostic aligned with scan_to_index(), including current-bar
+# evidence selection, stale qualification invalidation, VSA conflict handling,
+# and the exact scoring evidence passed to ProfessionalScoringEngine.
+point_in_time_candidate = scanner.scan_to_index(
+    metrics,
+    TARGET_INDEX,
 )
 
-point_in_time_candidate = ScannerCandidate(
-    evidence=point_in_time_result,
-    professional=point_professional,
-    qualification_result=point_qualification,
-)
+point_qualification = qualification_engine.evaluate(point_history)
 
 
 # ---------------------------------------------------------
 # Historical validation replay
 # ---------------------------------------------------------
-# Validation metrics may contain future bars, but qualification MUST
-# still use the chronological point-in-time history above.
-
 replay_metrics = metrics.iloc[: TARGET_INDEX + 1].copy()
 replay_structure = point_in_time_trend.structure
 replay_trend = TrendResult(structure=replay_structure)
@@ -105,8 +95,7 @@ print()
 print("=" * 70)
 print("SCANNER DIAGNOSTIC - CHRONOLOGICAL REPLAY")
 print("=" * 70)
-print("DIAGNOSTIC_VERSION = chronological-qualification-v4-confidence-components")
-
+print("DIAGNOSTIC_VERSION = chronological-qualification-v6-production-path")
 
 target_week = replay_metrics.iloc[-1][COL_WEEK]
 
@@ -117,7 +106,6 @@ print({
     "bar_index": TARGET_INDEX,
     "week": str(target_week),
 })
-
 
 print()
 print("CHRONOLOGICAL QUALIFICATION HISTORY")
@@ -149,30 +137,30 @@ print({
     "qualification": point_qualification.qualification,
     "actionable": point_qualification.is_actionable_evidence,
     "reason": point_qualification.reason,
-    "qualifying_codes": [
-        str(code) for code in point_qualification.evidence_codes
-    ],
-    "qualifying_bar_indices": list(
-        point_qualification.evidence_bar_indices
-    ),
+    "qualifying_codes": [str(code) for code in point_qualification.evidence_codes],
+    "qualifying_bar_indices": list(point_qualification.evidence_bar_indices),
 })
 
 
 def _candidate_details(candidate: ScannerCandidate) -> dict:
-    confidence = confidence_components(candidate.professional.scores)
-
+    scores = candidate.professional.scores
     return {
         "qualification": candidate.qualification,
         "actionable": candidate.actionable,
         "reason": candidate.reason,
+        "professional_inputs": score_inputs(scores),
         "professional_strength": candidate.professional.strength,
         "professional_weakness": candidate.professional.weakness,
         "net_strength": candidate.net_strength,
         "net_pressure": candidate.net_pressure,
         "confidence": candidate.confidence,
-        "confidence_components": confidence,
+        "confidence_components": confidence_components(scores),
         "base_score": candidate.base_score,
-        "evidence_codes": list(candidate.evidence_codes),
+        "target_bar_evidence_codes": candidate.target_bar_evidence_codes,
+        "campaign_evidence_codes": candidate.campaign_evidence_codes,
+        "qualifying_evidence_codes": candidate.qualifying_evidence_codes,
+        "scoring_evidence_codes": candidate.scoring_evidence_codes,
+        "scoring_bar_index": candidate.scoring_bar_index,
     }
 
 
@@ -181,7 +169,7 @@ print("HISTORICAL VALIDATION REPLAY")
 print(_candidate_details(historical_candidate))
 
 print()
-print("POINT-IN-TIME REPLAY")
+print("POINT-IN-TIME PRODUCTION SCANNER PATH")
 print(_candidate_details(point_in_time_candidate))
 
 print()
@@ -194,14 +182,8 @@ print({
 print()
 print("RANK KEY")
 print({
-    "historical": (
-        int(historical_candidate.actionable),
-        historical_candidate.base_score,
-    ),
-    "point_in_time": (
-        int(point_in_time_candidate.actionable),
-        point_in_time_candidate.base_score,
-    ),
+    "historical": (int(historical_candidate.actionable), historical_candidate.base_score),
+    "point_in_time": (int(point_in_time_candidate.actionable), point_in_time_candidate.base_score),
 })
 
 ranked = rank_candidates([
