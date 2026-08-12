@@ -43,7 +43,7 @@ Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Sell
 | `HIDDEN_DEMAND` | No active production detector identified | NO | Candidate / missing | Supporting demand | Bullish | Enum exists; needs explicit detector specification. |
 | `DEMAND_DRYING_UP` | No active production detector identified | NO | Candidate / missing | Supporting / exhaustion context | Bullish observation of drying demand | Must be distinguished from bearish absence-of-demand events. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | NO (commented out) | Audit-capable | Primary demand / reversal | Bullish | Detector exists but is disabled in `collect_demand()`. |
-| `TEST` | `evidence/demand.py::_collect_test` | NO (commented out) | Audit-capable | Primary confirmation | Bullish | Detector exists but is disabled in `collect_demand()`. |
+| `TEST` | `evidence/demand.py::_collect_test` | NO (commented out) | Audit-capable | Primary confirmation | Bullish | Detector exists but is disabled in `collect_demand()`. Audit currently shows that a low-volume/narrow-spread test bar alone is too broad; context and subsequent response matter. |
 | `SPRING` | No active production detector identified | NO | Candidate / missing | Primary trap / reversal | Bullish | Enum exists; needs explicit strict-VSA/Wyckoff definition. |
 | `ABSORPTION` | No dedicated production detector confirmed | NO | Present in model/registry | Primary/supporting absorption | Neutral / directional by context | Atomic effort-result observation; must be given one canonical production detector before use. |
 | `EFFORT_GT_RESULT` | `evidence/effort.py` | Engine invocation currently disabled | Present | Effort/result context | Neutral | Separate from primary supply/demand event detection. |
@@ -63,6 +63,36 @@ Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Sell
 4. `ABSORPTION` is an atomic effort-result observation in the model/registry, but it currently lacks a single canonical production detector and should not be scored until semantics are frozen. 
 5. `EFFORT_GT_RESULT`, `RESULT_GT_EFFORT`, trend, phase, and structural progression belong to separate analytical layers and should not be promoted into the primary VSA event set.
 6. The next implementation milestone should be **bullish/demand-side detector coverage**, beginning with `SELLING_CLIMAX` and `TEST`, because their strict-VSA detector code already exists and can be audited before introducing entirely new formulas for missing events such as `SPRING` or `INCREASING_DEMAND`.
+
+## TEST audit findings
+
+The current audit population contains six detected TEST events: bars `149`, `152`, `248`, `338`, `346`, and `510`.
+
+Early results indicate a meaningful separation between two real-market contexts:
+
+- `149`, `152`, and `248` occur with recent structural weakness but without a confirmed downtrend.
+- `338`, `346`, and `510` occur inside a confirmed healthy downtrend without the same structural-weakness signature and are followed by renewed `INCREASING_SUPPLY` in the audit window.
+
+The audit also shows that perfect textbook confirmation is **not required for every useful real-market TEST**. For example, `152` has low volume, narrow spread, decreasing volume, and a higher low but not a strong close, while still being followed by meaningful improvement in price. Conversely, `338`, `346`, and `510` satisfy the detector's mandatory conditions yet fail to produce convincing bullish follow-through.
+
+Current working interpretation:
+
+> A production-quality TEST should be evaluated as a **contextual market event**, not as a textbook single-bar pattern. Low-effort/narrow-spread behavior is meaningful only in relation to the preceding selling campaign, structural condition, and subsequent response to supply.
+
+This is an **audit hypothesis, not a frozen detector rule**. It must be validated on additional history before `_collect_test()` is changed or enabled.
+
+## Real-market VSA rule
+
+The project should not require textbook-perfect VSA scenarios in order to recognize a useful event. VSA characteristics may be incomplete, distributed across several bars, or expressed through confluence rather than a single ideal bar. Detector logic should therefore prioritize:
+
+- contextual confluence,
+- effort versus result,
+- campaign background,
+- structural consequence,
+- subsequent response,
+- and contradiction from opposing evidence.
+
+A detector should reject an event when its broader context materially contradicts the intended VSA interpretation, but it should not reject a useful real-market event merely because one textbook characteristic is absent.
 
 ## Freeze rule
 
