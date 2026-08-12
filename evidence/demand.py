@@ -106,6 +106,16 @@ def _collect_test(
 
     bar = ctx.current
     previous = ctx.previous
+    trend = getattr(ctx, "trend", None)
+
+    no_strong_downtrend_contradiction = (
+        True
+        if trend is None
+        else not (
+            is_confirmed_downtrend(trend)
+            and not _recent_structural_weakness(ctx)
+        )
+    )
 
     requirements = (
         requirement(
@@ -126,10 +136,7 @@ def _collect_test(
         ),
         requirement(
             name="No Strong Downtrend Contradiction",
-            passed=not (
-                is_confirmed_downtrend(ctx.trend)
-                and not _recent_structural_weakness(ctx)
-            ),
+            passed=no_strong_downtrend_contradiction,
         ),
     )
 
@@ -298,7 +305,7 @@ def _collect_no_supply(
 
 # ==========================================================
 # Public API
-# =========================================================
+# ==========================================================
 __all__ = [
     "collect_demand",
 ]

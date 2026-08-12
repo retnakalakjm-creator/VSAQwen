@@ -34,6 +34,7 @@ TARGET_INDEX = None
 FORWARD_HORIZONS = (1, 2, 4, 8)
 RESPONSE_LOOKAHEAD = 4
 STRUCTURAL_LOCATION_LOOKBACK = 6
+CAMPAIGN_CHANGE_LOOKBACK = 6
 
 BULLISH_CONTEXT_CODES = {
     "no_supply",
@@ -241,6 +242,69 @@ def campaign_profile(ctx):
     }
 
 
+def pre_test_change_character(ctx):
+    """Audit-only measure of whether selling pressure was losing effectiveness before TEST."""
+    bars = list(ctx.bars)
+    if len(bars) < 4:
+        return {
+            "lookback_bars": len(bars),
+            "available": False,
+            "reason": "insufficient_bars",
+        }
+
+    recent_count = min(CAMPAIGN_CHANGE_LOOKBACK, len(bars) - 1)
+    prior_count = min(CAMPAIGN_CHANGE_LOOKBACK, len(bars) - 1 - recent_count)
+    if prior_count <= 0:
+        return {
+            "lookback_bars": len(bars),
+            "available": False,
+            "reason": "insufficient_prior_window",
+        }
+
+    prior = bars[-1 - recent_count - prior_count:-1 - recent_count]
+    recent = bars[-1 - recent_count:-1]
+
+    def metrics(window):
+        return {
+            "bars": len(window),
+            "down_bars": sum(is_bearish_bar(bar) for bar in window),
+            "weak_closes": sum(is_weak_close(bar) for bar in window),
+            "low_volume": sum(is_low_volume(bar) for bar in window),
+            "narrow_spread": sum(is_narrow_spread(bar) for bar in window),
+            "avg_volume_rank": sum(int(bar.volume) for bar in window) / len(window),
+            "avg_spread_rank": sum(int(bar.spread) for bar in window) / len(window),
+        }
+
+    prior_stats = metrics(prior)
+    recent_stats = metrics(recent)
+
+    changes = {
+        "down_bar_count_change": recent_stats["down_bars"] - prior_stats["down_bars"],
+        "weak_close_count_change": recent_stats["weak_closes"] - prior_stats["weak_closes"],
+        "low_volume_count_change": recent_stats["low_volume"] - prior_stats["low_volume"],
+        "narrow_spread_count_change": recent_stats["narrow_spread"] - prior_stats["narrow_spread"],
+        "avg_volume_rank_change": recent_stats["avg_volume_rank"] - prior_stats["avg_volume_rank"],
+        "avg_spread_rank_change": recent_stats["avg_spread_rank"] - prior_stats["avg_spread_rank"],
+    }
+
+    supportive_changes = {
+        "fewer_down_bars": changes["down_bar_count_change"] < 0,
+        "fewer_weak_closes": changes["weak_close_count_change"] < 0,
+        "more_low_volume": changes["low_volume_count_change"] > 0,
+        "more_narrow_spread": changes["narrow_spread_count_change"] > 0,
+    }
+
+    return {
+        "lookback_bars": recent_count,
+        "available": True,
+        "prior": prior_stats,
+        "recent": recent_stats,
+        "changes": changes,
+        "supportive_change_count": sum(supportive_changes.values()),
+        "supportive_changes": supportive_changes,
+    }
+
+
 def response_analysis(contexts_by_index, metrics, test_index: int):
     test_low = float(metrics.iloc[test_index][COL_LOW])
     first_supply_bar = None
@@ -358,7 +422,7 @@ def main() -> None:
     print("\n" + "=" * 70)
     print("AUDIT-ONLY TEST DETECTOR DIAGNOSTIC")
     print("=" * 70)
-    print("DIAGNOSTIC_VERSION = test-detector-audit-v9")
+    print("DIAGNOSTIC_VERSION = test-detector-audit-v10")
     print({
         "symbol": SYMBOL,
         "target_bar_index": target_index,
@@ -373,76 +437,51 @@ def main() -> None:
         "events_per_bar": dict(sorted(by_bar.items())),
     })
 
-    print("\nTEST POINT-IN-TIME LOCATION AUDIT")
+    print("\nTEST PRE-TEST CHANGE-OF-CHARACTER AUDIT")
     for bar_index in sorted(by_bar):
         event = next(event for index, event in test_events if index == bar_index)
         ctx = contexts_by_index[bar_index][1]
         result = contexts_by_index[bar_index][2]
-        response = response_analysis(contexts_by_index, metrics, bar_index)
-
-        row = {
+        change = pre_test_change_character(ctx)
+        print({
             "bar_index": bar_index,
             "week": str(metrics.iloc[bar_index][COL_WEEK]),
-            "response_classification": classify_response(response),
-            "structural_location": structural_location_profile(ctx, metrics),
-            "point_in_time_scorecard": point_in_time_scorecard(ctx),
-            "campaign_profile": campaign_profile(ctx),
-            "exact_evidence_at_test": exact_bar_evidence(result, bar_index),
-            "response_analysis": {
-                "holding_bars": response["holding_bars"],
-                "first_supply_bar_offset": response["first_supply_bar_offset"],
-                "first_area_break_offset": response["first_area_break_offset"],
-            },
-            "forward_8_bar_return": (
-                float(metrics.iloc[bar_index + 8][COL_CLOSE])
-                / float(metrics.iloc[bar_index][COL_CLOSE])
-                - 1.0
-                if bar_index + 8 < len(metrics)
-                else None
+            "response_classification": classify_response(
+                response_analysis(contexts_by_index, metrics, bar_index)
             ),
+            "pre_test_change": change,
+            "exact_evidence_at_test": exact_bar_evidence(result, bar_index),
             "test_strength": event.strength,
             "test_quality": event.quality,
-        }
-        rows.append(row)
-        print(row)
+        })
 
-    print("\nTEST LOCATION GROUP SUMMARY")
+    print("\nTEST PRE-TEST CHANGE GROUP SUMMARY")
     groups = defaultdict(list)
-    for row in rows:
-        groups[row["response_classification"]].append(row)
+    for bar_index in sorted(by_bar):
+        ctx = contexts_by_index[bar_index][1]
+        change = pre_test_change_character(ctx)
+        classification = classify_response(
+            response_analysis(contexts_by_index, metrics, bar_index)
+        )
+        groups[classification].append((bar_index, change))
 
-    location_summary = {}
-    for classification, grouped_rows in sorted(groups.items()):
-        location_summary[classification] = {
-            "events": len(grouped_rows),
-            "bars": [row["bar_index"] for row in grouped_rows],
-            "tests_recent_structural_low": sum(
-                row["structural_location"]["tests_recent_structural_low"]
-                for row in grouped_rows
+    change_summary = {}
+    for classification, items in sorted(groups.items()):
+        usable = [change for _, change in items if change.get("available")]
+        change_summary[classification] = {
+            "events": len(items),
+            "bars": [bar for bar, _ in items],
+            "avg_supportive_change_count": (
+                sum(change["supportive_change_count"] for change in usable) / len(usable)
+                if usable else None
             ),
-            "below_nearest_structural_low": sum(
-                row["structural_location"]["below_nearest_structural_low"]
-                for row in grouped_rows
-            ),
-            "avg_distance_to_nearest_low_in_spreads": (
-                sum(
-                    row["structural_location"]["distance_to_nearest_low_in_spreads"]
-                    for row in grouped_rows
-                    if row["structural_location"]["distance_to_nearest_low_in_spreads"] is not None
-                )
-                / sum(
-                    row["structural_location"]["distance_to_nearest_low_in_spreads"] is not None
-                    for row in grouped_rows
-                )
-                if any(
-                    row["structural_location"]["distance_to_nearest_low_in_spreads"] is not None
-                    for row in grouped_rows
-                )
-                else None
+            "supportive_change_count_distribution": (
+                dict(Counter(change["supportive_change_count"] for change in usable))
+                if usable else {}
             ),
         }
 
-    print(location_summary)
+    print(change_summary)
     print("\n" + "=" * 70)
 
 
