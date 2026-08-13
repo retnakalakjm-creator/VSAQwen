@@ -1,0 +1,65 @@
+"""Replay diagnostic for the validation-stage Spring detector."""
+from __future__ import annotations
+
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from data import daily_to_weekly, download_data
+from metrics_engine import MetricsEngine
+from trend import TrendAnalyzer
+from evidence.spring import SpringValidationResult, detect_spring_candidate, validate_spring
+from engine.columns import COL_CLOSE, COL_WEEK
+
+DEFAULT_SYMBOLS = ("BHARTIARTL.NS", "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "TCS.NS", "SBIN.NS", "LT.NS")
+MIN_REPLAY_BARS = 20
+FORWARD_HORIZON = 8
+
+
+def inspect_symbol(symbol: str) -> list[dict]:
+    daily = download_data(symbol)
+    metrics = MetricsEngine().calculate(daily_to_weekly(daily))
+    events: list[dict] = []
+    for index in range(MIN_REPLAY_BARS, len(metrics) - FORWARD_HORIZON):
+        replay = metrics.iloc[: index + 1]
+        trend = TrendAnalyzer().analyze(replay)
+        structural_swings = tuple(trend.structure.structural_swings)
+        candidate = detect_spring_candidate(metrics, bar_index=index, structural_swings=structural_swings)
+        if candidate is None:
+            continue
+        validation = validate_spring(metrics, candidate=candidate)
+        current = float(metrics.iloc[index][COL_CLOSE])
+        future = float(metrics.iloc[index + FORWARD_HORIZON][COL_CLOSE])
+        forward_return = (future - current) / current
+        outcome = "POSITIVE_8_BAR" if forward_return > 0.02 else "NEGATIVE_8_BAR" if forward_return < -0.02 else "FLAT_8_BAR"
+        events.append({"symbol": symbol, "bar_index": index, "week": str(metrics.iloc[index][COL_WEEK]), "penetration_ratio": candidate.penetration_ratio, "support": candidate.support, "support_touches": candidate.support_touches, "candidate_volume_ratio": candidate.volume_ratio, "candidate_close_position": candidate.close_position, "test_result": validation.test.result.value, "test_index": validation.test.test_index, "test_volume_ratio": validation.test.volume_ratio, "test_close_position": validation.test.close_position, "confirmation_result": validation.confirmation.result.value, "confirmation_index": validation.confirmation.confirmation_index, "outcome": outcome, "forward_return_8": forward_return})
+    return events
+
+
+def main() -> None:
+    symbols = tuple(sys.argv[1:]) or DEFAULT_SYMBOLS
+    all_events: list[dict] = []
+    failures: list[dict] = []
+    with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as executor:
+        futures = {executor.submit(inspect_symbol, symbol): symbol for symbol in symbols}
+        for future, symbol in futures.items():
+            try:
+                events = future.result()
+                all_events.extend(events)
+                print({"symbol": symbol, "events": len(events)})
+            except Exception as exc:
+                failures.append({"symbol": symbol, "error": repr(exc)})
+    print("SPRING REPLAY SUMMARY")
+    print({"symbols_requested": len(symbols), "symbols_with_candidates": len({x["symbol"] for x in all_events}), "candidates": len(all_events), "tested": sum(x["test_result"] == SpringValidationResult.TESTED.value for x in all_events), "confirmed": sum(x["confirmation_result"] == SpringValidationResult.CONFIRMED.value for x in all_events), "failed_confirmation": sum(x["confirmation_result"] == SpringValidationResult.FAILED.value for x in all_events), "no_test": sum(x["test_result"] == SpringValidationResult.NO_TEST.value for x in all_events), "outcome_classes": {"POSITIVE_8_BAR": sum(x["outcome"] == "POSITIVE_8_BAR" for x in all_events), "NEGATIVE_8_BAR": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in all_events), "FLAT_8_BAR": sum(x["outcome"] == "FLAT_8_BAR" for x in all_events)}, "failures": failures})
+    print("SPRING REPLAY BY SYMBOL")
+    for symbol in symbols:
+        rows = [x for x in all_events if x["symbol"] == symbol]
+        print({"symbol": symbol, "candidates": len(rows), "tested": sum(x["test_result"] == SpringValidationResult.TESTED.value for x in rows), "confirmed": sum(x["confirmation_result"] == SpringValidationResult.CONFIRMED.value for x in rows), "positive_8_bar": sum(x["outcome"] == "POSITIVE_8_BAR" for x in rows), "negative_8_bar": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in rows), "flat_8_bar": sum(x["outcome"] == "FLAT_8_BAR" for x in rows)})
+
+
+if __name__ == "__main__":
+    main()
