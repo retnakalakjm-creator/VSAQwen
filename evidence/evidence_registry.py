@@ -63,6 +63,24 @@ EVIDENCE_LIBRARY = {
         
         ),    
 
+    EvidenceCode.STOPPING_VOLUME:
+
+        EvidenceDefinition(
+
+            category=EvidenceCategory.DEMAND,
+
+            direction=EvidenceDirection.BULLISH,
+
+            strength=0.90,
+
+            weight=1.00,
+
+            observation="Stopping Volume",
+
+            description="Heavy selling effort showing evidence of absorption and possible stopping of the decline.",
+
+        ),
+
     EvidenceCode.UPTHRUST:
         
         EvidenceDefinition(
