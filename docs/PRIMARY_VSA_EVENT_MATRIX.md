@@ -39,7 +39,7 @@ Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Sell
 | `NO_SUPPLY` | `evidence/demand.py::_collect_no_supply` | YES | Audit-capable | Primary demand absence | Bullish | Detector exists and is now enabled in `collect_demand()`. |
 | `STOPPING_VOLUME` | Audit-only detector definition | NO | Audit-complete / frozen | Primary demand | Bullish | 59-event audit across 8 symbols. Real-market confirmation groups are supportive but not mandatory. Weight sweep produced no defensible production scoring weight; remains contextual/audit-only. |
 | `DEMAND_COMING_IN` | No active production detector identified | NO | Candidate / missing | Primary demand | Bullish | Enum exists; needs explicit detector specification. |
-| `INCREASING_DEMAND` | No active production detector identified | NO | Candidate / missing | Primary demand | Bullish | Enum exists; needs explicit detector specification. |
+| `INCREASING_DEMAND` | `EvidenceCode.INCREASING_DEMAND` registry entry | **YES — PROVISIONAL** | Calibration-complete | Primary demand | Bullish | Registered at **weight 0.85** after 902 point-in-time events across 8 symbols. Leave-one-symbol-out validation remained positive for all exclusions; minimum net benefit +6. Detector implementation remains subject to the existing demand collection path. |
 | `HIDDEN_DEMAND` | No active production detector identified | NO | Candidate / missing | Supporting demand | Bullish | Enum exists; needs explicit detector specification. |
 | `DEMAND_DRYING_UP` | No active production detector identified | NO | Candidate / missing | Supporting / exhaustion context | Bullish observation of drying demand | Must be distinguished from bearish absence-of-demand events. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | NO (commented out) | Audit-complete / frozen | Primary demand / reversal | Bullish | Detector exists but is disabled in `collect_demand()`. Historical audit completed across 8 symbols; no defensible production scoring weight or extra confirmation gate was established. |
@@ -62,7 +62,27 @@ Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Sell
 3. `SUPPLY_DRYING_UP` is an important semantic case: it should remain an observation/context event and should not automatically imply stronger bearish pressure.
 4. `ABSORPTION` is an atomic effort-result observation in the model/registry, but it currently lacks a single canonical production detector and should not be scored until semantics are frozen.
 5. `EFFORT_GT_RESULT`, `RESULT_GT_EFFORT`, trend, phase, and structural progression belong to separate analytical layers and should not be promoted into the primary VSA event set.
-6. The next implementation milestone should continue **bullish/demand-side detector coverage**, with `SELLING_CLIMAX` and `TEST` handled through audit-first validation because their strict-VSA detector code already exists, and `STOPPING_VOLUME` now frozen at audit-only status pending stronger evidence.
+6. `INCREASING_DEMAND` is now the first newly calibrated demand-side evidence weight activated from the recent audit campaign: **0.85 provisionally**. The next detector should continue through the same audit-first process rather than inheriting this weight automatically.
+
+## INCREASING_DEMAND calibration record
+
+The production registry weight of `0.85` was selected after point-in-time outcome attribution across **902 events / 8 symbols**.
+
+At weight `0.85`:
+
+- beneficial decision changes: `26`
+- harmful decision changes: `15`
+- net benefit: `+11`
+- benefit/harm ratio: `1.7333`
+
+Leave-one-symbol-out validation remained positive in every case:
+
+- minimum net benefit: `+6`
+- minimum benefit/harm ratio: `1.4286`
+- excluding RELIANCE: `+6`
+- excluding TCS: `+6`
+
+The result is therefore not dependent on a single stock. The weight is provisional and should be revisited as the sample universe grows.
 
 ## TEST audit findings
 
@@ -119,135 +139,3 @@ Qualification    NOT standalone
 Contextual use   YES
 Actionability    NOT standalone
 ```
-
-## SELLING_CLIMAX audit findings
-
-The full historical audit covered **153 SELLING_CLIMAX events across 8 symbols**, with no symbol failures:
-
-- `66` positive 8-bar outcomes
-- `56` flat 8-bar outcomes
-- `31` negative 8-bar outcomes
-
-The detector's core requirements remained intact in every emitted event. Confirmation observations were distributed across the real-market sample rather than appearing as a textbook-perfect checklist:
-
-- wide spread: `97 / 153`
-- increasing volume: `117 / 153`
-- strong close: `15 / 153`
-
-The confirmation audit did **not** justify adding mandatory confirmation gates. For example:
-
-- `volume_increasing + wide_spread`: `27 positive / 14 negative / 27 flat`.
-- `volume_increasing` only: `17 / 7 / 14`.
-- `wide_spread` only: `6 / 4 / 10`.
-- No confirmations: `10 / 1 / 1`.
-- `strong_close` was too sparse and did not reliably separate outcomes.
-
-Contextual groups showed some tendencies but not enough separation for production gates:
-
-- `hidden_supply + increasing_supply`: `10 positive / 2 negative / 6 flat`.
-- `increasing_supply + supply_drying_up`: `6 / 1 / 4`.
-- `increasing_supply + supply_coming_in`: `5 / 1 / 3`.
-
-These remain contextual observations only because the smaller groups are insufficient to justify a hard production rule.
-
-### SELLING_CLIMAX scoring audit
-
-The production scoring audit showed that `SELLING_CLIMAX` currently has configured scoring weight `0.0`, so its emission does not alter professional scores in production.
-
-An audit-only candidate weight sweep from `0.25` through `1.4` showed that increasing the weight primarily shifts overall demand/net-pressure values while the positive and negative outcome groups move almost together. The separation in average net strength remained very small (roughly `0.03`), while confidence became more negative as the weight increased. No candidate weight produced sufficient outcome discrimination to justify production scoring.
-
-Therefore:
-
-```text
-Detection        IMPLEMENTED / AUDIT-VALIDATED
-Production path  DISABLED
-Scoring weight   0
-Confirmation    SUPPORTING ONLY
-Qualification    NOT standalone
-Contextual use   YES
-Actionability    NOT standalone
-```
-
-## STOPPING_VOLUME audit findings
-
-The optimized historical audit covered **59 STOPPING_VOLUME events across all 8 symbols**, with no failures:
-
-- `39` positive 8-bar outcomes
-- `14` negative 8-bar outcomes
-- `6` flat 8-bar outcomes
-
-The event definition used for the audit was:
-
-- selling campaign,
-- bearish bar,
-- high volume,
-- above-average spread,
-- close not weak,
-
-with confirmations recorded separately rather than made mandatory.
-
-The confirmation distribution reinforced the real-market rule that a useful stopping event does not require a textbook checklist. Examples:
-
-- `very_high_volume + wide_spread + volume_increasing`: `11 positive / 4 negative / 1 flat`.
-- `very_high_volume + higher_low`: `3 / 0 / 0`.
-- `higher_low` alone: `1 / 0 / 0`.
-- No confirmations: `3 / 1 / 0`.
-- `very_high_volume + volume_increasing + higher_low`: `0 / 2 / 0`, showing that adding more apparent confirmation does not automatically improve the outcome.
-
-Context also showed useful tendencies but not sufficient evidence for hard gates:
-
-- `increasing_supply`: `9 positive / 1 negative / 1 flat`.
-- three consecutive `increasing_supply` observations: `5 / 0 / 0`.
-- `increasing_supply + supply_drying_up`: `1 / 2 / 0`, demonstrating that context can also contradict the bullish interpretation.
-
-### STOPPING_VOLUME scoring audit
-
-The production contribution audit confirmed:
-
-```text
-Events               59
-Production collection DISABLED
-Actual production delta 0.0
-```
-
-The registry/config currently carry a nominal `1.00` definition weight, but that value is **not** a validated production scoring weight.
-
-The optimized audit-only weight sweep from `0.25` through `1.4` did not justify enabling that weight. Positive and negative outcome groups remained closely aligned, and the separation was slightly in the wrong direction for a bullish scoring interpretation. For example, at candidate weight `1.0`:
-
-- positive average net strength: `-0.0252`
-- negative average net strength: `-0.0137`
-- positive average net pressure: `0.2051`
-- negative average net pressure: `0.2357`
-
-At candidate weight `0.85`, negative average net pressure (`0.0964`) was again higher than positive (`0.0551`). Increasing the weight therefore increases bullish pressure without demonstrating that the added pressure belongs preferentially to the positive outcome group. Confidence also declines as the candidate weight increases. fileciteturn207file0
-
-Therefore:
-
-```text
-Detection        AUDIT-VALIDATED
-Production path  DISABLED
-Registry weight  1.00 (definition only)
-Scoring weight   NOT VALIDATED / EFFECTIVELY 0
-Qualification    NOT standalone
-Contextual use   YES
-Actionability    NOT standalone
-```
-
-`STOPPING_VOLUME` is now **frozen for this audit milestone**. Do not enable its production collector or promote the nominal `1.00` registry weight without new evidence that materially improves outcome separation.
-
-## Real-market VSA rule
-
-The project should not require textbook-perfect VSA scenarios in order to recognize a useful event. VSA characteristics may be incomplete, distributed across several bars, or expressed through confluence rather than a single ideal bar. Detector logic should therefore prioritize:
-
-- contextual confluence,
-- effort versus result,
-- campaign background,
-- structural consequence,
-- subsequent response,
-- and contradiction from opposing evidence.
-
-A detector should reject an event when its broader context materially contradicts the intended VSA interpretation, but it should not reject a useful real-market event merely because one textbook characteristic is absent.
-
-## Freeze rule
-
-The TEST, SELLING_CLIMAX, and STOPPING_VOLUME semantics are now frozen for this audit milestone. Do not add new checklist conditions, numeric weights, or scanner actionability rules for these events unless new evidence materially changes the interpretation. TEST may emit contextual evidence in production; SELLING_CLIMAX and STOPPING_VOLUME remain audit-validated but disabled from the production evidence path.

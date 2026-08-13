@@ -64,9 +64,9 @@ EVIDENCE_LIBRARY = {
             category=EvidenceCategory.DEMAND,
             direction=EvidenceDirection.BULLISH,
             strength=0.90,
-            weight=1.00,
+            weight=0.85,
             observation="Increasing Demand",
-            description="Bullish effort/result evidence showing increasing demand pressure.",
+            description="Bullish effort/result evidence showing increasing demand pressure. Weight provisionally calibrated to 0.85 from point-in-time outcome attribution and leave-one-symbol-out robustness across 902 events and 8 symbols.",
         ),
 
     EvidenceCode.UPTHRUST:
