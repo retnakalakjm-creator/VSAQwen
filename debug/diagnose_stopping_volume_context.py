@@ -32,6 +32,7 @@ from evidence.rules import (
 )
 from metrics_engine import MetricsEngine
 from models import ClosePosition, Direction, SpreadClass, VolumeClass
+from trend import TrendAnalyzer
 
 DEFAULT_SYMBOLS = (
     "BHARTIARTL.NS",
@@ -63,7 +64,7 @@ def inspect_symbol(symbol: str) -> list[dict]:
             continue
 
         replay = metrics.iloc[: index + 1]
-        trend = engine._build_trend(replay)
+        trend = TrendAnalyzer().analyze(replay)
         structural_swings = tuple(trend.structure.structural_swings)
         engine.collect(
             metrics=replay,
@@ -106,19 +107,29 @@ def inspect_symbol(symbol: str) -> list[dict]:
         else:
             outcome = "FLAT_8_BAR"
 
-        context_codes = tuple(sorted(str(item.code) for item in engine._evidence if item.bar_index == index))
-        campaign_codes = tuple(sorted(str(item.code) for item in engine._evidence))
+        context_codes = tuple(
+            sorted(
+                str(item.code)
+                for item in engine._evidence
+                if item.bar_index == index
+            )
+        )
+        campaign_codes = tuple(
+            sorted(str(item.code) for item in engine._evidence)
+        )
 
-        events.append({
-            "symbol": symbol,
-            "bar_index": index,
-            "week": str(metrics.iloc[index][COL_WEEK]),
-            "outcome": outcome,
-            "confirmations": tuple(k for k, v in confirmations.items() if v),
-            "cooccurring_current_bar": context_codes,
-            "cooccurring_campaign": campaign_codes,
-            "forward_return_8": ret8,
-        })
+        events.append(
+            {
+                "symbol": symbol,
+                "bar_index": index,
+                "week": str(metrics.iloc[index][COL_WEEK]),
+                "outcome": outcome,
+                "confirmations": tuple(k for k, v in confirmations.items() if v),
+                "cooccurring_current_bar": context_codes,
+                "cooccurring_campaign": campaign_codes,
+                "forward_return_8": ret8,
+            }
+        )
 
     return events
 
@@ -144,25 +155,29 @@ def main() -> None:
 
     print("STOPPING VOLUME CONFIRMATION GROUP SUMMARY")
     for key, items in sorted(confirmation_groups.items(), key=lambda x: (-len(x[1]), x[0])):
-        print({
-            "confirmations": key,
-            "events": len(items),
-            "positive": sum(x["outcome"] == "POSITIVE_8_BAR" for x in items),
-            "negative": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in items),
-            "flat": sum(x["outcome"] == "FLAT_8_BAR" for x in items),
-            "bars": [x["bar_index"] for x in items],
-        })
+        print(
+            {
+                "confirmations": key,
+                "events": len(items),
+                "positive": sum(x["outcome"] == "POSITIVE_8_BAR" for x in items),
+                "negative": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in items),
+                "flat": sum(x["outcome"] == "FLAT_8_BAR" for x in items),
+                "bars": [x["bar_index"] for x in items],
+            }
+        )
 
     print("STOPPING VOLUME CONTEXT GROUP SUMMARY")
     for key, items in sorted(context_groups.items(), key=lambda x: (-len(x[1]), x[0])):
-        print({
-            "cooccurring_evidence": key,
-            "events": len(items),
-            "positive": sum(x["outcome"] == "POSITIVE_8_BAR" for x in items),
-            "negative": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in items),
-            "flat": sum(x["outcome"] == "FLAT_8_BAR" for x in items),
-            "bars": [x["bar_index"] for x in items],
-        })
+        print(
+            {
+                "cooccurring_evidence": key,
+                "events": len(items),
+                "positive": sum(x["outcome"] == "POSITIVE_8_BAR" for x in items),
+                "negative": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in items),
+                "flat": sum(x["outcome"] == "FLAT_8_BAR" for x in items),
+                "bars": [x["bar_index"] for x in items],
+            }
+        )
 
     print("STOPPING VOLUME CONTEXT AUDIT SUMMARY")
     print({
