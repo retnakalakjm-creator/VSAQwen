@@ -81,6 +81,24 @@ EVIDENCE_LIBRARY = {
 
         ),
 
+    EvidenceCode.DEMAND_COMING_IN:
+
+        EvidenceDefinition(
+
+            category=EvidenceCategory.DEMAND,
+
+            direction=EvidenceDirection.BULLISH,
+
+            strength=0.90,
+
+            weight=1.00,
+
+            observation="Demand Coming In",
+
+            description="Bullish effort/result evidence suggesting demand is entering the market.",
+
+        ),
+
     EvidenceCode.UPTHRUST:
         
         EvidenceDefinition(
