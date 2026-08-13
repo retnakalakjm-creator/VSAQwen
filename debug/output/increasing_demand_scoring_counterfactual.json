@@ -1,0 +1,120 @@
+{
+  "symbols_requested": 8,
+  "symbols_with_events": 0,
+  "events": 0,
+  "outcomes": {
+    "POSITIVE_8_BAR": 0,
+    "NEGATIVE_8_BAR": 0,
+    "FLAT_8_BAR": 0
+  },
+  "candidate_weights": [
+    0.25,
+    0.4,
+    0.6,
+    0.75,
+    0.85,
+    1.0
+  ],
+  "failures": [
+    {
+      "symbol": "BHARTIARTL.NS",
+      "error": "AttributeError(\"'EvidenceCode' object has no attribute 'build'\")"
+    },
+    {
+      "symbol": "RELIANCE.NS",
+      "error": "AttributeError(\"'EvidenceCode' object has no attribute 'build'\")"
+    },
+    {
+      "symbol": "HDFCBANK.NS",
+      "error": "AttributeError(\"'EvidenceCode' object has no attribute 'build'\")"
+    },
+    {
+      "symbol": "ICICIBANK.NS",
+      "error": "AttributeError(\"'EvidenceCode' object has no attribute 'build'\")"
+    },
+    {
+      "symbol": "INFY.NS",
+      "error": "AttributeError(\"'EvidenceCode' object has no attribute 'build'\")"
+    },
+    {
+      "symbol": "TCS.NS",
+      "error": "AttributeError(\"'EvidenceCode' object has no attribute 'build'\")"
+    },
+    {
+      "symbol": "SBIN.NS",
+      "error": "AttributeError(\"'EvidenceCode' object has no attribute 'build'\")"
+    },
+    {
+      "symbol": "LT.NS",
+      "error": "AttributeError(\"'EvidenceCode' object has no attribute 'build'\")"
+    }
+  ],
+  "weight_impacts": [
+    {
+      "candidate_weight": 0.25,
+      "events": 0,
+      "avg_net_score_delta": 0.0,
+      "max_net_score_delta": 0.0,
+      "min_net_score_delta": 0.0,
+      "positive_avg_delta": 0.0,
+      "negative_avg_delta": 0.0,
+      "flat_avg_delta": 0.0,
+      "bias_changes": {}
+    },
+    {
+      "candidate_weight": 0.4,
+      "events": 0,
+      "avg_net_score_delta": 0.0,
+      "max_net_score_delta": 0.0,
+      "min_net_score_delta": 0.0,
+      "positive_avg_delta": 0.0,
+      "negative_avg_delta": 0.0,
+      "flat_avg_delta": 0.0,
+      "bias_changes": {}
+    },
+    {
+      "candidate_weight": 0.6,
+      "events": 0,
+      "avg_net_score_delta": 0.0,
+      "max_net_score_delta": 0.0,
+      "min_net_score_delta": 0.0,
+      "positive_avg_delta": 0.0,
+      "negative_avg_delta": 0.0,
+      "flat_avg_delta": 0.0,
+      "bias_changes": {}
+    },
+    {
+      "candidate_weight": 0.75,
+      "events": 0,
+      "avg_net_score_delta": 0.0,
+      "max_net_score_delta": 0.0,
+      "min_net_score_delta": 0.0,
+      "positive_avg_delta": 0.0,
+      "negative_avg_delta": 0.0,
+      "flat_avg_delta": 0.0,
+      "bias_changes": {}
+    },
+    {
+      "candidate_weight": 0.85,
+      "events": 0,
+      "avg_net_score_delta": 0.0,
+      "max_net_score_delta": 0.0,
+      "min_net_score_delta": 0.0,
+      "positive_avg_delta": 0.0,
+      "negative_avg_delta": 0.0,
+      "flat_avg_delta": 0.0,
+      "bias_changes": {}
+    },
+    {
+      "candidate_weight": 1.0,
+      "events": 0,
+      "avg_net_score_delta": 0.0,
+      "max_net_score_delta": 0.0,
+      "min_net_score_delta": 0.0,
+      "positive_avg_delta": 0.0,
+      "negative_avg_delta": 0.0,
+      "flat_avg_delta": 0.0,
+      "bias_changes": {}
+    }
+  ]
+}
