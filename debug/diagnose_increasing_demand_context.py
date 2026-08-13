@@ -10,9 +10,8 @@ if str(ROOT) not in sys.path:
 
 from data import daily_to_weekly, download_data
 from engine.columns import COL_CLOSE, COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS, COL_WEEK
-from evidence.campaign import has_buying_campaign, has_recent_weakness
 from evidence.engine import EvidenceEngine
-from evidence.rules import has_strong_spread, is_above_average_spread, is_bullish_bar, is_high_volume, is_very_high_volume, is_strong_close, volume_increasing
+from evidence.rules import has_strong_spread, is_above_average_spread, is_bullish_bar, is_high_volume, is_very_high_volume, is_strong_close
 from metrics_engine import MetricsEngine
 from models import Direction, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
@@ -48,13 +47,12 @@ def inspect_symbol(symbol: str) -> list[dict]:
             structural_swings=tuple(trend.structure.structural_swings),
             validation_metrics=metrics,
         )
-
         assert engine._ctx is not None
         ctx = engine._ctx
-        bar, previous = ctx.current, ctx.previous
+        bar = ctx.current
 
+        # Must exactly match the validated 902-event detector definition.
         requirements = (
-            has_buying_campaign(ctx),
             is_bullish_bar(bar),
             is_high_volume(bar),
             is_above_average_spread(bar),
@@ -66,7 +64,7 @@ def inspect_symbol(symbol: str) -> list[dict]:
         confirmations = {
             "very_high_volume": is_very_high_volume(bar),
             "wide_spread": has_strong_spread(bar),
-            "volume_increasing": volume_increasing(bar, previous),
+            "strong_close": is_strong_close(bar),
         }
 
         current = float(metrics.iloc[index][COL_CLOSE])
@@ -85,7 +83,8 @@ def inspect_symbol(symbol: str) -> list[dict]:
             "week": str(metrics.iloc[index][COL_WEEK]),
             "outcome": outcome,
             "confirmations": confirmations,
-            "recent_weakness": bool(has_recent_weakness(ctx)),
+            "trend_direction": getattr(trend.structure.direction, "name", str(trend.structure.direction)),
+            "trend_state": getattr(trend.structure.state, "name", str(trend.structure.state)),
         })
 
     return events
@@ -104,31 +103,31 @@ def main() -> None:
             except Exception as exc:
                 failures.append({"symbol": symbol, "error": repr(exc)})
 
+    def update(group: dict, outcome: str, bar_index: int) -> None:
+        group["events"] += 1
+        group[{"POSITIVE_8_BAR": "positive", "NEGATIVE_8_BAR": "negative", "FLAT_8_BAR": "flat"}[outcome]] += 1
+        group["bars"].append(bar_index)
+
     confirmation_groups: dict[tuple[str, ...], dict[str, object]] = {}
+    trend_groups: dict[tuple[str, ...], dict[str, object]] = {}
     for item in all_events:
-        key = tuple(k for k, v in item["confirmations"].items() if v)
-        group = confirmation_groups.setdefault(key, {"events": 0, "positive": 0, "negative": 0, "flat": 0, "bars": []})
-        group["events"] += 1
-        group[{"POSITIVE_8_BAR": "positive", "NEGATIVE_8_BAR": "negative", "FLAT_8_BAR": "flat"}[item["outcome"]]] += 1
-        group["bars"].append(item["bar_index"])
+        ckey = tuple(k for k, v in item["confirmations"].items() if v)
+        cgroup = confirmation_groups.setdefault(ckey, {"events": 0, "positive": 0, "negative": 0, "flat": 0, "bars": []})
+        update(cgroup, item["outcome"], item["bar_index"])
 
-    context_groups: dict[tuple[str, ...], dict[str, object]] = {}
-    for item in all_events:
-        key = ("recent_weakness",) if item["recent_weakness"] else ()
-        group = context_groups.setdefault(key, {"events": 0, "positive": 0, "negative": 0, "flat": 0, "bars": []})
-        group["events"] += 1
-        group[{"POSITIVE_8_BAR": "positive", "NEGATIVE_8_BAR": "negative", "FLAT_8_BAR": "flat"}[item["outcome"]]] += 1
-        group["bars"].append(item["bar_index"])
+        tkey = (item["trend_direction"], item["trend_state"])
+        tgroup = trend_groups.setdefault(tkey, {"events": 0, "positive": 0, "negative": 0, "flat": 0, "bars": []})
+        update(tgroup, item["outcome"], item["bar_index"])
 
-    print("DEMAND COMING IN CONFIRMATION GROUP SUMMARY")
+    print("INCREASING DEMAND CONFIRMATION GROUP SUMMARY")
     for key, value in sorted(confirmation_groups.items(), key=lambda x: (-x[1]["events"], x[0])):
         print({"confirmations": key, **value})
 
-    print("DEMAND COMING IN CONTEXT GROUP SUMMARY")
-    for key, value in sorted(context_groups.items(), key=lambda x: (-x[1]["events"], str(x[0]))):
+    print("INCREASING DEMAND CONTEXT GROUP SUMMARY")
+    for key, value in sorted(trend_groups.items(), key=lambda x: (-x[1]["events"], x[0])):
         print({"context": key, **value})
 
-    print("DEMAND COMING IN CONTEXT AUDIT SUMMARY")
+    print("INCREASING DEMAND CONTEXT AUDIT SUMMARY")
     print({
         "symbols": len(symbols),
         "symbols_with_events": len({x["symbol"] for x in all_events}),
