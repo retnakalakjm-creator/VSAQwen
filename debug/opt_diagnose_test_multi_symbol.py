@@ -57,7 +57,7 @@ def inspect_symbol(symbol: str) -> list[dict]:
         # This only skips bars that cannot satisfy TEST's atomic
         # down-bar / low-volume / narrow-spread requirements.
         if not (
-            Direction(row[COL_DIRECTION]) == Direction.BEARISH
+            Direction(row[COL_DIRECTION]) == Direction.DOWN
             and VolumeClass(row[COL_VOLUME_CLASS]) <= VolumeClass.LOW
             and SpreadClass(row[COL_SPREAD_CLASS]) <= SpreadClass.NARROW
         ):
