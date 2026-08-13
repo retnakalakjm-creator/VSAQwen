@@ -11,7 +11,15 @@ if str(ROOT) not in sys.path:
 from data import daily_to_weekly, download_data
 from engine.columns import COL_CLOSE, COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS, COL_WEEK
 from evidence.engine import EvidenceEngine
-from evidence.rules import has_strong_spread, is_above_average_spread, is_bullish_bar, is_high_volume, is_very_high_volume, is_strong_close
+from evidence.rules import (
+    has_strong_spread,
+    is_above_average_spread,
+    is_bullish_bar,
+    is_high_volume,
+    is_very_high_volume,
+    is_strong_close,
+    volume_increasing,
+)
 from metrics_engine import MetricsEngine
 from models import Direction, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
@@ -50,15 +58,16 @@ def inspect_symbol(symbol: str) -> list[dict]:
         assert engine._ctx is not None
         ctx = engine._ctx
         bar = ctx.current
+        previous = ctx.previous
 
-        # Must exactly match the validated 902-event detector definition.
+        # Exact validated 902-event INCREASING_DEMAND definition.
         requirements = (
             is_bullish_bar(bar),
             is_high_volume(bar),
             is_above_average_spread(bar),
-            is_strong_close(bar),
+            volume_increasing(bar, previous),
         )
-        if not all(requirements):
+        if previous is None or not all(requirements):
             continue
 
         confirmations = {
