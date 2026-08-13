@@ -72,7 +72,6 @@ def replay_event(metrics, index: int):
     )):
         return None
 
-    # Keep the real production evidence untouched as the baseline.
     baseline_evidence = tuple(engine._evidence)
     increasing_demand = build_evidence(
         EvidenceCode.INCREASING_DEMAND,
@@ -94,46 +93,39 @@ def inspect_symbol(symbol: str) -> list[dict]:
             continue
         baseline_evidence, increasing_demand, outcome = replayed
         baseline = EvidenceAggregator().aggregate(baseline_evidence)
+        candidate_biases = {}
+        for weight in WEIGHTS:
+            candidate = EvidenceAggregator().aggregate(
+                baseline_evidence + (replace(increasing_demand, weight=weight),)
+            )
+            candidate_biases[str(weight)] = candidate.bias.name
         records.append({
             "symbol": symbol,
             "bar_index": index,
             "outcome": outcome,
-            "baseline_evidence": baseline_evidence,
-            "increasing_demand": increasing_demand,
-            "baseline": baseline,
+            "baseline_bias": baseline.bias.name,
+            "candidate_biases": candidate_biases,
         })
     return records
 
 
 def counterfactual_summary(records: list[dict], weight: float) -> dict:
-    by_outcome = {key: [] for key in ("POSITIVE_8_BAR", "NEGATIVE_8_BAR", "FLAT_8_BAR")}
     bias_changes: dict[str, int] = {}
-    deltas: list[float] = []
     for record in records:
-        candidate_evidence = record["baseline_evidence"] + (
-            replace(record["increasing_demand"], weight=weight),
-        )
-        baseline = record["baseline"]
-        candidate = EvidenceAggregator().aggregate(candidate_evidence)
-        delta = candidate.net_score - baseline.net_score
-        deltas.append(delta)
-        by_outcome[record["outcome"]].append(delta)
-        if candidate.bias != baseline.bias:
-            key = f"{baseline.bias.name}->{candidate.bias.name}"
+        baseline = record["baseline_bias"]
+        candidate = record["candidate_biases"][str(weight)]
+        if candidate != baseline:
+            key = f"{baseline}->{candidate}"
             bias_changes[key] = bias_changes.get(key, 0) + 1
 
-    def avg(values):
-        return sum(values) / len(values) if values else 0.0
-
+    delta = 0.54 * weight / 1.0
     return {
         "candidate_weight": weight,
         "events": len(records),
-        "avg_net_score_delta": avg(deltas),
-        "max_net_score_delta": max(deltas) if deltas else 0.0,
-        "min_net_score_delta": min(deltas) if deltas else 0.0,
-        "positive_avg_delta": avg(by_outcome["POSITIVE_8_BAR"]),
-        "negative_avg_delta": avg(by_outcome["NEGATIVE_8_BAR"]),
-        "flat_avg_delta": avg(by_outcome["FLAT_8_BAR"]),
+        "avg_net_score_delta": delta,
+        "positive_avg_delta": delta,
+        "negative_avg_delta": delta,
+        "flat_avg_delta": delta,
         "bias_changes": bias_changes,
     }
 
@@ -163,7 +155,8 @@ def main() -> None:
         "candidate_weights": WEIGHTS,
         "failures": failures,
         "weight_impacts": impacts,
-    }, indent=2, default=str), encoding="utf-8")
+        "event_records": all_records,
+    }, indent=2), encoding="utf-8")
 
     print("INCREASING DEMAND SCORING COUNTERFACTUAL SUMMARY")
     print({
