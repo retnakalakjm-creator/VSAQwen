@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +12,7 @@ from data import daily_to_weekly, download_data
 from engine.columns import COL_CLOSE, COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 from evidence.aggregator import EvidenceAggregator
 from evidence.engine import EvidenceEngine
+from evidence.evidence_registry import build_evidence
 from evidence.rules import (
     is_above_average_spread,
     is_bullish_bar,
@@ -65,6 +65,7 @@ def replay_event(metrics, index: int):
     bar = engine._ctx.current
     previous = engine._ctx.previous
 
+    # Exact validated 902-event detector definition.
     if previous is None or not all((
         is_bullish_bar(bar),
         is_high_volume(bar),
@@ -73,16 +74,20 @@ def replay_event(metrics, index: int):
     )):
         return None
 
-    evidence = tuple(engine._evidence)
-    current_event = tuple(
-        item for item in evidence
-        if item.code == EvidenceCode.INCREASING_DEMAND
-        and item.bar_index == index
-    )
-    if not current_event:
-        return None
+    evidence = list(engine._evidence)
 
-    return evidence, outcome_for(metrics, index)
+    # INCREASING_DEMAND is deliberately disabled in production collection.
+    # For the scoring counterfactual, inject one synthetic event at the
+    # validated bar so only its weight is varied.
+    candidate_evidence = build_evidence(
+        EvidenceCode.INCREASING_DEMAND,
+        strength=None,
+        weight=1.00,
+        bar_index=index,
+        week_beginning=str(metrics.iloc[index].iloc[-1]),
+    )
+
+    return tuple(evidence), candidate_evidence, outcome_for(metrics, index)
 
 
 def inspect_symbol(symbol: str) -> list[dict]:
@@ -94,14 +99,17 @@ def inspect_symbol(symbol: str) -> list[dict]:
         replayed = replay_event(metrics, index)
         if replayed is None:
             continue
-        evidence, outcome = replayed
+        evidence, candidate_evidence, outcome = replayed
 
+        # Baseline is the actual current production evidence set without the
+        # deliberately disabled INCREASING_DEMAND event.
         baseline = EvidenceAggregator().aggregate(evidence)
         records.append({
             "symbol": symbol,
             "bar_index": index,
             "outcome": outcome,
             "evidence": evidence,
+            "candidate_evidence": candidate_evidence,
             "baseline": baseline,
         })
 
@@ -115,13 +123,15 @@ def counterfactual_summary(records: list[dict], weight: float) -> dict:
 
     for record in records:
         baseline = record["baseline"]
-        adjusted = tuple(
-            replace(item, weight=weight)
-            if item.code == EvidenceCode.INCREASING_DEMAND
-            and item.bar_index == record["bar_index"]
-            else item
-            for item in record["evidence"]
+        candidate_event = record["candidate_evidence"]
+        adjusted_event = build_evidence(
+            EvidenceCode.INCREASING_DEMAND,
+            strength=candidate_event.strength,
+            weight=weight,
+            bar_index=record["bar_index"],
+            week_beginning=candidate_event.week_beginning,
         )
+        adjusted = tuple(record["evidence"]) + (adjusted_event,)
         candidate = EvidenceAggregator().aggregate(adjusted)
         delta = candidate.net_score - baseline.net_score
         deltas.append(delta)
