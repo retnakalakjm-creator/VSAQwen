@@ -10,113 +10,74 @@ from models import (
 EVIDENCE_LIBRARY = {
 
     EvidenceCode.NO_DEMAND:
-
         EvidenceDefinition(
-
             category=EvidenceCategory.DEMAND,
-
             direction=EvidenceDirection.BEARISH,
-
             strength=0.70,
-
             weight=1.00,
-
             observation="No Demand",
-
             description="No demand detected.",
-
         ),
 
     EvidenceCode.NO_SUPPLY:
-
         EvidenceDefinition(
-
             category=EvidenceCategory.SUPPLY,
-
             direction=EvidenceDirection.BULLISH,
-
             strength=0.70,
-
             weight=1.00,
-
             observation="No Supply",
-
             description="No supply detected.",
-
         ),
-     
+
     EvidenceCode.TEST:
-        
         EvidenceDefinition(
-        
             category=EvidenceCategory.DEMAND,
-        
             direction=EvidenceDirection.BULLISH,
-        
             strength=0.90,
-        
             weight=1.30,
-        
             observation="Successful Test",
-        
             description="Professional test of supply.",
-        
-        ),    
+        ),
 
     EvidenceCode.STOPPING_VOLUME:
-
         EvidenceDefinition(
-
             category=EvidenceCategory.DEMAND,
-
             direction=EvidenceDirection.BULLISH,
-
             strength=0.90,
-
             weight=1.00,
-
             observation="Stopping Volume",
-
             description="Heavy selling effort showing evidence of absorption and possible stopping of the decline.",
-
         ),
 
     EvidenceCode.DEMAND_COMING_IN:
-
         EvidenceDefinition(
-
             category=EvidenceCategory.DEMAND,
-
             direction=EvidenceDirection.BULLISH,
-
             strength=0.90,
-
             weight=1.00,
-
             observation="Demand Coming In",
-
             description="Bullish effort/result evidence suggesting demand is entering the market.",
+        ),
 
+    EvidenceCode.INCREASING_DEMAND:
+        EvidenceDefinition(
+            category=EvidenceCategory.DEMAND,
+            direction=EvidenceDirection.BULLISH,
+            strength=0.90,
+            weight=1.00,
+            observation="Increasing Demand",
+            description="Bullish effort/result evidence showing increasing demand pressure.",
         ),
 
     EvidenceCode.UPTHRUST:
-        
         EvidenceDefinition(
-        
             category=EvidenceCategory.SUPPLY,
-        
             direction=EvidenceDirection.BEARISH,
-        
             strength=0.90,
-        
             weight=1.30,
-        
             observation="Upthrust",
-        
             description="Professional selling after attempted breakout.",
-        
-        ),  
-    
+        ),
 }
 
 
@@ -136,7 +97,7 @@ def build_evidence(
         if strength is None
         else strength
     )
-        
+
     return Evidence(
         code=code,
         category=definition.category,
