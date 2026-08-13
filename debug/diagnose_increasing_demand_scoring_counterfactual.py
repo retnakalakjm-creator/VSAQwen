@@ -72,28 +72,37 @@ def replay_event(metrics, index: int):
     )):
         return None
 
-    evidence = list(engine._evidence)
-    if not any(item.code == EvidenceCode.INCREASING_DEMAND and item.bar_index == index for item in evidence):
-        evidence.append(build_evidence(
-            EvidenceCode.INCREASING_DEMAND,
-            strength=0.90,
-            weight=1.00,
-            bar_index=index,
-            week_beginning=bar.week_beginning,
-        ))
-    return tuple(evidence), outcome_for(metrics, index)
+    # Keep the real production evidence untouched as the baseline.
+    baseline_evidence = tuple(engine._evidence)
+    increasing_demand = build_evidence(
+        EvidenceCode.INCREASING_DEMAND,
+        strength=0.90,
+        weight=1.00,
+        bar_index=index,
+        week_beginning=bar.week_beginning,
+    )
+    return baseline_evidence, increasing_demand, outcome_for(metrics, index)
 
 
 def inspect_symbol(symbol: str) -> list[dict]:
     daily = download_data(symbol)
     metrics = MetricsEngine().calculate(daily_to_weekly(daily))
-    return [
-        {"symbol": symbol, "bar_index": index, "outcome": outcome, "evidence": evidence,
-         "baseline": EvidenceAggregator().aggregate(evidence)}
-        for index in range(MIN_REPLAY_BARS, len(metrics) - HORIZON)
-        if (replayed := replay_event(metrics, index)) is not None
-        for evidence, outcome in (replayed,)
-    ]
+    records: list[dict] = []
+    for index in range(MIN_REPLAY_BARS, len(metrics) - HORIZON):
+        replayed = replay_event(metrics, index)
+        if replayed is None:
+            continue
+        baseline_evidence, increasing_demand, outcome = replayed
+        baseline = EvidenceAggregator().aggregate(baseline_evidence)
+        records.append({
+            "symbol": symbol,
+            "bar_index": index,
+            "outcome": outcome,
+            "baseline_evidence": baseline_evidence,
+            "increasing_demand": increasing_demand,
+            "baseline": baseline,
+        })
+    return records
 
 
 def counterfactual_summary(records: list[dict], weight: float) -> dict:
@@ -101,14 +110,11 @@ def counterfactual_summary(records: list[dict], weight: float) -> dict:
     bias_changes: dict[str, int] = {}
     deltas: list[float] = []
     for record in records:
-        adjusted = tuple(
-            replace(item, weight=weight)
-            if item.code == EvidenceCode.INCREASING_DEMAND and item.bar_index == record["bar_index"]
-            else item
-            for item in record["evidence"]
+        candidate_evidence = record["baseline_evidence"] + (
+            replace(record["increasing_demand"], weight=weight),
         )
         baseline = record["baseline"]
-        candidate = EvidenceAggregator().aggregate(adjusted)
+        candidate = EvidenceAggregator().aggregate(candidate_evidence)
         delta = candidate.net_score - baseline.net_score
         deltas.append(delta)
         by_outcome[record["outcome"]].append(delta)
@@ -143,30 +149,42 @@ def main() -> None:
             except Exception as exc:
                 failures.append({"symbol": symbol, "error": repr(exc)})
 
-    outcomes = {key: sum(x["outcome"] == key for x in all_records)
-                for key in ("POSITIVE_8_BAR", "NEGATIVE_8_BAR", "FLAT_8_BAR")}
+    outcomes = {
+        key: sum(x["outcome"] == key for x in all_records)
+        for key in ("POSITIVE_8_BAR", "NEGATIVE_8_BAR", "FLAT_8_BAR")
+    }
     impacts = [counterfactual_summary(all_records, weight) for weight in WEIGHTS]
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE.write_text(json.dumps({
         "symbols_requested": len(symbols),
         "symbols_with_events": len({x["symbol"] for x in all_records}),
-        "events": len(all_records), "outcomes": outcomes,
-        "candidate_weights": WEIGHTS, "failures": failures, "weight_impacts": impacts,
+        "events": len(all_records),
+        "outcomes": outcomes,
+        "candidate_weights": WEIGHTS,
+        "failures": failures,
+        "weight_impacts": impacts,
     }, indent=2, default=str), encoding="utf-8")
 
     print("INCREASING DEMAND SCORING COUNTERFACTUAL SUMMARY")
-    print({"symbols_requested": len(symbols),
-           "symbols_with_events": len({x["symbol"] for x in all_records}),
-           "events": len(all_records), "outcomes": outcomes,
-           "candidate_weights": WEIGHTS, "failures": len(failures)})
+    print({
+        "symbols_requested": len(symbols),
+        "symbols_with_events": len({x["symbol"] for x in all_records}),
+        "events": len(all_records),
+        "outcomes": outcomes,
+        "candidate_weights": WEIGHTS,
+        "failures": len(failures),
+    })
     print("INCREASING DEMAND SCORING IMPACT BY WEIGHT")
     for item in impacts:
-        print({"candidate_weight": item["candidate_weight"], "events": item["events"],
-               "avg_net_score_delta": round(item["avg_net_score_delta"], 6),
-               "positive_avg_delta": round(item["positive_avg_delta"], 6),
-               "negative_avg_delta": round(item["negative_avg_delta"], 6),
-               "flat_avg_delta": round(item["flat_avg_delta"], 6),
-               "bias_changes": item["bias_changes"]})
+        print({
+            "candidate_weight": item["candidate_weight"],
+            "events": item["events"],
+            "avg_net_score_delta": round(item["avg_net_score_delta"], 6),
+            "positive_avg_delta": round(item["positive_avg_delta"], 6),
+            "negative_avg_delta": round(item["negative_avg_delta"], 6),
+            "flat_avg_delta": round(item["flat_avg_delta"], 6),
+            "bias_changes": item["bias_changes"],
+        })
     print(f"DETAILS: {OUTPUT_FILE.relative_to(ROOT)}")
 
 
