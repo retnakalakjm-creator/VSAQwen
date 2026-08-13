@@ -23,24 +23,30 @@ def main() -> None:
     for symbol in symbols:
         rows = [r for r in records if r["symbol"] == symbol]
         beneficial = harmful = neutral = 0
-        by_outcome = {POSITIVE: 0, NEGATIVE: 0, FLAT: 0}
+        by_outcome = {
+            POSITIVE: {"beneficial": 0, "harmful": 0, "neutral": 0, "no_change": 0},
+            NEGATIVE: {"beneficial": 0, "harmful": 0, "neutral": 0, "no_change": 0},
+            FLAT: {"beneficial": 0, "harmful": 0, "neutral": 0, "no_change": 0},
+        }
         for row in rows:
             outcome = row["outcome"]
             baseline = row["baseline_bias"]
             candidate = row["candidate_biases"][str(WEIGHT)]
             if baseline == candidate:
+                by_outcome[outcome]["no_change"] += 1
                 continue
             if outcome == POSITIVE and candidate > baseline:
                 beneficial += 1
-                by_outcome[POSITIVE] += 1
+                by_outcome[outcome]["beneficial"] += 1
             elif outcome == NEGATIVE and candidate < baseline:
                 beneficial += 1
-                by_outcome[NEGATIVE] += 1
+                by_outcome[outcome]["beneficial"] += 1
             elif outcome == FLAT:
                 neutral += 1
-                by_outcome[FLAT] += 1
+                by_outcome[outcome]["neutral"] += 1
             else:
                 harmful += 1
+                by_outcome[outcome]["harmful"] += 1
 
         results.append({
             "symbol": symbol,

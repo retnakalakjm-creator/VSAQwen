@@ -1,0 +1,191 @@
+{
+  "weights": [
+    {
+      "candidate_weight": 0.25,
+      "events": 902,
+      "beneficial_changes": 14,
+      "harmful_changes": 11,
+      "net_benefit": 3,
+      "benefit_harm_ratio": 1.2727272727272727,
+      "bias_transitions": {
+        "BEARISH->NEUTRAL": 26
+      },
+      "by_outcome": {
+        "POSITIVE_8_BAR": {
+          "beneficial": 14,
+          "harmful": 0,
+          "neutral": 0,
+          "no_change": 450
+        },
+        "NEGATIVE_8_BAR": {
+          "beneficial": 0,
+          "harmful": 11,
+          "neutral": 0,
+          "no_change": 292
+        },
+        "FLAT_8_BAR": {
+          "beneficial": 0,
+          "harmful": 0,
+          "neutral": 1,
+          "no_change": 134
+        }
+      }
+    },
+    {
+      "candidate_weight": 0.4,
+      "events": 902,
+      "beneficial_changes": 19,
+      "harmful_changes": 14,
+      "net_benefit": 5,
+      "benefit_harm_ratio": 1.3571428571428572,
+      "bias_transitions": {
+        "BEARISH->NEUTRAL": 37
+      },
+      "by_outcome": {
+        "POSITIVE_8_BAR": {
+          "beneficial": 19,
+          "harmful": 0,
+          "neutral": 0,
+          "no_change": 445
+        },
+        "NEGATIVE_8_BAR": {
+          "beneficial": 0,
+          "harmful": 14,
+          "neutral": 0,
+          "no_change": 289
+        },
+        "FLAT_8_BAR": {
+          "beneficial": 0,
+          "harmful": 0,
+          "neutral": 4,
+          "no_change": 131
+        }
+      }
+    },
+    {
+      "candidate_weight": 0.6,
+      "events": 902,
+      "beneficial_changes": 22,
+      "harmful_changes": 14,
+      "net_benefit": 8,
+      "benefit_harm_ratio": 1.5714285714285714,
+      "bias_transitions": {
+        "BEARISH->NEUTRAL": 41
+      },
+      "by_outcome": {
+        "POSITIVE_8_BAR": {
+          "beneficial": 22,
+          "harmful": 0,
+          "neutral": 0,
+          "no_change": 442
+        },
+        "NEGATIVE_8_BAR": {
+          "beneficial": 0,
+          "harmful": 14,
+          "neutral": 0,
+          "no_change": 289
+        },
+        "FLAT_8_BAR": {
+          "beneficial": 0,
+          "harmful": 0,
+          "neutral": 5,
+          "no_change": 130
+        }
+      }
+    },
+    {
+      "candidate_weight": 0.75,
+      "events": 902,
+      "beneficial_changes": 23,
+      "harmful_changes": 15,
+      "net_benefit": 8,
+      "benefit_harm_ratio": 1.5333333333333334,
+      "bias_transitions": {
+        "BEARISH->NEUTRAL": 46
+      },
+      "by_outcome": {
+        "POSITIVE_8_BAR": {
+          "beneficial": 23,
+          "harmful": 0,
+          "neutral": 0,
+          "no_change": 441
+        },
+        "NEGATIVE_8_BAR": {
+          "beneficial": 0,
+          "harmful": 15,
+          "neutral": 0,
+          "no_change": 288
+        },
+        "FLAT_8_BAR": {
+          "beneficial": 0,
+          "harmful": 0,
+          "neutral": 8,
+          "no_change": 127
+        }
+      }
+    },
+    {
+      "candidate_weight": 0.85,
+      "events": 902,
+      "beneficial_changes": 26,
+      "harmful_changes": 15,
+      "net_benefit": 11,
+      "benefit_harm_ratio": 1.7333333333333334,
+      "bias_transitions": {
+        "BEARISH->NEUTRAL": 49
+      },
+      "by_outcome": {
+        "POSITIVE_8_BAR": {
+          "beneficial": 26,
+          "harmful": 0,
+          "neutral": 0,
+          "no_change": 438
+        },
+        "NEGATIVE_8_BAR": {
+          "beneficial": 0,
+          "harmful": 15,
+          "neutral": 0,
+          "no_change": 288
+        },
+        "FLAT_8_BAR": {
+          "beneficial": 0,
+          "harmful": 0,
+          "neutral": 8,
+          "no_change": 127
+        }
+      }
+    },
+    {
+      "candidate_weight": 1.0,
+      "events": 902,
+      "beneficial_changes": 29,
+      "harmful_changes": 20,
+      "net_benefit": 9,
+      "benefit_harm_ratio": 1.45,
+      "bias_transitions": {
+        "NEUTRAL->BULLISH": 1,
+        "BEARISH->NEUTRAL": 60
+      },
+      "by_outcome": {
+        "POSITIVE_8_BAR": {
+          "beneficial": 29,
+          "harmful": 0,
+          "neutral": 0,
+          "no_change": 435
+        },
+        "NEGATIVE_8_BAR": {
+          "beneficial": 0,
+          "harmful": 20,
+          "neutral": 0,
+          "no_change": 283
+        },
+        "FLAT_8_BAR": {
+          "beneficial": 0,
+          "harmful": 0,
+          "neutral": 12,
+          "no_change": 123
+        }
+      }
+    }
+  ]
+}

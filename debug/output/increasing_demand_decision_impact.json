@@ -1,0 +1,76 @@
+{
+  "symbols_requested": 8,
+  "symbols_with_events": 8,
+  "events": 902,
+  "outcomes": {
+    "POSITIVE_8_BAR": 464,
+    "NEGATIVE_8_BAR": 303,
+    "FLAT_8_BAR": 135
+  },
+  "candidate_weights": [
+    0.25,
+    0.4,
+    0.6,
+    0.75,
+    0.85,
+    1.0
+  ],
+  "failures": [],
+  "weight_impacts": [
+    {
+      "candidate_weight": 0.25,
+      "events": 902,
+      "decision_changes": 26,
+      "bias_changes": {
+        "BEARISH->NEUTRAL": 26
+      },
+      "note": "Outcome-level decision attribution requires the point-in-time baseline/counterfactual records; this summary reports validated bias transitions only."
+    },
+    {
+      "candidate_weight": 0.4,
+      "events": 902,
+      "decision_changes": 37,
+      "bias_changes": {
+        "BEARISH->NEUTRAL": 37
+      },
+      "note": "Outcome-level decision attribution requires the point-in-time baseline/counterfactual records; this summary reports validated bias transitions only."
+    },
+    {
+      "candidate_weight": 0.6,
+      "events": 902,
+      "decision_changes": 41,
+      "bias_changes": {
+        "BEARISH->NEUTRAL": 41
+      },
+      "note": "Outcome-level decision attribution requires the point-in-time baseline/counterfactual records; this summary reports validated bias transitions only."
+    },
+    {
+      "candidate_weight": 0.75,
+      "events": 902,
+      "decision_changes": 46,
+      "bias_changes": {
+        "BEARISH->NEUTRAL": 46
+      },
+      "note": "Outcome-level decision attribution requires the point-in-time baseline/counterfactual records; this summary reports validated bias transitions only."
+    },
+    {
+      "candidate_weight": 0.85,
+      "events": 902,
+      "decision_changes": 49,
+      "bias_changes": {
+        "BEARISH->NEUTRAL": 49
+      },
+      "note": "Outcome-level decision attribution requires the point-in-time baseline/counterfactual records; this summary reports validated bias transitions only."
+    },
+    {
+      "candidate_weight": 1.0,
+      "events": 902,
+      "decision_changes": 61,
+      "bias_changes": {
+        "NEUTRAL->BULLISH": 1,
+        "BEARISH->NEUTRAL": 60
+      },
+      "note": "Outcome-level decision attribution requires the point-in-time baseline/counterfactual records; this summary reports validated bias transitions only."
+    }
+  ]
+}
