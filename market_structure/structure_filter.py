@@ -25,32 +25,38 @@ class StructureFilter:
     ) -> list[StructuralSwing]:
 
         self._metrics = metrics
-        structural: list[StructuralSwing] = []        
+        structural: list[StructuralSwing] = []
         previous: Swing | None = None
 
         for index, current in enumerate(swings):
+
+            # A first confirmed swing has no previous swing, so its
+            # amplitude-based professional metrics are undefined.
+            # It cannot be structurally scored yet.
+            if index == 0:
+                previous = current
+                continue
 
             history = SwingHistoryAnalyzer(
                 swings=tuple(swings),
                 current_index=index,
             )
 
-            evaluation  = ProfessionalScorer().score(
+            evaluation = ProfessionalScorer().score(
                 history,
                 metrics,
             )
 
-
-            #testing            
+            # testing
             # if evaluation.professional.overall >= 0.70:
             #     print_professional_score(
             #         history.current(),
             #         evaluation
-            #     )    
-            #testing
-            
-            grade = self._grade_swing(evaluation.professional.overall)     
-                  
+            #     )
+            # testing
+
+            grade = self._grade_swing(evaluation.professional.overall)
+
             structural_swing = StructuralSwing(
                 swing=current,
                 evaluation=evaluation,
@@ -58,19 +64,12 @@ class StructureFilter:
             )
 
             if self._is_structural(evaluation.professional.overall):
-                
-                # print(
-                #     current.bar_index,
-                #     evaluation.professional.overall,
-                # )
-               
                 structural.append(
                     structural_swing,
                 )
             previous = current
-        return structural            
 
-    
+        return structural
 
     def _grade_swing(
         self,
@@ -83,5 +82,5 @@ class StructureFilter:
         self,
         score: float,
     ) -> bool:
-        
+
         return score >= config.MIN_STRUCTURE_SCORE

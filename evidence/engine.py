@@ -29,7 +29,7 @@ from evidence.weight import WeightCalculator
 from market_structure.progression import determine_structural_pattern
 from market_structure.vsa_context import build_vsa_context
 
-
+from evidence.spring import collect_spring
 from  .supply import collect_supply
 from  .trend_context import collect_trend
 from  .effort import collect_effort
@@ -115,6 +115,8 @@ class EvidenceEngine:
         self._collect_supply()
         
         self._collect_demand()
+        
+        self._collect_spring()
         
         # self._collect_demand()
         # self._collect_no_demand()
@@ -458,7 +460,16 @@ class EvidenceEngine:
     #)
           
     
-    
+    def _collect_spring(self) -> None:
+        assert self._ctx is not None
+        assert self._metrics is not None
+
+        self._evidence.extend(
+            collect_spring(
+                ctx=self._ctx,
+                metrics=self._metrics,
+            )
+        )
 
     def _collect_structural_progression(
         self,
