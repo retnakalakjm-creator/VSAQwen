@@ -1,12 +1,13 @@
 """Replay Spring through the production EvidenceEngine path.
 
-The diagnostic intentionally exercises EvidenceEngine.collect() rather than
-calling the Spring collector directly. It also exposes the VSA measurements
-behind each emitted Spring so production events can be audited.
+The diagnostic exercises EvidenceEngine.collect() for production evidence.
+A research-only Spring prefilter reduces the number of expensive production
+replays; the EvidenceEngine itself still receives only point-in-time data.
 """
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,7 +17,9 @@ if str(ROOT) not in sys.path:
 from data import daily_to_weekly, download_data
 from engine.columns import COL_CLOSE, COL_WEEK
 from evidence.engine import EvidenceEngine
-from evidence.spring import detect_spring_candidate, validate_spring
+from evidence.spring import SpringValidationResult, detect_spring_candidate, validate_spring
+from market_structure.structure_filter import StructureFilter
+from market_structure.swing_engine import SwingEngine
 from metrics_engine import MetricsEngine
 from trend import TrendAnalyzer
 
@@ -26,17 +29,48 @@ DEFAULT_SYMBOLS = (
 )
 MIN_REPLAY_BARS = 20
 FORWARD_HORIZON = 8
+_PRODUCTION_LOOKBACK = 7
+_TARGET_TEST_VOLUME_RATIO = 0.75
+_TARGET_PENETRATION_RATIO = 0.50
 
 
 def _code(item) -> str:
     return str(item.code).split(".")[-1].upper()
 
 
+def _is_target_interaction(validation) -> bool:
+    return (
+        validation.confirmation.result is SpringValidationResult.CONFIRMED
+        and validation.test.result is SpringValidationResult.TESTED
+        and validation.test.volume_ratio is not None
+        and validation.test.volume_ratio <= _TARGET_TEST_VOLUME_RATIO
+        and validation.candidate.penetration_ratio <= _TARGET_PENETRATION_RATIO
+    )
+
+
+def _point_in_time_structural_swings(metrics, swings):
+    by_confirmation: dict[int, list] = {}
+    for swing in swings:
+        by_confirmation.setdefault(swing.confirmation_index, []).append(swing)
+
+    confirmed: list = []
+    structural: tuple = ()
+    structure_filter = StructureFilter()
+
+    for bar_index in range(MIN_REPLAY_BARS, len(metrics) - FORWARD_HORIZON):
+        newly_confirmed = by_confirmation.get(bar_index, ())
+        if newly_confirmed:
+            confirmed.extend(newly_confirmed)
+            if len(confirmed) >= 2:
+                prefix = metrics.iloc[: bar_index + 1]
+                structural = tuple(structure_filter.filter(confirmed, prefix))
+        yield bar_index, structural
+
+
 def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
-    """Recover the point-in-time Spring validation details for diagnostics."""
     point_in_time = metrics.iloc[: index + 1]
     structural_swings = tuple(trend.structure.structural_swings)
-    start = max(1, index - 7)
+    start = max(1, index - _PRODUCTION_LOOKBACK)
 
     for candidate_index in range(index - 1, start - 1, -1):
         candidate = detect_spring_candidate(
@@ -50,7 +84,7 @@ def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
         validation = validate_spring(point_in_time, candidate=candidate)
         if validation.confirmation.confirmation_index != index:
             continue
-        if validation.confirmation.result.value != "confirmed":
+        if validation.confirmation.result is not SpringValidationResult.CONFIRMED:
             continue
         if validation.test.test_index != spring_event.test_index:
             continue
@@ -90,19 +124,37 @@ def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
 def inspect_symbol(symbol: str) -> list[dict]:
     daily = download_data(symbol)
     metrics = MetricsEngine().calculate(daily_to_weekly(daily))
+    swings = SwingEngine().calculate(metrics)
     events: list[dict] = []
 
-    # Reuse the same analyzers/engine across replay bars.
+    # Research-only prefilter. This may inspect the completed history solely
+    # to identify possible target bars; no future row is passed to production
+    # EvidenceEngine.collect().
+    candidate_bars: set[int] = set()
+    for index, structural_swings in _point_in_time_structural_swings(metrics, swings):
+        candidate = detect_spring_candidate(
+            metrics,
+            bar_index=index,
+            structural_swings=structural_swings,
+        )
+        if candidate is None:
+            continue
+
+        validation = validate_spring(metrics, candidate=candidate)
+        if validation.confirmation.confirmation_index != index:
+            continue
+        if not _is_target_interaction(validation):
+            continue
+        candidate_bars.add(index)
+
     trend_analyzer = TrendAnalyzer()
     evidence_engine = EvidenceEngine()
 
-    for index in range(MIN_REPLAY_BARS, len(metrics)):
+    for index in sorted(candidate_bars):
         future_index = index + FORWARD_HORIZON
         if future_index >= len(metrics):
-            break
+            continue
 
-        # EvidenceEngine/_collect_spring constrain their own point-in-time views;
-        # avoid an unnecessary DataFrame copy on every replay bar.
         replay = metrics.iloc[: index + 1]
         trend = trend_analyzer.analyze(replay)
         structural_swings = tuple(trend.structure.structural_swings)
@@ -113,7 +165,10 @@ def inspect_symbol(symbol: str) -> list[dict]:
             validation_metrics=replay,
         )
 
-        spring_events = [item for item in result.evidence if _code(item) == "SPRING"]
+        spring_events = tuple(
+            item for item in result.evidence
+            if _code(item) == "SPRING"
+        )
         if not spring_events:
             continue
 
@@ -130,36 +185,41 @@ def inspect_symbol(symbol: str) -> list[dict]:
         )
 
         for spring_event in spring_events:
-            audit = _audit_spring(
-                metrics,
-                index=index,
-                trend=trend,
-                spring_event=spring_event,
-            )
             events.append({
                 "symbol": symbol,
                 "bar_index": index,
                 "week": str(metrics.iloc[index][COL_WEEK]),
                 "outcome": outcome,
                 "forward_return": forward_return,
-                "audit": audit,
+                "audit": _audit_spring(
+                    metrics,
+                    index=index,
+                    trend=trend,
+                    spring_event=spring_event,
+                ),
             })
 
     return events
 
 
 def main() -> None:
+    symbols = tuple(sys.argv[1:]) or DEFAULT_SYMBOLS
     all_events: list[dict] = []
     failures: list[dict] = []
 
-    for symbol in DEFAULT_SYMBOLS:
-        try:
-            events = inspect_symbol(symbol)
-            all_events.extend(events)
-            print({"symbol": symbol, "production_spring_events": len(events)})
-        except Exception as exc:
-            failures.append({"symbol": symbol, "error": repr(exc)})
-            print(f"FAILED {symbol}: {exc!r}")
+    with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as executor:
+        futures = {
+            executor.submit(inspect_symbol, symbol): symbol
+            for symbol in symbols
+        }
+        for future, symbol in futures.items():
+            try:
+                events = future.result()
+                all_events.extend(events)
+                print({"symbol": symbol, "production_spring_events": len(events)})
+            except Exception as exc:
+                failures.append({"symbol": symbol, "error": repr(exc)})
+                print(f"FAILED {symbol}: {exc!r}")
 
     by_outcome = {
         "POSITIVE_8_BAR": sum(e["outcome"] == "POSITIVE_8_BAR" for e in all_events),
@@ -169,7 +229,7 @@ def main() -> None:
 
     print("SPRING PRODUCTION REPLAY SUMMARY")
     print({
-        "symbols_requested": len(DEFAULT_SYMBOLS),
+        "symbols_requested": len(symbols),
         "symbols_with_events": len({e["symbol"] for e in all_events}),
         "production_spring_events": len(all_events),
         "outcome_classes": by_outcome,
