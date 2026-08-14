@@ -36,8 +36,39 @@ def inspect_symbol(symbol: str) -> list[dict]:
         future = float(metrics.iloc[index + FORWARD_HORIZON][COL_CLOSE])
         forward_return = (future - current) / current
         outcome = "POSITIVE_8_BAR" if forward_return > 0.02 else "NEGATIVE_8_BAR" if forward_return < -0.02 else "FLAT_8_BAR"
-        events.append({"symbol": symbol, "bar_index": index, "week": str(metrics.iloc[index][COL_WEEK]), "penetration_ratio": candidate.penetration_ratio, "support": candidate.support, "support_touches": candidate.support_touches, "candidate_volume_ratio": candidate.volume_ratio, "candidate_close_position": candidate.close_position, "test_result": validation.test.result.value, "test_index": validation.test.test_index, "test_volume_ratio": validation.test.volume_ratio, "test_close_position": validation.test.close_position, "confirmation_result": validation.confirmation.result.value, "confirmation_index": validation.confirmation.confirmation_index, "outcome": outcome, "forward_return_8": forward_return})
+        events.append({
+            "symbol": symbol,
+            "bar_index": index,
+            "week": str(metrics.iloc[index][COL_WEEK]),
+            "penetration_ratio": candidate.penetration_ratio,
+            "support_touches": candidate.support_touches,
+            "candidate_volume_ratio": candidate.volume_ratio,
+            "candidate_close_position": candidate.close_position,
+            "test_result": validation.test.result.value,
+            "test_index": validation.test.test_index,
+            "test_volume_ratio": validation.test.volume_ratio,
+            "test_close_position": validation.test.close_position,
+            "confirmation_result": validation.confirmation.result.value,
+            "confirmation_index": validation.confirmation.confirmation_index,
+            "outcome": outcome,
+            "forward_return_8": forward_return,
+        })
     return events
+
+
+def _outcome_counts(rows: list[dict]) -> dict[str, int]:
+    return {
+        "POSITIVE_8_BAR": sum(x["outcome"] == "POSITIVE_8_BAR" for x in rows),
+        "NEGATIVE_8_BAR": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in rows),
+        "FLAT_8_BAR": sum(x["outcome"] == "FLAT_8_BAR" for x in rows),
+    }
+
+
+def _feature_group(rows: list[dict], name: str, predicate) -> dict:
+    selected = [row for row in rows if predicate(row)]
+    counts = _outcome_counts(selected)
+    directional = counts["POSITIVE_8_BAR"] - counts["NEGATIVE_8_BAR"]
+    return {"feature": name, "events": len(selected), **counts, "net_directional": directional}
 
 
 def main() -> None:
@@ -53,12 +84,38 @@ def main() -> None:
                 print({"symbol": symbol, "events": len(events)})
             except Exception as exc:
                 failures.append({"symbol": symbol, "error": repr(exc)})
+
     print("SPRING REPLAY SUMMARY")
-    print({"symbols_requested": len(symbols), "symbols_with_candidates": len({x["symbol"] for x in all_events}), "candidates": len(all_events), "tested": sum(x["test_result"] == SpringValidationResult.TESTED.value for x in all_events), "confirmed": sum(x["confirmation_result"] == SpringValidationResult.CONFIRMED.value for x in all_events), "failed_confirmation": sum(x["confirmation_result"] == SpringValidationResult.FAILED.value for x in all_events), "no_test": sum(x["test_result"] == SpringValidationResult.NO_TEST.value for x in all_events), "outcome_classes": {"POSITIVE_8_BAR": sum(x["outcome"] == "POSITIVE_8_BAR" for x in all_events), "NEGATIVE_8_BAR": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in all_events), "FLAT_8_BAR": sum(x["outcome"] == "FLAT_8_BAR" for x in all_events)}, "failures": failures})
+    print({
+        "symbols_requested": len(symbols),
+        "symbols_with_candidates": len({x["symbol"] for x in all_events}),
+        "candidates": len(all_events),
+        "tested": sum(x["test_result"] == SpringValidationResult.TESTED.value for x in all_events),
+        "confirmed": sum(x["confirmation_result"] == SpringValidationResult.CONFIRMED.value for x in all_events),
+        "failed_confirmation": sum(x["confirmation_result"] == SpringValidationResult.FAILED.value for x in all_events),
+        "no_test": sum(x["test_result"] == SpringValidationResult.NO_TEST.value for x in all_events),
+        "outcome_classes": _outcome_counts(all_events),
+        "failures": failures,
+    })
+
     print("SPRING REPLAY BY SYMBOL")
     for symbol in symbols:
         rows = [x for x in all_events if x["symbol"] == symbol]
-        print({"symbol": symbol, "candidates": len(rows), "tested": sum(x["test_result"] == SpringValidationResult.TESTED.value for x in rows), "confirmed": sum(x["confirmation_result"] == SpringValidationResult.CONFIRMED.value for x in rows), "positive_8_bar": sum(x["outcome"] == "POSITIVE_8_BAR" for x in rows), "negative_8_bar": sum(x["outcome"] == "NEGATIVE_8_BAR" for x in rows), "flat_8_bar": sum(x["outcome"] == "FLAT_8_BAR" for x in rows)})
+        print({"symbol": symbol, "candidates": len(rows), "tested": sum(x["test_result"] == SpringValidationResult.TESTED.value for x in rows), "confirmed": sum(x["confirmation_result"] == SpringValidationResult.CONFIRMED.value for x in rows), **_outcome_counts(rows)})
+
+    print("SPRING FEATURE OUTCOME COMPARISON")
+    feature_groups = [
+        ("TESTED", lambda x: x["test_result"] == SpringValidationResult.TESTED.value),
+        ("CONFIRMED", lambda x: x["confirmation_result"] == SpringValidationResult.CONFIRMED.value),
+        ("NO_TEST", lambda x: x["test_result"] == SpringValidationResult.NO_TEST.value),
+        ("TEST_VOLUME_RATIO<=0.75", lambda x: x["test_volume_ratio"] is not None and x["test_volume_ratio"] <= 0.75),
+        ("TEST_VOLUME_RATIO<=1.00", lambda x: x["test_volume_ratio"] is not None and x["test_volume_ratio"] <= 1.00),
+        ("TEST_CLOSE_POSITION>=3", lambda x: x["test_close_position"] is not None and x["test_close_position"] >= 3),
+        ("PENETRATION<=0.50", lambda x: x["penetration_ratio"] <= 0.50),
+        ("PENETRATION>0.50", lambda x: x["penetration_ratio"] > 0.50),
+    ]
+    for name, predicate in feature_groups:
+        print(_feature_group(all_events, name, predicate))
 
 
 if __name__ == "__main__":
