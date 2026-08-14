@@ -22,7 +22,7 @@ FORWARD_HORIZON = 8
 
 
 def _point_in_time_structural_swings(metrics, swings, symbol: str):
-    """Yield point-in-time structural swings while reporting progress."""
+    """Yield structural swings using only information available at each bar."""
     by_confirmation: dict[int, list] = {}
     for swing in swings:
         by_confirmation.setdefault(swing.confirmation_index, []).append(swing)
@@ -38,11 +38,11 @@ def _point_in_time_structural_swings(metrics, swings, symbol: str):
         newly_confirmed = by_confirmation.get(bar_index, ())
         if newly_confirmed:
             confirmed.extend(newly_confirmed)
-            # The first confirmed swing has no predecessor and therefore cannot
-            # have a valid amplitude. Do not send it into structural scoring.
+            # A first confirmed swing has no previous swing amplitude and
+            # therefore cannot be professionally scored yet.
             if len(confirmed) >= 2:
                 prefix = metrics.iloc[: bar_index + 1]
-                structural = tuple(StructureFilter().filter(confirmed[1:], prefix))
+                structural = tuple(StructureFilter().filter(confirmed, prefix))
 
         progress = int(((bar_index - start + 1) * 100) / total)
         if progress >= next_report:
