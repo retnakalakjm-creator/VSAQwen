@@ -127,30 +127,33 @@ def inspect_symbol(symbol: str) -> list[dict]:
     swings = SwingEngine().calculate(metrics)
     events: list[dict] = []
 
-    # Research-only prefilter. This may inspect the completed history solely
-    # to identify possible target bars; no future row is passed to production
-    # EvidenceEngine.collect().
-    candidate_bars: set[int] = set()
-    for index, structural_swings in _point_in_time_structural_swings(metrics, swings):
+    # Research-only prefilter. This may inspect completed history solely to
+    # identify candidate/confirmation bars. No future row is passed to the
+    # production EvidenceEngine.
+    confirmation_bars: set[int] = set()
+    for candidate_index, structural_swings in _point_in_time_structural_swings(metrics, swings):
         candidate = detect_spring_candidate(
             metrics,
-            bar_index=index,
+            bar_index=candidate_index,
             structural_swings=structural_swings,
         )
         if candidate is None:
             continue
 
         validation = validate_spring(metrics, candidate=candidate)
-        if validation.confirmation.confirmation_index != index:
+        confirmation_index = validation.confirmation.confirmation_index
+        if confirmation_index is None:
+            continue
+        if confirmation_index <= candidate_index:
             continue
         if not _is_target_interaction(validation):
             continue
-        candidate_bars.add(index)
+        confirmation_bars.add(confirmation_index)
 
     trend_analyzer = TrendAnalyzer()
     evidence_engine = EvidenceEngine()
 
-    for index in sorted(candidate_bars):
+    for index in sorted(confirmation_bars):
         future_index = index + FORWARD_HORIZON
         if future_index >= len(metrics):
             continue
