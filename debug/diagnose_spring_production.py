@@ -1,9 +1,8 @@
 """Replay Spring through the production EvidenceEngine path.
 
-Unlike diagnose_spring.py, this diagnostic does not call the Spring detector
-or validator directly. Each point-in-time replay is passed through
-EvidenceEngine.collect(), so the reported Spring events represent the actual
-production evidence path.
+The diagnostic intentionally exercises EvidenceEngine.collect() rather than
+calling the Spring collector directly. It also exposes the VSA measurements
+behind each emitted Spring so production events can be audited.
 """
 from __future__ import annotations
 
@@ -15,9 +14,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from data import daily_to_weekly, download_data
-from evidence.engine import EvidenceEngine
 from engine.columns import COL_CLOSE, COL_WEEK
-from market_structure.swing_engine import SwingEngine
+from evidence.engine import EvidenceEngine
+from evidence.spring import detect_spring_candidate, validate_spring
 from metrics_engine import MetricsEngine
 from trend import TrendAnalyzer
 
@@ -33,20 +32,81 @@ def _code(item) -> str:
     return str(item.code).split(".")[-1].upper()
 
 
+def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
+    """Recover the point-in-time Spring validation details for diagnostics."""
+    point_in_time = metrics.iloc[: index + 1]
+    structural_swings = tuple(trend.structure.structural_swings)
+    start = max(1, index - 7)
+
+    for candidate_index in range(index - 1, start - 1, -1):
+        candidate = detect_spring_candidate(
+            point_in_time,
+            bar_index=candidate_index,
+            structural_swings=structural_swings,
+        )
+        if candidate is None:
+            continue
+
+        validation = validate_spring(point_in_time, candidate=candidate)
+        if validation.confirmation.confirmation_index != index:
+            continue
+        if validation.confirmation.result.value != "confirmed":
+            continue
+        if validation.test.test_index != spring_event.test_index:
+            continue
+
+        test = validation.test
+        return {
+            "candidate_index": candidate.bar_index,
+            "candidate_support": candidate.support,
+            "candidate_penetration_ratio": candidate.penetration_ratio,
+            "candidate_volume_ratio": candidate.volume_ratio,
+            "candidate_close_position": candidate.close_position,
+            "test_index": test.test_index,
+            "test_distance_ratio": test.distance_ratio,
+            "test_penetration_ratio": test.penetration_ratio,
+            "test_volume_ratio": test.volume_ratio,
+            "test_close_position": test.close_position,
+            "confirmation_index": validation.confirmation.confirmation_index,
+            "spring_weight": spring_event.weight,
+        }
+
+    return {
+        "candidate_index": None,
+        "candidate_support": None,
+        "candidate_penetration_ratio": None,
+        "candidate_volume_ratio": None,
+        "candidate_close_position": None,
+        "test_index": spring_event.test_index,
+        "test_distance_ratio": None,
+        "test_penetration_ratio": None,
+        "test_volume_ratio": None,
+        "test_close_position": None,
+        "confirmation_index": spring_event.recovery_index,
+        "spring_weight": spring_event.weight,
+    }
+
+
 def inspect_symbol(symbol: str) -> list[dict]:
     daily = download_data(symbol)
     metrics = MetricsEngine().calculate(daily_to_weekly(daily))
     events: list[dict] = []
+
+    # Reuse the same analyzers/engine across replay bars.
+    trend_analyzer = TrendAnalyzer()
+    evidence_engine = EvidenceEngine()
 
     for index in range(MIN_REPLAY_BARS, len(metrics)):
         future_index = index + FORWARD_HORIZON
         if future_index >= len(metrics):
             break
 
-        replay = metrics.iloc[: index + 1].copy()
-        trend = TrendAnalyzer().analyze(replay)
+        # EvidenceEngine/_collect_spring constrain their own point-in-time views;
+        # avoid an unnecessary DataFrame copy on every replay bar.
+        replay = metrics.iloc[: index + 1]
+        trend = trend_analyzer.analyze(replay)
         structural_swings = tuple(trend.structure.structural_swings)
-        result = EvidenceEngine().collect(
+        result = evidence_engine.collect(
             metrics=replay,
             trend=trend,
             structural_swings=structural_swings,
@@ -68,15 +128,22 @@ def inspect_symbol(symbol: str) -> list[dict]:
             else "NEGATIVE_8_BAR" if forward_return < -0.02
             else "FLAT_8_BAR"
         )
-        events.append({
-            "symbol": symbol,
-            "bar_index": index,
-            "week": str(metrics.iloc[index][COL_WEEK]),
-            "spring_events": len(spring_events),
-            "outcome": outcome,
-            "forward_return": forward_return,
-            "weights": [item.weight for item in spring_events],
-        })
+
+        for spring_event in spring_events:
+            audit = _audit_spring(
+                metrics,
+                index=index,
+                trend=trend,
+                spring_event=spring_event,
+            )
+            events.append({
+                "symbol": symbol,
+                "bar_index": index,
+                "week": str(metrics.iloc[index][COL_WEEK]),
+                "outcome": outcome,
+                "forward_return": forward_return,
+                "audit": audit,
+            })
 
     return events
 
