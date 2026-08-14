@@ -1,4 +1,4 @@
-"""Replay diagnostic for the validation-stage Spring detector."""
+"""Fast point-in-time replay diagnostic for the validation-stage Spring detector."""
 from __future__ import annotations
 
 import sys
@@ -11,31 +11,58 @@ if str(ROOT) not in sys.path:
 
 from data import daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
-from trend import TrendAnalyzer
 from evidence.spring import SpringValidationResult, detect_spring_candidate, validate_spring
 from engine.columns import COL_CLOSE, COL_WEEK
+from market_structure.swing_engine import SwingEngine
+from market_structure.structure_filter import StructureFilter
 
 DEFAULT_SYMBOLS = ("BHARTIARTL.NS", "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "TCS.NS", "SBIN.NS", "LT.NS")
 MIN_REPLAY_BARS = 20
 FORWARD_HORIZON = 8
 
 
+def _point_in_time_structural_swings(metrics, swings):
+    """Return structural swings using only swings confirmed before each bar.
+
+    Swing detection is calculated once. Structure filtering is recalculated only
+    when a new swing becomes confirmed, and always against a metrics prefix.
+    This avoids O(bars * full-history analysis) while preserving point-in-time
+    information boundaries.
+    """
+    by_confirmation: dict[int, list] = {}
+    for swing in swings:
+        by_confirmation.setdefault(swing.confirmation_index, []).append(swing)
+
+    confirmed: list = []
+    structural: tuple = ()
+    for bar_index in range(MIN_REPLAY_BARS, len(metrics) - FORWARD_HORIZON):
+        newly_confirmed = by_confirmation.get(bar_index, ())
+        if newly_confirmed:
+            confirmed.extend(newly_confirmed)
+            prefix = metrics.iloc[: bar_index + 1]
+            structural = tuple(StructureFilter().filter(confirmed, prefix))
+        yield bar_index, structural
+
+
 def inspect_symbol(symbol: str) -> list[dict]:
     daily = download_data(symbol)
     metrics = MetricsEngine().calculate(daily_to_weekly(daily))
+
+    # Expensive swing discovery is performed exactly once per symbol.
+    swings = SwingEngine().calculate(metrics)
     events: list[dict] = []
-    for index in range(MIN_REPLAY_BARS, len(metrics) - FORWARD_HORIZON):
-        replay = metrics.iloc[: index + 1]
-        trend = TrendAnalyzer().analyze(replay)
-        structural_swings = tuple(trend.structure.structural_swings)
+
+    for index, structural_swings in _point_in_time_structural_swings(metrics, swings):
         candidate = detect_spring_candidate(metrics, bar_index=index, structural_swings=structural_swings)
         if candidate is None:
             continue
+
         validation = validate_spring(metrics, candidate=candidate)
         current = float(metrics.iloc[index][COL_CLOSE])
         future = float(metrics.iloc[index + FORWARD_HORIZON][COL_CLOSE])
         forward_return = (future - current) / current
         outcome = "POSITIVE_8_BAR" if forward_return > 0.02 else "NEGATIVE_8_BAR" if forward_return < -0.02 else "FLAT_8_BAR"
+
         events.append({
             "symbol": symbol,
             "bar_index": index,
@@ -53,6 +80,7 @@ def inspect_symbol(symbol: str) -> list[dict]:
             "outcome": outcome,
             "forward_return_8": forward_return,
         })
+
     return events
 
 
@@ -67,14 +95,14 @@ def _outcome_counts(rows: list[dict]) -> dict[str, int]:
 def _feature_group(rows: list[dict], name: str, predicate) -> dict:
     selected = [row for row in rows if predicate(row)]
     counts = _outcome_counts(selected)
-    directional = counts["POSITIVE_8_BAR"] - counts["NEGATIVE_8_BAR"]
-    return {"feature": name, "events": len(selected), **counts, "net_directional": directional}
+    return {"feature": name, "events": len(selected), **counts, "net_directional": counts["POSITIVE_8_BAR"] - counts["NEGATIVE_8_BAR"]}
 
 
 def main() -> None:
     symbols = tuple(sys.argv[1:]) or DEFAULT_SYMBOLS
     all_events: list[dict] = []
     failures: list[dict] = []
+
     with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as executor:
         futures = {executor.submit(inspect_symbol, symbol): symbol for symbol in symbols}
         for future, symbol in futures.items():
