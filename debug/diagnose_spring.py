@@ -38,8 +38,11 @@ def _point_in_time_structural_swings(metrics, swings, symbol: str):
         newly_confirmed = by_confirmation.get(bar_index, ())
         if newly_confirmed:
             confirmed.extend(newly_confirmed)
-            prefix = metrics.iloc[: bar_index + 1]
-            structural = tuple(StructureFilter().filter(confirmed, prefix))
+            # The first confirmed swing has no predecessor and therefore cannot
+            # have a valid amplitude. Do not send it into structural scoring.
+            if len(confirmed) >= 2:
+                prefix = metrics.iloc[: bar_index + 1]
+                structural = tuple(StructureFilter().filter(confirmed[1:], prefix))
 
         progress = int(((bar_index - start + 1) * 100) / total)
         if progress >= next_report:
