@@ -117,6 +117,15 @@ def _feature_group(rows: list[dict], name: str, predicate) -> dict:
     }
 
 
+def _confirmed_low_volume_shallow(row: dict) -> bool:
+    return (
+        row["confirmation_result"] == SpringValidationResult.CONFIRMED.value
+        and row["test_volume_ratio"] is not None
+        and row["test_volume_ratio"] <= 0.75
+        and row["penetration_ratio"] <= 0.50
+    )
+
+
 def _interaction_groups(rows: list[dict]) -> list[dict]:
     """Evaluate combinations of Spring evidence without changing detection logic."""
     tested = lambda x: x["test_result"] == SpringValidationResult.TESTED.value
@@ -137,6 +146,45 @@ def _interaction_groups(rows: list[dict]) -> list[dict]:
         ("CONFIRMED + DEEP_PENETRATION", lambda x: confirmed(x) and deep_penetration(x)),
     ]
     return [_feature_group(rows, name, predicate) for name, predicate in groups]
+
+
+def _symbol_robustness(rows: list[dict], symbols: tuple[str, ...]) -> list[dict]:
+    """Measure the target Spring interaction independently for every symbol."""
+    results = []
+    for symbol in symbols:
+        selected = [x for x in rows if x["symbol"] == symbol and _confirmed_low_volume_shallow(x)]
+        counts = _outcome_counts(selected)
+        positive = counts["POSITIVE_8_BAR"]
+        negative = counts["NEGATIVE_8_BAR"]
+        results.append({
+            "symbol": symbol,
+            "events": len(selected),
+            **counts,
+            "net_directional": positive - negative,
+            "benefit_harm_ratio": round(positive / negative, 3) if negative else None,
+        })
+    return results
+
+
+def _leave_one_out(rows: list[dict], symbols: tuple[str, ...]) -> list[dict]:
+    """Measure whether the target interaction survives removal of each symbol."""
+    results = []
+    for excluded in symbols:
+        selected = [
+            x for x in rows
+            if x["symbol"] != excluded and _confirmed_low_volume_shallow(x)
+        ]
+        counts = _outcome_counts(selected)
+        positive = counts["POSITIVE_8_BAR"]
+        negative = counts["NEGATIVE_8_BAR"]
+        results.append({
+            "excluded_symbol": excluded,
+            "events": len(selected),
+            **counts,
+            "net_directional": positive - negative,
+            "benefit_harm_ratio": round(positive / negative, 3) if negative else None,
+        })
+    return results
 
 
 def main() -> None:
@@ -192,6 +240,14 @@ def main() -> None:
 
     print("SPRING FEATURE INTERACTION OUTCOME COMPARISON")
     for result in _interaction_groups(all_events):
+        print(result)
+
+    print("SPRING TARGET INTERACTION SYMBOL ROBUSTNESS")
+    for result in _symbol_robustness(all_events, symbols):
+        print(result)
+
+    print("SPRING TARGET INTERACTION LEAVE-ONE-SYMBOL-OUT")
+    for result in _leave_one_out(all_events, symbols):
         print(result)
 
 
