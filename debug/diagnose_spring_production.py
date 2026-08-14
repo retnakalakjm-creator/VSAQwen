@@ -1,8 +1,9 @@
 """Replay Spring through the production EvidenceEngine path.
 
 The diagnostic exercises EvidenceEngine.collect() for production evidence.
-A research-only Spring prefilter reduces the number of expensive production
-replays; the EvidenceEngine itself still receives only point-in-time data.
+A research-only prefilter reduces the number of expensive production replays;
+the prefilter uses the same point-in-time TrendAnalyzer path as the original
+production replay, so event selection remains behaviorally comparable.
 """
 from __future__ import annotations
 
@@ -18,8 +19,6 @@ from data import daily_to_weekly, download_data
 from engine.columns import COL_CLOSE, COL_WEEK
 from evidence.engine import EvidenceEngine
 from evidence.spring import SpringValidationResult, detect_spring_candidate, validate_spring
-from market_structure.structure_filter import StructureFilter
-from market_structure.swing_engine import SwingEngine
 from metrics_engine import MetricsEngine
 from trend import TrendAnalyzer
 
@@ -46,25 +45,6 @@ def _is_target_interaction(validation) -> bool:
         and validation.test.volume_ratio <= _TARGET_TEST_VOLUME_RATIO
         and validation.candidate.penetration_ratio <= _TARGET_PENETRATION_RATIO
     )
-
-
-def _point_in_time_structural_swings(metrics, swings):
-    by_confirmation: dict[int, list] = {}
-    for swing in swings:
-        by_confirmation.setdefault(swing.confirmation_index, []).append(swing)
-
-    confirmed: list = []
-    structural: tuple = ()
-    structure_filter = StructureFilter()
-
-    for bar_index in range(MIN_REPLAY_BARS, len(metrics) - FORWARD_HORIZON):
-        newly_confirmed = by_confirmation.get(bar_index, ())
-        if newly_confirmed:
-            confirmed.extend(newly_confirmed)
-            if len(confirmed) >= 2:
-                prefix = metrics.iloc[: bar_index + 1]
-                structural = tuple(structure_filter.filter(confirmed, prefix))
-        yield bar_index, structural
 
 
 def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
@@ -124,43 +104,48 @@ def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
 def inspect_symbol(symbol: str) -> list[dict]:
     daily = download_data(symbol)
     metrics = MetricsEngine().calculate(daily_to_weekly(daily))
-    swings = SwingEngine().calculate(metrics)
     events: list[dict] = []
 
-    # Research-only prefilter. This may inspect completed history solely to
-    # identify candidate/confirmation bars. No future row is passed to the
-    # production EvidenceEngine.
-    confirmation_bars: set[int] = set()
-    for candidate_index, structural_swings in _point_in_time_structural_swings(metrics, swings):
-        candidate = detect_spring_candidate(
-            metrics,
-            bar_index=candidate_index,
-            structural_swings=structural_swings,
-        )
-        if candidate is None:
-            continue
-
-        validation = validate_spring(metrics, candidate=candidate)
-        confirmation_index = validation.confirmation.confirmation_index
-        if confirmation_index is None:
-            continue
-        if confirmation_index <= candidate_index:
-            continue
-        if not _is_target_interaction(validation):
-            continue
-        confirmation_bars.add(confirmation_index)
-
+    # Preserve the original production replay's TrendAnalyzer point-in-time
+    # behavior. Only the expensive EvidenceEngine call is filtered out for
+    # bars that cannot produce the validated Spring interaction.
     trend_analyzer = TrendAnalyzer()
-    evidence_engine = EvidenceEngine()
+    target_bars: list[tuple[int, object, tuple]] = []
 
-    for index in sorted(confirmation_bars):
+    for index in range(MIN_REPLAY_BARS, len(metrics)):
         future_index = index + FORWARD_HORIZON
         if future_index >= len(metrics):
-            continue
+            break
 
         replay = metrics.iloc[: index + 1]
         trend = trend_analyzer.analyze(replay)
         structural_swings = tuple(trend.structure.structural_swings)
+
+        target = False
+        for candidate_index in range(index - 1, max(1, index - _PRODUCTION_LOOKBACK) - 1, -1):
+            candidate = detect_spring_candidate(
+                replay,
+                bar_index=candidate_index,
+                structural_swings=structural_swings,
+            )
+            if candidate is None:
+                continue
+
+            validation = validate_spring(replay, candidate=candidate)
+            confirmation_index = validation.confirmation.confirmation_index
+            if confirmation_index != index:
+                continue
+            if _is_target_interaction(validation):
+                target = True
+                break
+
+        if target:
+            target_bars.append((index, trend, structural_swings))
+
+    evidence_engine = EvidenceEngine()
+
+    for index, trend, structural_swings in target_bars:
+        replay = metrics.iloc[: index + 1]
         result = evidence_engine.collect(
             metrics=replay,
             trend=trend,
@@ -176,7 +161,7 @@ def inspect_symbol(symbol: str) -> list[dict]:
             continue
 
         current = float(metrics.iloc[index][COL_CLOSE])
-        future = float(metrics.iloc[future_index][COL_CLOSE])
+        future = float(metrics.iloc[index + FORWARD_HORIZON][COL_CLOSE])
         if current != current or future != future or current == 0.0:
             continue
 
