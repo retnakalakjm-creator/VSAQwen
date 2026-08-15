@@ -102,7 +102,7 @@
 │   ├── __init__.py                      # Evidence package initializer.
 │   ├── aggregator.py                    # Evidence aggregation and event-level contribution logic.
 │   ├── campaign.py                      # Campaign detection/support.
-│   ├── demand.py                        # Demand-side evidence collection, including Stopping Volume, Test, Shakeout, and No Supply.
+│   ├── demand.py                        #  Demand-side evidence collection, including Stopping Volume, Test, Shakeout, and No Supply.
 │   ├── effort.py                        # Effort-vs-result evidence collection.
 │   ├── engine.py                        # Main EvidenceEngine orchestration and evidence context creation.
 │   ├── evidence_registry.py             # Evidence construction/registry mapping.

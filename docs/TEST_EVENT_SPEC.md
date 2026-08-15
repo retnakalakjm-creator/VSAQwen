@@ -87,10 +87,25 @@ Those conclusions belong to downstream contextual qualification and persistence 
 
 ## Production status
 
-`TEST` remains disabled in `collect_demand()`.
+`TEST` has passed the current validation gates and is approved for production integration.
 
-No production threshold, weight, qualification rule, or scanner actionability has been changed as a result of this audit.
+Validated point-in-time population:
+
+- 47 TEST events across 8 symbols.
+- 27 positive 8-bar outcomes.
+- 14 negative 8-bar outcomes.
+- 6 flat outcomes.
+- 41 decisive outcomes.
+- 65.85% positive decisive rate.
+- Leave-one-symbol-out positive decisive rate: 62.86%–69.44%.
+- Semantic audit: 47/47 low-effort probes with meaningful selling context.
+- 0 tested persistent-downtrend contradictions.
+- Interaction audit: 4 same-bar NO_SUPPLY overlaps and 10 nearby conflicts; no hard conflict gate was justified.
+
+TEST remains a contextual confirmation event and must not independently imply demand dominance, accumulation, or a trade entry.
 
 ## Enablement requirement
 
-Before enabling TEST, its historical detector population must be shown to have useful follow-through and acceptable contradiction behavior across a broader sample. The production change should be limited to semantics already supported by the audit; it must not introduce a textbook checklist or future-response leakage.
+Before production scoring or actionability is changed, the production integration must reproduce the validated 47-event point-in-time population and pass focused interaction/regression tests.
+
+No future-response information may be used when determining whether TEST emits.

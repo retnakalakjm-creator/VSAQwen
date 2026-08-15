@@ -242,14 +242,16 @@ No single supporting factor is promoted to a mandatory textbook gate on the basi
 
 ### TEST scoring decision
 
-The audit also established that TEST currently has **no production scoring weight**. An audit-only weight sweep from `0.25` through `1.0` produced no useful separation between hold/failure groups, so no numeric weight is justified at this stage.
+<!-- The audit also established that TEST currently has **no production scoring weight**. An audit-only weight sweep from `0.25` through `1.0` produced no useful separation between hold/failure groups, so no numeric weight is justified at this stage. -->
 
 Therefore:
 
 ```text
-Detection        ACTIVE
-Scoring weight   0
-Qualification    NOT standalone
-Contextual use   YES
-Actionability    NOT standalone
+Status: Production
+Side: Demand / Bullish
+Role: Primary confirmation event
+Weight: existing validated weight
+Point-in-time validation: 47 events
+Positive decisive rate: 65.85%
+Robustness: 62.86%–69.44% leave-one-out
 ```
