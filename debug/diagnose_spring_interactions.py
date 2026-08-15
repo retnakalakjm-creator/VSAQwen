@@ -1,7 +1,7 @@
 """Focused audit of VSA evidence surrounding verified production Springs.
 
 This diagnostic does not modify production logic. It replays only the 13
-already-verified production Spring bars and inspects same-bar and recent
+already-verified production Spring bars and inspects same-bar and pre-Spring
 supporting/conflicting evidence from EvidenceEngine.
 """
 from __future__ import annotations
@@ -33,15 +33,15 @@ PRODUCTION_SPRINGS = {
 
 BULLISH_CODES = {
     "STOPPING_VOLUME", "DEMAND_COMING_IN", "INCREASING_DEMAND",
-    "HIDDEN_DEMAND", "DEMAND_DRYING_UP", "NO_SUPPLY",
-    "TEST", "SPRING", "SHAKEOUT", "ACCUMULATION", "REACCUMULATION",
-    "MARKUP", "STRONG_UPTREND", "WEAK_UPTREND",
+    "HIDDEN_DEMAND", "DEMAND_DRYING_UP", "NO_SUPPLY", "TEST",
+    "SHAKEOUT", "ACCUMULATION", "REACCUMULATION", "MARKUP",
+    "STRONG_UPTREND", "WEAK_UPTREND",
 }
 
 BEARISH_CODES = {
     "BUYING_CLIMAX", "SUPPLY_COMING_IN", "INCREASING_SUPPLY",
-    "HIDDEN_SUPPLY", "SUPPLY_DRYING_UP", "NO_DEMAND",
-    "UPTHRUST", "DISTRIBUTION", "REDISTRIBUTION", "MARKDOWN",
+    "HIDDEN_SUPPLY", "SUPPLY_DRYING_UP", "NO_DEMAND", "UPTHRUST",
+    "DISTRIBUTION", "REDISTRIBUTION", "MARKDOWN",
     "STRONG_DOWNTREND", "WEAK_DOWNTREND",
 }
 
@@ -75,18 +75,34 @@ def inspect_symbol(symbol: str, target_bars: tuple[int, ...]) -> list[dict]:
             item for item in result.evidence
             if index - RECENT_WINDOW <= item.bar_index <= index
         )
+        pre_spring = tuple(item for item in recent if item.bar_index < index)
         same_bar = tuple(item for item in recent if item.bar_index == index)
 
         spring = tuple(item for item in same_bar if code_name(item) == "SPRING")
-        bullish_same = tuple(item for item in same_bar if code_name(item) in BULLISH_CODES and code_name(item) != "SPRING")
-        bearish_same = tuple(item for item in same_bar if code_name(item) in BEARISH_CODES)
+        bullish_same = tuple(
+            item for item in same_bar
+            if code_name(item) in BULLISH_CODES
+        )
+        bearish_same = tuple(
+            item for item in same_bar
+            if code_name(item) in BEARISH_CODES
+        )
+        bullish_pre = tuple(
+            item for item in pre_spring
+            if code_name(item) in BULLISH_CODES
+        )
+        bearish_pre = tuple(
+            item for item in pre_spring
+            if code_name(item) in BEARISH_CODES
+        )
 
         current = float(metrics.iloc[index][COL_CLOSE])
         future = float(metrics.iloc[index + FORWARD_HORIZON][COL_CLOSE])
         forward_return = (future - current) / current if current else 0.0
         outcome = (
             "POSITIVE_8_BAR" if forward_return > 0.02
-            else "NEGATIVE_8_BAR" if forward_return < -0.02
+            else "NEGATIVE_8_BAR"
+            if forward_return < -0.02
             else "FLAT_8_BAR"
         )
 
@@ -97,10 +113,10 @@ def inspect_symbol(symbol: str, target_bars: tuple[int, ...]) -> list[dict]:
             "outcome": outcome,
             "forward_return_8": forward_return,
             "spring_count": len(spring),
-            "same_bar_bullish": [code_name(x) for x in bullish_same],
+            "same_bar_bullish": [code_name(x) for x in bullish_same if code_name(x) != "SPRING"],
             "same_bar_bearish": [code_name(x) for x in bearish_same],
-            "recent_bullish": [code_name(x) for x in recent if code_name(x) in BULLISH_CODES],
-            "recent_bearish": [code_name(x) for x in recent if code_name(x) in BEARISH_CODES],
+            "pre_spring_bullish": [code_name(x) for x in bullish_pre],
+            "pre_spring_bearish": [code_name(x) for x in bearish_pre],
             "all_recent": [
                 {"bar_index": x.bar_index, "code": code_name(x), "weight": x.weight}
                 for x in recent
@@ -123,9 +139,10 @@ def main() -> None:
     interaction_groups = {
         "SPRING + SAME_BAR_BULLISH": lambda r: bool(r["same_bar_bullish"]),
         "SPRING + SAME_BAR_BEARISH": lambda r: bool(r["same_bar_bearish"]),
-        "SPRING + RECENT_BULLISH": lambda r: bool(r["recent_bullish"]),
-        "SPRING + RECENT_BEARISH": lambda r: bool(r["recent_bearish"]),
-        "SPRING + NO_CONFLICT_SAME_BAR": lambda r: not r["same_bar_bearish"],
+        "SPRING + PRE_SPRING_BULLISH": lambda r: bool(r["pre_spring_bullish"]),
+        "SPRING + PRE_SPRING_BEARISH": lambda r: bool(r["pre_spring_bearish"]),
+        "SPRING + NO_PRE_SPRING_CONFLICT": lambda r: not r["pre_spring_bearish"],
+        "SPRING + NO_SAME_BAR_CONFLICT": lambda r: not r["same_bar_bearish"],
     }
 
     print("SPRING INTERACTION AUDIT SUMMARY")
