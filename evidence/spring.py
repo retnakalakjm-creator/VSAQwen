@@ -1,7 +1,9 @@
 """Point-in-time Spring detection and validation.
 
 Spring is treated as a structural Wyckoff event, not a candlestick pattern.
-This module is validation-stage only; EvidenceEngine does not collect it yet.
+The production collector emits evidence only when the validated interaction
+is present on the current bar: confirmed Spring + low-volume test + shallow
+penetration.
 """
 from __future__ import annotations
 
@@ -11,7 +13,8 @@ from enum import StrEnum
 import pandas as pd
 
 from engine.columns import COL_CLOSE, COL_CLOSE_POSITION, COL_LOW, COL_SPREAD, COL_VOLUME
-from models import StructuralSwing, SwingType
+from evidence.evidence_registry import EVIDENCE_LIBRARY
+from models import BackgroundContext, StructuralSwing, SwingType, Evidence, EvidenceCode
 
 _MIN_SUPPORT_TOUCHES = 2
 _SUPPORT_TOLERANCE_SPREADS = 1.50
@@ -23,6 +26,10 @@ _TEST_MAX_PENETRATION_SPREADS = 0.50
 _TEST_MAX_VOLUME_RATIO = 1.00
 _TEST_MIN_CLOSE_POSITION = 2
 _CONFIRMATION_LOOKAHEAD = 3
+_PRODUCTION_CANDIDATE_LOOKBACK = _CONFIRMATION_LOOKAHEAD + 4
+_TARGET_TEST_VOLUME_RATIO = 0.75
+_TARGET_PENETRATION_RATIO = 0.50
+_CALIBRATED_WEIGHT = 0.75
 
 
 class SpringValidationResult(StrEnum):
@@ -114,8 +121,7 @@ def detect_spring_candidate(
     penetration_ratio = (support - low) / spread
     if not _MIN_PENETRATION_SPREADS <= penetration_ratio <= _MAX_PENETRATION_SPREADS:
         return None
-    recovery = close >= support - spread * _RECOVERY_CLOSE_TOLERANCE_SPREADS
-    if not recovery:
+    if close < support - spread * _RECOVERY_CLOSE_TOLERANCE_SPREADS:
         return None
     volume = float(row[COL_VOLUME])
     previous_volume = float(previous[COL_VOLUME])
@@ -128,7 +134,7 @@ def detect_spring_candidate(
         volume=volume,
         volume_ratio=volume_ratio,
         close_position=int(row[COL_CLOSE_POSITION]),
-        recovery=recovery,
+        recovery=True,
         support_touches=support_touches,
     )
 
@@ -184,8 +190,59 @@ def validate_spring(metrics: pd.DataFrame, *, candidate: SpringCandidate) -> Spr
     return SpringValidation(candidate, test, confirmation)
 
 
+def collect_spring(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Evidence]:
+    """Emit the validated Spring interaction on the current bar only."""
+    current_index = ctx.current.bar_index
+    if current_index <= 0:
+        return []
+
+    point_in_time = metrics.iloc[: current_index + 1].copy()
+    start = max(1, current_index - _PRODUCTION_CANDIDATE_LOOKBACK)
+
+    for candidate_index in range(current_index - 1, start - 1, -1):
+        candidate = detect_spring_candidate(
+            point_in_time,
+            bar_index=candidate_index,
+            structural_swings=ctx.structural_swings,
+        )
+        if candidate is None:
+            continue
+
+        validation = validate_spring(point_in_time, candidate=candidate)
+        if validation.confirmation.result is not SpringValidationResult.CONFIRMED:
+            continue
+        if validation.confirmation.confirmation_index != current_index:
+            continue
+        if validation.test.result is not SpringValidationResult.TESTED:
+            continue
+        if validation.test.volume_ratio is None or validation.test.volume_ratio > _TARGET_TEST_VOLUME_RATIO:
+            continue
+        if candidate.penetration_ratio > _TARGET_PENETRATION_RATIO:
+            continue
+
+        profile = EVIDENCE_LIBRARY[EvidenceCode.SPRING]
+        return [
+            Evidence(
+                code=profile.code,
+                category=profile.category,
+                direction=profile.direction,
+                strength=profile.strength,
+                quality=1.0,
+                weight=_CALIBRATED_WEIGHT,
+                observation=profile.observation,
+                description=profile.description,
+                bar_index=current_index,
+                week_beginning=ctx.current.week_beginning,
+                test_index=validation.test.test_index,
+                recovery_index=current_index,
+            )
+        ]
+
+    return []
+
+
 __all__ = [
     "SpringCandidate", "SpringConfirmation", "SpringTest", "SpringValidation",
     "SpringValidationResult", "detect_spring_candidate", "validate_spring",
-    "validate_spring_confirmation", "validate_spring_test",
+    "validate_spring_confirmation", "validate_spring_test", "collect_spring",
 ]

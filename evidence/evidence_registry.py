@@ -1,4 +1,3 @@
-
 from models import (
     Evidence,
     EvidenceCode,
@@ -77,6 +76,21 @@ EVIDENCE_LIBRARY = {
             weight=1.30,
             observation="Upthrust",
             description="Professional selling after attempted breakout.",
+        ),
+
+    EvidenceCode.SPRING:
+        EvidenceDefinition(
+            category=EvidenceCategory.DEMAND,
+            direction=EvidenceDirection.BULLISH,
+            strength=0.90,
+            weight=0.75,
+            observation="Spring",
+            description=(
+                "Validated Spring: confirmed rejection of support with a "
+                "low-volume test and shallow penetration. Provisional weight "
+                "0.75 based on point-in-time outcome calibration and "
+                "leave-one-symbol-out robustness."
+            ),
         ),
 }
 
