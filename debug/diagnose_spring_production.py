@@ -1,15 +1,8 @@
 """Replay Spring through the production EvidenceEngine path.
 
-<<<<<<< HEAD
 The diagnostic intentionally exercises EvidenceEngine.collect() rather than
 calling the Spring collector directly. It also exposes the VSA measurements
 behind each emitted Spring so production events can be audited.
-=======
-The diagnostic exercises EvidenceEngine.collect() for production evidence.
-A fast research-stage Spring replay supplies a broad candidate/confirmation
-window, so the expensive production engine is run only where a Spring could
-reasonably occur. Production EvidenceEngine remains the final authority.
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 """
 from __future__ import annotations
 
@@ -24,13 +17,7 @@ if str(ROOT) not in sys.path:
 from data import daily_to_weekly, download_data
 from engine.columns import COL_CLOSE, COL_WEEK
 from evidence.engine import EvidenceEngine
-<<<<<<< HEAD
 from evidence.spring import detect_spring_candidate, validate_spring
-=======
-from evidence.spring import SpringValidationResult, detect_spring_candidate, validate_spring
-from market_structure.structure_filter import StructureFilter
-from market_structure.swing_engine import SwingEngine
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 from metrics_engine import MetricsEngine
 from trend import TrendAnalyzer
 
@@ -40,81 +27,17 @@ DEFAULT_SYMBOLS = (
 )
 MIN_REPLAY_BARS = 20
 FORWARD_HORIZON = 8
-<<<<<<< HEAD
-=======
-_CONFIRMATION_LOOKAHEAD = 3
-_PRODUCTION_LOOKBACK = 7
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 
 
 def _code(item) -> str:
     return str(item.code).split(".")[-1].upper()
 
 
-<<<<<<< HEAD
 def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
     """Recover the point-in-time Spring validation details for diagnostics."""
     point_in_time = metrics.iloc[: index + 1]
     structural_swings = tuple(trend.structure.structural_swings)
     start = max(1, index - 7)
-=======
-def _point_in_time_structural_swings(metrics, swings):
-    by_confirmation: dict[int, list] = {}
-    for swing in swings:
-        by_confirmation.setdefault(swing.confirmation_index, []).append(swing)
-
-    confirmed: list = []
-    structural: tuple = ()
-    structure_filter = StructureFilter()
-
-    for bar_index in range(MIN_REPLAY_BARS, len(metrics) - FORWARD_HORIZON):
-        newly_confirmed = by_confirmation.get(bar_index, ())
-        if newly_confirmed:
-            confirmed.extend(newly_confirmed)
-            if len(confirmed) >= 2:
-                prefix = metrics.iloc[: bar_index + 1]
-                structural = tuple(structure_filter.filter(confirmed, prefix))
-        yield bar_index, structural
-
-
-def _research_replay_windows(metrics) -> set[int]:
-    """Return broad point-in-time bars worth sending to the production engine."""
-    swings = SwingEngine().calculate(metrics)
-    windows: set[int] = set()
-
-    for candidate_index, structural_swings in _point_in_time_structural_swings(metrics, swings):
-        candidate = detect_spring_candidate(
-            metrics,
-            bar_index=candidate_index,
-            structural_swings=structural_swings,
-        )
-        if candidate is None:
-            continue
-
-        validation = validate_spring(metrics, candidate=candidate)
-        confirmation = validation.confirmation.confirmation_index
-
-        # Broad window: candidate bar through confirmation lookahead.
-        # Production EvidenceEngine still decides whether the actual current
-        # bar qualifies, so this is only a performance prefilter.
-        end = min(
-            len(metrics) - FORWARD_HORIZON,
-            candidate_index + _CONFIRMATION_LOOKAHEAD + 1,
-        )
-        for bar in range(candidate_index, end):
-            windows.add(bar)
-
-        if confirmation is not None:
-            windows.add(confirmation)
-
-    return windows
-
-
-def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
-    point_in_time = metrics.iloc[: index + 1]
-    structural_swings = tuple(trend.structure.structural_swings)
-    start = max(1, index - _PRODUCTION_LOOKBACK)
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 
     for candidate_index in range(index - 1, start - 1, -1):
         candidate = detect_spring_candidate(
@@ -128,11 +51,7 @@ def _audit_spring(metrics, *, index: int, trend, spring_event) -> dict:
         validation = validate_spring(point_in_time, candidate=candidate)
         if validation.confirmation.confirmation_index != index:
             continue
-<<<<<<< HEAD
         if validation.confirmation.result.value != "confirmed":
-=======
-        if validation.confirmation.result is not SpringValidationResult.CONFIRMED:
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
             continue
         if validation.test.test_index != spring_event.test_index:
             continue
@@ -174,7 +93,6 @@ def inspect_symbol(symbol: str) -> list[dict]:
     metrics = MetricsEngine().calculate(daily_to_weekly(daily))
     events: list[dict] = []
 
-<<<<<<< HEAD
     # Reuse the same analyzers/engine across replay bars.
     trend_analyzer = TrendAnalyzer()
     evidence_engine = EvidenceEngine()
@@ -183,18 +101,6 @@ def inspect_symbol(symbol: str) -> list[dict]:
         future_index = index + FORWARD_HORIZON
         if future_index >= len(metrics):
             break
-=======
-    # Fast research prefilter. This avoids running TrendAnalyzer/EvidenceEngine
-    # over the full history. The production engine is still point-in-time.
-    windows = _research_replay_windows(metrics)
-    trend_analyzer = TrendAnalyzer()
-    evidence_engine = EvidenceEngine()
-
-    for index in sorted(windows):
-        future_index = index + FORWARD_HORIZON
-        if future_index >= len(metrics):
-            continue
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 
         replay = metrics.iloc[: index + 1]
         trend = trend_analyzer.analyze(replay)
@@ -206,14 +112,7 @@ def inspect_symbol(symbol: str) -> list[dict]:
             validation_metrics=replay,
         )
 
-<<<<<<< HEAD
         spring_events = [item for item in result.evidence if _code(item) == "SPRING"]
-=======
-        spring_events = tuple(
-            item for item in result.evidence
-            if _code(item) == "SPRING"
-        )
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
         if not spring_events:
             continue
 
@@ -230,41 +129,22 @@ def inspect_symbol(symbol: str) -> list[dict]:
         )
 
         for spring_event in spring_events:
-<<<<<<< HEAD
             audit = _audit_spring(
                 metrics,
                 index=index,
                 trend=trend,
                 spring_event=spring_event,
             )
-=======
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
             events.append({
                 "symbol": symbol,
                 "bar_index": index,
                 "week": str(metrics.iloc[index][COL_WEEK]),
                 "outcome": outcome,
                 "forward_return": forward_return,
-<<<<<<< HEAD
                 "audit": audit,
             })
 
     return events
-=======
-                "audit": _audit_spring(
-                    metrics,
-                    index=index,
-                    trend=trend,
-                    spring_event=spring_event,
-                ),
-            })
-
-    # De-duplicate in case overlapping research windows hit the same event.
-    unique: dict[tuple[str, int], dict] = {}
-    for event in events:
-        unique[(event["symbol"], event["bar_index"])] = event
-    return list(unique.values())
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 
 
 def main() -> None:
@@ -273,14 +153,7 @@ def main() -> None:
     failures: list[dict] = []
 
     with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as executor:
-<<<<<<< HEAD
         futures = {executor.submit(inspect_symbol, symbol): symbol for symbol in symbols}
-=======
-        futures = {
-            executor.submit(inspect_symbol, symbol): symbol
-            for symbol in symbols
-        }
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
         for future, symbol in futures.items():
             try:
                 events = future.result()
