@@ -1,14 +1,9 @@
-"""Point-in-time VSA population audit for the current Stopping Volume rule.
-
-Read-only diagnostic. It does not modify production detectors, weights, or
-EvidenceEngine registration.
-"""
+"""Point-in-time VSA population audit for the current Stopping Volume rule."""
 from __future__ import annotations
 
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from models import Direction
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -17,8 +12,8 @@ if str(ROOT) not in sys.path:
 from data import daily_to_weekly, download_data
 from engine.columns import COL_CLOSE, COL_WEEK
 from evidence.campaign import has_selling_campaign
-from evidence.engine import EvidenceEngine
 from metrics_engine import MetricsEngine
+from models import Direction
 from smart_money.rules.stopping_volume import StoppingVolumeRule
 from trend import TrendAnalyzer
 
@@ -30,53 +25,35 @@ MIN_REPLAY_BARS = 20
 FORWARD_HORIZON = 8
 OUTCOME_THRESHOLD = 0.02
 DECLINE_LOOKBACK = 3
-RECENT_SELLING_LOOKBACK = 3
 
 
 def _audit_context(metrics, index: int):
     replay = metrics.iloc[: index + 1]
     trend = TrendAnalyzer().analyze(replay)
-    structural_swings = tuple(trend.structure.structural_swings)
-
+    from evidence.engine import EvidenceEngine
     engine = EvidenceEngine()
     engine.collect(
         metrics=replay,
         trend=trend,
-        structural_swings=structural_swings,
+        structural_swings=tuple(trend.structure.structural_swings),
         validation_metrics=replay,
     )
     assert engine._ctx is not None
     return replay, engine._ctx
 
 
-def _outcome(forward_return: float | None) -> str:
-    if forward_return is None:
+def _outcome(value: float | None) -> str:
+    if value is None:
         return "INSUFFICIENT_FORWARD_DATA"
-    if forward_return > OUTCOME_THRESHOLD:
+    if value > OUTCOME_THRESHOLD:
         return "POSITIVE_8_BAR"
-    if forward_return < -OUTCOME_THRESHOLD:
+    if value < -OUTCOME_THRESHOLD:
         return "NEGATIVE_8_BAR"
     return "FLAT_8_BAR"
 
 
-def _prior_decline(metrics, index: int) -> bool:
-    earlier = float(metrics.iloc[index - DECLINE_LOOKBACK][COL_CLOSE])
-    last = float(metrics.iloc[index - 1][COL_CLOSE])
-    return earlier > last
-
-
-def _recent_selling_pressure(ctx) -> bool:
-    recent_bars = ctx.bars[-RECENT_SELLING_LOOKBACK:]
-    if not recent_bars:
-        return False
-    down_bars = sum(bar.direction == Direction.DOWN for bar in recent_bars)
-    bearish_close = sum(bar.close_ratio < 0.50 for bar in recent_bars)
-    return down_bars >= 2 and bearish_close >= 1
-
-
 def inspect_symbol(symbol: str) -> list[dict]:
-    daily = download_data(symbol)
-    metrics = MetricsEngine().calculate(daily_to_weekly(daily))
+    metrics = MetricsEngine().calculate(daily_to_weekly(download_data(symbol)))
     rule = StoppingVolumeRule()
     events: list[dict] = []
 
@@ -95,9 +72,15 @@ def inspect_symbol(symbol: str) -> list[dict]:
                 "history": type("History", (), {"has_previous": index > 0})(),
             },
         )()
-
         if not rule._detect(audit_ctx):
             continue
+
+        bar = ctx.current
+        prior_close = float(metrics.iloc[index - DECLINE_LOOKBACK][COL_CLOSE])
+        pre_close = float(metrics.iloc[index - 1][COL_CLOSE])
+        prior_decline = prior_close > pre_close
+        bearish_bar = bar.direction == Direction.DOWN
+        selling_campaign = bool(has_selling_campaign(ctx))
 
         current = float(metrics.iloc[index][COL_CLOSE])
         future = float(metrics.iloc[future_index][COL_CLOSE])
@@ -105,36 +88,33 @@ def inspect_symbol(symbol: str) -> list[dict]:
             continue
 
         forward_return = (future - current) / current
-        events.append({
-            "symbol": symbol,
-            "bar_index": index,
-            "week": str(metrics.iloc[index][COL_WEEK]),
-            "bearish_bar": ctx.current.direction == Direction.DOWN,
-            "prior_decline": _prior_decline(metrics, index),
-            "recent_selling_pressure": _recent_selling_pressure(ctx),
-            "selling_campaign": bool(has_selling_campaign(ctx)),
-            "forward_return": forward_return,
-            "8_bar_class": _outcome(forward_return),
-            "volume_percentile": float(metrics.iloc[index]["volume_percentile"]),
-            "spread_percentile": float(metrics.iloc[index]["spread_percentile"]),
-            "close_ratio": float(metrics.iloc[index]["close_ratio"]),
-        })
-
+        events.append(
+            {
+                "symbol": symbol,
+                "bar_index": index,
+                "week": str(metrics.iloc[index][COL_WEEK]),
+                "bearish_bar": bearish_bar,
+                "prior_decline": prior_decline,
+                "selling_campaign": selling_campaign,
+                "forward_return": forward_return,
+                "8_bar_class": _outcome(forward_return),
+            }
+        )
     return events
 
 
-def _summarize(events: list[dict]) -> dict:
-    positives = sum(e["8_bar_class"] == "POSITIVE_8_BAR" for e in events)
-    negatives = sum(e["8_bar_class"] == "NEGATIVE_8_BAR" for e in events)
+def _summary(events: list[dict]) -> dict:
+    positive = sum(e["8_bar_class"] == "POSITIVE_8_BAR" for e in events)
+    negative = sum(e["8_bar_class"] == "NEGATIVE_8_BAR" for e in events)
     flat = sum(e["8_bar_class"] == "FLAT_8_BAR" for e in events)
-    decisive = positives + negatives
+    decisive = positive + negative
     return {
         "events": len(events),
-        "positive": positives,
-        "negative": negatives,
+        "positive": positive,
+        "negative": negative,
         "flat": flat,
         "decisive": decisive,
-        "positive_decisive_rate": positives / decisive if decisive else None,
+        "positive_decisive_rate": positive / decisive if decisive else None,
     }
 
 
@@ -144,7 +124,7 @@ def main() -> None:
     failures: list[dict] = []
 
     with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as executor:
-        futures = {executor.submit(inspect_symbol, symbol): symbol for symbol in symbols}
+        futures = {executor.submit(inspect_symbol, s): s for s in symbols}
         for future, symbol in futures.items():
             try:
                 events = future.result()
@@ -152,16 +132,15 @@ def main() -> None:
                 print({"symbol": symbol, "current_rule_events": len(events)})
             except Exception as exc:
                 failures.append({"symbol": symbol, "error": repr(exc)})
-                print(f"FAILED {symbol}: {exc!r}")
 
     cohorts = {
         "CURRENT_RULE": all_events,
         "CURRENT_RULE_PLUS_BEARISH_BAR": [e for e in all_events if e["bearish_bar"]],
-        "CURRENT_RULE_PLUS_BEARISH_AND_DECLINE": [
+        "CURRENT_RULE_PLUS_BEARISH_BAR_PLUS_PRIOR_DECLINE": [
             e for e in all_events if e["bearish_bar"] and e["prior_decline"]
         ],
-        "CURRENT_RULE_PLUS_BEARISH_AND_SELLING_PRESSURE": [
-            e for e in all_events if e["bearish_bar"] and e["recent_selling_pressure"]
+        "CURRENT_RULE_PLUS_BEARISH_BAR_PLUS_RECENT_SELLING_PRESSURE": [
+            e for e in all_events if e["bearish_bar"] and e["selling_campaign"]
         ],
     }
 
@@ -170,18 +149,17 @@ def main() -> None:
         "symbols_requested": len(symbols),
         "current_rule_events": len(all_events),
         "failures": failures,
-        "cohorts": {name: _summarize(events) for name, events in cohorts.items()},
+        "decline_lookback": DECLINE_LOOKBACK,
+        "cohorts": {name: _summary(events) for name, events in cohorts.items()},
     })
 
-    print("STOPPING VOLUME VSA POPULATION FLAGS")
+    print("STOPPING VOLUME VSA POPULATION AUDIT FLAGS")
     print({
         "bearish_bar_events": sum(e["bearish_bar"] for e in all_events),
-        "bearish_and_prior_decline_events": sum(
-            e["bearish_bar"] and e["prior_decline"] for e in all_events
-        ),
-        "bearish_and_recent_selling_pressure_events": sum(
-            e["bearish_bar"] and e["recent_selling_pressure"] for e in all_events
-        ),
+        "prior_decline_events": sum(e["prior_decline"] for e in all_events),
+        "selling_campaign_events": sum(e["selling_campaign"] for e in all_events),
+        "bearish_plus_decline_events": sum(e["bearish_bar"] and e["prior_decline"] for e in all_events),
+        "bearish_plus_selling_pressure_events": sum(e["bearish_bar"] and e["selling_campaign"] for e in all_events),
     })
 
 
