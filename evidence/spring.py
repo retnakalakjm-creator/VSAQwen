@@ -1,14 +1,4 @@
-<<<<<<< HEAD
-"""Point-in-time Spring detection and validation.
-
-Spring is treated as a structural Wyckoff event, not a candlestick pattern.
-The production collector emits evidence only when the validated interaction
-is present on the current bar: confirmed Spring + low-volume test + shallow
-penetration.
-"""
-=======
 """Point-in-time Spring detection and validation."""
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,6 +8,7 @@ import pandas as pd
 
 from engine.columns import COL_CLOSE, COL_CLOSE_POSITION, COL_LOW, COL_SPREAD, COL_VOLUME
 from evidence.evidence_registry import EVIDENCE_LIBRARY
+from evidence.supply import _collect_buying_climax, _collect_upthrust
 from models import BackgroundContext, StructuralSwing, SwingType, Evidence, EvidenceCode
 
 _MIN_SUPPORT_TOUCHES = 2
@@ -34,6 +25,11 @@ _PRODUCTION_CANDIDATE_LOOKBACK = _CONFIRMATION_LOOKAHEAD + 4
 _TARGET_TEST_VOLUME_RATIO = 0.75
 _TARGET_PENETRATION_RATIO = 0.50
 _CALIBRATED_WEIGHT = 0.75
+_SAME_BAR_CONFLICT_QUALITY = 0.50
+_SAME_BAR_SPRING_CONFLICTS = frozenset({
+    EvidenceCode.UPTHRUST,
+    EvidenceCode.BUYING_CLIMAX,
+})
 
 
 class SpringValidationResult(StrEnum):
@@ -118,21 +114,7 @@ def detect_spring_candidate(metrics: pd.DataFrame, *, bar_index: int, structural
     volume = float(row[COL_VOLUME])
     previous_volume = float(previous[COL_VOLUME])
     volume_ratio = volume / previous_volume if previous_volume > 0.0 else None
-<<<<<<< HEAD
-    return SpringCandidate(
-        bar_index=bar_index,
-        support=support,
-        penetration_ratio=penetration_ratio,
-        spread=spread,
-        volume=volume,
-        volume_ratio=volume_ratio,
-        close_position=int(row[COL_CLOSE_POSITION]),
-        recovery=True,
-        support_touches=support_touches,
-    )
-=======
     return SpringCandidate(bar_index, support, penetration_ratio, spread, volume, volume_ratio, int(row[COL_CLOSE_POSITION]), True, support_touches)
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 
 
 def validate_spring_test(metrics: pd.DataFrame, candidate: SpringCandidate) -> SpringTest:
@@ -174,15 +156,29 @@ def validate_spring(metrics: pd.DataFrame, *, candidate: SpringCandidate) -> Spr
     return SpringValidation(candidate, test, confirmation)
 
 
+def _adjust_spring_quality_for_conflict(
+    quality: float,
+    conflict_codes: set[EvidenceCode] | frozenset[EvidenceCode],
+) -> float:
+    """Reduce Spring quality for a same-bar strong bearish VSA conflict."""
+    if conflict_codes & _SAME_BAR_SPRING_CONFLICTS:
+        return min(quality, _SAME_BAR_CONFLICT_QUALITY)
+    return quality
+
+
 def collect_spring(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Evidence]:
     """Emit the validated Spring interaction on the current bar only."""
     current_index = ctx.current.bar_index
     if current_index <= 0:
         return []
-<<<<<<< HEAD
-
     point_in_time = metrics.iloc[: current_index + 1].copy()
     start = max(1, current_index - _PRODUCTION_CANDIDATE_LOOKBACK)
+
+    same_bar_supply = (
+        *_collect_buying_climax(ctx),
+        *_collect_upthrust(ctx),
+    )
+    conflict_codes = {item.code for item in same_bar_supply}
 
     for candidate_index in range(current_index - 1, start - 1, -1):
         candidate = detect_spring_candidate(
@@ -192,15 +188,6 @@ def collect_spring(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Eviden
         )
         if candidate is None:
             continue
-
-=======
-    point_in_time = metrics.iloc[: current_index + 1].copy()
-    start = max(1, current_index - _PRODUCTION_CANDIDATE_LOOKBACK)
-    for candidate_index in range(current_index - 1, start - 1, -1):
-        candidate = detect_spring_candidate(point_in_time, bar_index=candidate_index, structural_swings=ctx.structural_swings)
-        if candidate is None:
-            continue
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
         validation = validate_spring(point_in_time, candidate=candidate)
         if validation.confirmation.result is not SpringValidationResult.CONFIRMED:
             continue
@@ -212,42 +199,14 @@ def collect_spring(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Eviden
             continue
         if candidate.penetration_ratio > _TARGET_PENETRATION_RATIO:
             continue
-<<<<<<< HEAD
-
         profile = EVIDENCE_LIBRARY[EvidenceCode.SPRING]
-        return [
-            Evidence(
-                code=profile.code,
-                category=profile.category,
-                direction=profile.direction,
-                strength=profile.strength,
-                quality=1.0,
-                weight=_CALIBRATED_WEIGHT,
-                observation=profile.observation,
-                description=profile.description,
-                bar_index=current_index,
-                week_beginning=ctx.current.week_beginning,
-                test_index=validation.test.test_index,
-                recovery_index=current_index,
-            )
-        ]
-
-    return []
-
-
-__all__ = [
-    "SpringCandidate", "SpringConfirmation", "SpringTest", "SpringValidation",
-    "SpringValidationResult", "detect_spring_candidate", "validate_spring",
-    "validate_spring_confirmation", "validate_spring_test", "collect_spring",
-]
-=======
-        profile = EVIDENCE_LIBRARY[EvidenceCode.SPRING]
+        quality = _adjust_spring_quality_for_conflict(1.0, conflict_codes)
         return [Evidence(
             code=EvidenceCode.SPRING,
             category=profile.category,
             direction=profile.direction,
             strength=profile.strength,
-            quality=1.0,
+            quality=quality,
             weight=_CALIBRATED_WEIGHT,
             observation=profile.observation,
             description=profile.description,
@@ -260,4 +219,3 @@ __all__ = [
 
 
 __all__ = ["SpringCandidate", "SpringConfirmation", "SpringTest", "SpringValidation", "SpringValidationResult", "detect_spring_candidate", "validate_spring", "validate_spring_confirmation", "validate_spring_test", "collect_spring"]
->>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
