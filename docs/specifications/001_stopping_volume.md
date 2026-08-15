@@ -2,9 +2,9 @@
 
 # Stopping Volume
 
-Version: 1.0
+Version: 2.0
 
-Status: Approved
+Status: Production
 
 ---
 
@@ -24,30 +24,28 @@ It is NOT a buy signal.
 Stopping Volume occurs when professional money absorbs
 significant selling.
 
-Typical characteristics
+Typical characteristics:
 
-- Exceptionally high volume
-- Relatively wide spread
-- Close well off the lows
-- Usually appears after weakness
+- significant selling campaign / prior weakness
+- bearish current bar
+- high volume
+- above-average spread
+- close off the low
 
-Professional money cannot buy quietly.
+The key VSA interpretation is effort versus result:
+heavy selling effort is present, but the close shows that
+selling did not fully control the result.
 
 ---
 
 # Wyckoff Interpretation
 
-Stopping Volume represents
+Stopping Volume represents demand entering into a market
+under selling pressure.
 
-Demand overcoming Supply.
-
-Depending on subsequent price action, it may become
-
-- Selling Climax
-- Automatic Rally
-- Secondary Test
-
-Therefore
+Depending on subsequent price action, it may contribute to
+recognition of a Selling Climax, Automatic Rally, Secondary Test,
+or later accumulation evidence.
 
 Stopping Volume alone is NOT confirmation.
 
@@ -55,236 +53,195 @@ It is evidence.
 
 ---
 
-# Professional Interpretation
+# Production Validation
 
-Professional demand has entered the market.
+The production definition was validated using chronological
+point-in-time replay across eight symbols.
 
-Supply may be reducing.
+Validated population:
 
-Further confirmation is required.
+- 59 events
+- 39 positive 8-bar outcomes
+- 14 negative 8-bar outcomes
+- 6 flat outcomes
+- 53 decisive outcomes
+- 73.58% positive decisive rate
+
+Leave-one-symbol-out positive decisive rates remained between
+68.29% and 80.43%, so the result was not dependent on one symbol.
+
+One symbol, RELIANCE.NS, was materially weaker than the rest and
+is intentionally retained in the validation universe rather than
+filtered out.
 
 ---
 
 # Inputs
 
-Version 1 uses only objective measurements.
+Stopping Volume now uses both market context and objective bar
+measurements.
 
-Required metrics
+Required context:
 
-- Volume Percentile
-- Spread Percentile
-- Close Ratio
+- Selling Campaign
 
-No trend.
+Required bar conditions:
 
-No background.
+- Bearish Bar
+- High Volume
+- Above-Average Spread
+- Close Off Low
 
-No Wyckoff phase.
+These five conditions are mandatory.
 
 ---
 
 # Detection Conditions
 
-## Condition 1
+## Condition 1 — Selling Campaign
 
-Professional Activity
+`has_selling_campaign(ctx)` must be true.
 
-Volume Percentile
+The campaign is based on recent weakness using the existing
+campaign engine. It can be established through a combination of:
 
->= STOPPING_VOLUME_MIN_VOLUME_PERCENTILE
+- confirmed downtrend
+- repeated down bars
+- repeated lower closes
+- repeated weak closes
+- structural weakness
+
+The campaign score remains governed by the existing campaign
+configuration. No new campaign threshold was introduced for
+Stopping Volume.
 
 ---
 
-## Condition 2
+## Condition 2 — Bearish Bar
 
-Large Effort
-
-Spread Percentile
-
->= STOPPING_VOLUME_MIN_SPREAD_PERCENTILE
+The current bar must be bearish/down.
 
 ---
 
-## Condition 3
+## Condition 3 — High Volume
 
-Buying Response
+The current bar must have at least the `HIGH` VSA volume class.
 
-Close Ratio
+---
 
->= STOPPING_VOLUME_MIN_CLOSE_RATIO
+## Condition 4 — Above-Average Spread
+
+The current bar spread must be at least `ABOVE_AVERAGE`.
+
+---
+
+## Condition 5 — Close Off Low
+
+The current bar must NOT have a weak/lower close.
+
+This intentionally accepts imperfect real-market closes rather than
+requiring a textbook near-high close.
+
+---
+
+# Confirmations
+
+The following observations are recorded as confirmations and are
+NOT mandatory detection gates:
+
+- Very High Volume
+- Wide Spread
+- Increasing Volume
+- Higher Low
+
+The detector therefore preserves meaningful imperfect real-market
+Stopping Volume observations while retaining stronger confirmations
+for downstream quality/scoring analysis.
 
 ---
 
 # Output
 
-Produces
+Produces:
 
-SmartMoneyEvidence
+`EvidenceCode.STOPPING_VOLUME`
 
-Code
+Category:
 
-STOPPING_VOLUME
+`DEMAND`
 
-Category
+Direction:
 
-DEMAND
+`BULLISH`
 
-Direction
+The evidence registry retains the validated baseline weight:
 
-BULLISH
+`STOPPING_VOLUME = 1.00`
 
-Strength
-
-STRONG
+No production weight optimization was justified by the validation
+work performed so far.
 
 ---
 
 # Confidence
 
-Computed from
+Confidence remains derived from the existing evidence-construction
+pipeline rather than introducing a new outcome-fitted formula.
 
-- Volume Percentile
-- Spread Percentile
-- Close Ratio
-
-Mean of normalized values.
-
----
-
-# Weight
-
-STOPPING_VOLUME_WEIGHT
+The detection gate is semantic VSA evidence; confidence and weight are
+separate downstream dimensions.
 
 ---
 
 # False Positives
 
-Do NOT detect
+Do NOT classify a bar as Stopping Volume solely because it has:
 
-High Volume
+- high/exceptional volume
+- wide spread
+- strong close
 
-+
+without the prior selling-campaign context and bearish current-bar
+requirement.
 
-Weak Close
-
-↓
-
-Likely Selling Climax
-
----
-
-High Volume
-
-+
-
-Narrow Spread
-
-↓
-
-Likely Absorption
-
----
-
-Average Volume
-
-+
-
-Wide Spread
-
-↓
-
-Normal Volatility
+High-volume bullish expansion should not be mislabeled as Stopping
+Volume.
 
 ---
 
 # Unit Tests
 
-Positive
+The detector must verify:
 
-92 Volume
-
-80 Spread
-
-0.82 Close
-
-↓
-
-Detected
+- all five mandatory requirements pass -> evidence emitted
+- each mandatory requirement fails independently -> no evidence
+- confirmation failures do NOT suppress a valid detection
+- Stopping Volume is included by `collect_demand()` in the production
+  EvidenceEngine path
 
 ---
 
-Negative
+# Audit Boundary
 
-60 Volume
+The historical replay used for validation is point-in-time:
+validation decisions at bar `t` use only information available through
+bar `t`.
 
-80 Spread
-
-0.82 Close
-
-↓
-
-Not detected
-
----
-
-Negative
-
-95 Volume
-
-50 Spread
-
-0.82 Close
-
-↓
-
-Not detected
-
----
-
-Negative
-
-95 Volume
-
-80 Spread
-
-0.30 Close
-
-↓
-
-Not detected
-
----
-
-Boundary
-
-Exactly
-
-Volume = Threshold
-
-Spread = Threshold
-
-Close = Threshold
-
-↓
-
-Detected
+Forward 1/2/4/8-bar outcomes are used only for post-event evaluation
+and never for detection.
 
 ---
 
 # Future Enhancements
 
-Version 2
+Potential later work, only after separate validation:
 
-- Downtrend confirmation
-- Weak background
-- Previous selling pressure
+- stronger absorption quality scoring
+- interaction with Spring and Test
+- regime-specific behavior
+- conditional weight calibration
 
-Version 3
-
-- Wyckoff phase
-- Composite Operator activity
-- Nearby Smart Money evidence
-- Spring/Test interaction
+These are not part of the current production detection rule.
 
 ---
 

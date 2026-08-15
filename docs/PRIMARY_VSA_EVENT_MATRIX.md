@@ -23,7 +23,9 @@ Inside `collect_supply()`, these detectors are currently called for every eligib
 - `UPTHRUST`
 - `NO_DEMAND`
 
-Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Selling Climax remains disabled. TEST is production-enabled as contextual evidence and remains non-scoring.
+Inside `collect_demand()`, `STOPPING_VOLUME`, `SHAKEOUT`, `NO_SUPPLY`, and `TEST` are currently active. Selling Climax remains disabled. TEST remains non-scoring.
+
+Stopping Volume is collected point-in-time in `evidence/demand.py::_collect_stopping_volume()` using the validated production semantics described below. Its production weight is `1.00`.
 
 Spring is collected through `evidence/spring.py::collect_spring()` on the current bar only, using point-in-time candidate/test/confirmation validation. The production Spring weight is provisionally fixed at `0.75`.
 
@@ -40,7 +42,7 @@ Spring is collected through `evidence/spring.py::collect_spring()` on the curren
 | `NO_DEMAND` | `evidence/supply.py::_collect_no_demand` | YES | YES | Primary weakness / demand absence | Bearish | Detected in supply collector despite belonging semantically to demand absence. Bullish environment + bullish bar + low volume + narrow spread. |
 | `SHAKEOUT` | `evidence/demand.py::_collect_shakeout` | YES | YES | Primary reversal / demand | Bullish | Selling pressure + bearish bar + wide spread + very-high volume + strong close + lower low, then validated recovery/test. |
 | `NO_SUPPLY` | `evidence/demand.py::_collect_no_supply` | YES | Audit-capable | Primary demand absence | Bullish | Detector exists and is now enabled in `collect_demand()`. |
-| `STOPPING_VOLUME` | Audit-only detector definition | NO | Audit-complete / frozen | Primary demand | Bullish | 59-event audit across 8 symbols. Real-market confirmation groups are supportive but not mandatory. Weight sweep produced no defensible production scoring weight; remains contextual/audit-only. |
+| `STOPPING_VOLUME` | `evidence/demand.py::_collect_stopping_volume` | **YES** | **Production-integrated / validation-complete** | Primary demand | Bullish | Validated point-in-time production definition: selling campaign + bearish bar + high volume + above-average spread + close off low. Confirmations: very-high volume, wide spread, increasing volume, higher low. 59-event replay across 8 symbols; 39 positive, 14 negative, 6 flat; 73.58% positive decisive rate. Weight remains 1.00. |
 | `DEMAND_COMING_IN` | No active production detector identified | NO | Candidate / missing | Primary demand | Bullish | Enum exists; needs explicit detector specification. |
 | `INCREASING_DEMAND` | `EvidenceCode.INCREASING_DEMAND` registry entry | **YES — PROVISIONAL** | Calibration-complete | Primary demand | Bullish | Registered at **weight 0.85** after 902 point-in-time events across 8 symbols. Leave-one-symbol-out validation remained positive for all exclusions; minimum net benefit +6. Detector implementation remains subject to the existing demand collection path. |
 | `HIDDEN_DEMAND` | No active production detector identified | NO | Candidate / missing | Supporting demand | Bullish | Enum exists; needs explicit detector specification. |
@@ -58,16 +60,67 @@ Spring is collected through `evidence/spring.py::collect_spring()` on the curren
 | `STRUCTURAL_PROGRESSION_IMPROVING` | `background/structural_progression.py` | YES | YES | Structural | Bullish | Structural context, not a raw VSA primary event. |
 | `STRUCTURAL_PROGRESSION_WEAKENING` | `background/structural_progression.py` | YES | YES | Structural | Bearish | Structural context, not a raw VSA primary event. |
 
+## Stopping Volume production record
+
+### Frozen semantic definition
+
+> **Stopping Volume is bullish demand evidence produced when meaningful selling pressure is active and the current bearish bar shows heavy effort with an off-low result, indicating possible professional absorption.**
+
+Mandatory detection requirements:
+
+1. Selling Campaign.
+2. Bearish current bar.
+3. High VSA volume class or higher.
+4. Above-average spread.
+5. Close off the low.
+
+Non-mandatory confirmations:
+
+1. Very-high volume.
+2. Wide spread.
+3. Increasing volume.
+4. Higher low.
+
+The detector intentionally accepts imperfect real-market examples rather than requiring textbook-perfect closes or tails.
+
+### Point-in-time validation record
+
+Across the eight-symbol validation universe:
+
+- events: `59`
+- positive 8-bar outcomes: `39`
+- negative 8-bar outcomes: `14`
+- flat 8-bar outcomes: `6`
+- decisive outcomes: `53`
+- positive decisive rate: `73.58%`
+- symbols with events: `8 / 8`
+- replay failures: `0`
+
+Leave-one-symbol-out positive decisive rates remained between `68.29%` and `80.43%`.
+
+`RELIANCE.NS` remained materially weaker than the other symbols and was intentionally retained rather than filtered out. No production threshold or symbol-specific exception was introduced.
+
+### Scoring decision
+
+The validated event definition is production-integrated with the existing baseline weight:
+
+```text
+STOPPING_VOLUME = 1.00
+```
+
+The audit did not justify a weight optimization, and no production weight change was introduced.
+
 ## Immediate conclusions
 
-1. The production event layer is currently **supply-heavy**, but the canonical Spring reversal event is now active in production alongside the existing supply/demand paths.
-2. `NO_DEMAND` is being collected from the supply collector. That is a semantic organization issue worth cleaning up later, but not by changing its detector behavior in this milestone.
-3. `SUPPLY_DRYING_UP` is an important semantic case: it should remain an observation/context event and should not automatically imply stronger bearish pressure.
-4. `ABSORPTION` is an atomic effort-result observation in the model/registry, but it currently lacks a single canonical production detector and should not be scored until semantics are frozen.
-5. `EFFORT_GT_RESULT`, `RESULT_GT_EFFORT`, trend, phase, and structural progression belong to separate analytical layers and should not be promoted into the primary VSA event set.
-6. `INCREASING_DEMAND` is now the first newly calibrated demand-side evidence weight activated from the recent audit campaign: **0.85 provisionally**. The next detector should continue through the same audit-first process rather than inheriting this weight automatically.
-7. Spring production validation is currently **provisional but integrated**: 13 verified production events across 6 symbols, with 6 positive, 4 negative, and 3 flat 8-bar outcomes and zero replay failures. A failed outcome is not itself evidence that the Spring detector was invalid; production quality must be judged by the VSA evidence at the event bar.
-8. Spring interaction audit found one meaningful conflict case: a same-bar `UPTHRUST` + `BUYING_CLIMAX` coinciding with a Spring. The production implementation keeps the Spring but reduces its evidence quality to `0.50`; it does not reject the event or change the calibrated weight.
+1. The production event layer is currently supply-heavy, but the canonical Spring reversal event and the validated Stopping Volume demand event are now active in production alongside the existing supply/demand paths.
+2. `STOPPING_VOLUME` is no longer audit-only. Its production definition is frozen at the validated five mandatory VSA conditions and four non-mandatory confirmations.
+3. `NO_DEMAND` is being collected from the supply collector. That is a semantic organization issue worth cleaning up later, but not by changing its detector behavior in this milestone.
+4. `SUPPLY_DRYING_UP` is an important semantic case: it should remain an observation/context event and should not automatically imply stronger bearish pressure.
+5. `ABSORPTION` is an atomic effort-result observation in the model/registry, but it currently lacks a single canonical production detector and should not be scored until semantics are frozen.
+6. `EFFORT_GT_RESULT`, `RESULT_GT_EFFORT`, trend, phase, and structural progression belong to separate analytical layers and should not be promoted into the primary VSA event set.
+7. `INCREASING_DEMAND` is now the first newly calibrated demand-side evidence weight activated from the recent audit campaign: **0.85 provisionally**. The next detector should continue through the same audit-first process rather than inheriting this weight automatically.
+8. Spring production validation is currently **provisional but integrated**: 13 verified production events across 6 symbols, with 6 positive, 4 negative, and 3 flat 8-bar outcomes and zero replay failures. A failed outcome is not itself evidence that the Spring detector was invalid; production quality must be judged by the VSA evidence at the event bar.
+9. The current Stopping Volume production replay reproduces the validated 59-event point-in-time population exactly across the eight-symbol validation universe.
 
 ## INCREASING_DEMAND calibration record
 
@@ -110,7 +163,7 @@ successful test          required
 test distance            <= 1.00 spread-normalized
 test penetration         <= 0.50 spread-normalized
 test volume ratio        <= 0.75
- test close position      >= 2
+test close position      >= 2
 bullish confirmation     required within the configured lookahead
 production weight        0.75
 normal quality           1.00

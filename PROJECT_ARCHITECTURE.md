@@ -7,7 +7,7 @@
 - Yahoo Finance data is cached locally as CSV files under `cache/`; cached data is reused unless the download function is explicitly called with `refresh=True`.
 - The metrics layer is operational for bar geometry, historical rolling statistics, ratios, percentile ranks, and semantic classifications. It deliberately performs quantitative preparation rather than VSA interpretation.
 - The market-structure layer currently contains swing detection/history, structural swing scoring, structural progression, trend context, smart-money scoring, and related context models.
-- The evidence layer is operational for the currently enabled supply, demand, Spring, and structural-progression collection paths, with evidence represented as immutable `Evidence` objects and returned through `EvidenceResult`. Spring is collected point-in-time through `evidence/spring.py::collect_spring()`.
+- The evidence layer is operational for the currently enabled supply, demand, Stopping Volume, Spring, and structural-progression collection paths, with evidence represented as immutable `Evidence` objects and returned through `EvidenceResult`. Stopping Volume and Spring are collected point-in-time through the demand/evidence production paths.
 - Evidence aggregation is operational: evidence is grouped by `(bar_index, direction)`, multiple observations on the same bar/direction are treated as one event, primary/supporting/effort-result/structural roles are separated, and event contribution is calculated without blindly summing duplicate evidence.
 - Professional scoring is operational for trend, supply, demand, effort, strength, weakness, and confidence; scanner evaluation combines structural qualification with current/recent directional VSA confirmation.
 - The current scanner therefore has a functioning analysis chain from market data through metrics, market structure, evidence, professional scoring, qualification, ranking, and actionable-candidate output.
@@ -102,7 +102,7 @@
 │   ├── __init__.py                      # Evidence package initializer.
 │   ├── aggregator.py                    # Evidence aggregation and event-level contribution logic.
 │   ├── campaign.py                      # Campaign detection/support.
-│   ├── demand.py                        # Demand-side evidence collection, including current shakeout path.
+│   ├── demand.py                        # Demand-side evidence collection, including Stopping Volume, Test, Shakeout, and No Supply.
 │   ├── effort.py                        # Effort-vs-result evidence collection.
 │   ├── engine.py                        # Main EvidenceEngine orchestration and evidence context creation.
 │   ├── evidence_registry.py             # Evidence construction/registry mapping.
@@ -166,7 +166,7 @@
 │       ├── selling_climax.py            # Empty rule module currently.
 │       ├── shakeout.py                  # Empty rule module currently.
 │       ├── spring.py                    # Empty rule module currently.
-│       ├── stopping_volume.py           # Implemented stopping-volume rule module.
+│       ├── stopping_volume.py           # Implemented stopping-volume rule module; production semantics validated point-in-time.
 │       ├── test.py                      # Empty rule module currently.
 │       └── upthrust.py                  # Empty rule module currently.
 │
@@ -328,7 +328,7 @@ Evidence is grouped by `(bar_index, EvidenceDirection)`. Each group stores all c
 - If a primary event exists, the strongest primary contribution is the anchor; supporting evidence modifies it by 15%, effort/result by 15%, and structural context by 10%.
 - If no primary event exists, supporting evidence contributes at 60%, effort/result at 25%, and structural context at 15%.
 - Event contribution is capped by the configured maximum combined event contribution of 1.50.
-- Current primary codes are configured as BUYING_CLIMAX, SELLING_CLIMAX, UPTHRUST, SHAKEOUT, SPRING, and TEST.
+- Current primary VSA codes include BUYING_CLIMAX, SELLING_CLIMAX, UPTHRUST, SHAKEOUT, SPRING, TEST, and STOPPING_VOLUME where the corresponding detector logic is production-enabled. Supporting codes include supply/demand observations such as supply coming in, increasing supply, hidden supply/demand, supply/demand drying up, no-supply, and no-demand; effort/result and structural progression have their own roles.
 
 ### Shakeout recovery data currently used
 
@@ -368,6 +368,40 @@ Validation:
 
 The result is not dependent on a single symbol. Excluding either RELIANCE.NS or TCS.NS still produced a net benefit of +6.
 The 0.85 weight is provisional and should be recalibrated when the validation universe or historical sample expands materially.
+
+### Stopping Volume production record
+
+`STOPPING_VOLUME` is a production-integrated primary demand-side VSA event.
+
+Mandatory point-in-time requirements:
+
+1. Selling Campaign.
+2. Bearish current bar.
+3. High VSA volume or higher.
+4. Above-average spread.
+5. Close off the low.
+
+Non-mandatory confirmations:
+
+- Very-high volume.
+- Wide spread.
+- Increasing volume.
+- Higher low.
+
+The detector intentionally allows imperfect real-market examples rather than requiring textbook-perfect bar geometry.
+Point-in-time validation across the eight-symbol validation universe produced:
+
+- 59 events.
+- 39 positive 8-bar outcomes.
+- 14 negative 8-bar outcomes.
+- 6 flat outcomes.
+- 53 decisive outcomes.
+- 73.58% positive decisive rate.
+- 8/8 symbols with events.
+- 0 replay failures.
+
+Leave-one-symbol-out validation remained between 68.29% and 80.43% positive decisive rate.
+The production evidence weight remains 1.00. No weight optimization was promoted.
 
 ### Calibration Promotion Rule
 
