@@ -2,7 +2,7 @@ import pandas as pd
 
 from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, has_recent_weakness, has_selling_campaign, validate_shakeout, _recent_structural_weakness
 from evidence.helpers import evaluate_detector, requirement, requirements_passed
-from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing
+from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_high_volume, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing
 from models import BackgroundContext, Evidence, EvidenceCode
 
 
@@ -16,6 +16,7 @@ def collect_demand(
 
     evidence: list[Evidence] = []
 
+    evidence.extend(_collect_stopping_volume(ctx))
     evidence.extend(_collect_test(ctx))
     # Selling Climax remains disabled until its
     # production-history validation is completed.
@@ -30,6 +31,74 @@ def collect_demand(
 
     evidence.extend(
         _collect_no_supply(ctx)
+    )
+
+    return evidence
+
+
+# -------------------------------------------------------------------------
+# Stopping Volume
+# -------------------------------------------------------------------------
+def _collect_stopping_volume(
+    ctx: BackgroundContext,
+) -> list[Evidence]:
+
+    evidence: list[Evidence] = []
+
+    bar = ctx.current
+    previous = ctx.previous
+
+    requirements = (
+        requirement(
+            name="Selling Campaign",
+            passed=has_selling_campaign(ctx),
+        ),
+        requirement(
+            name="Bearish Bar",
+            passed=is_bearish_bar(bar),
+        ),
+        requirement(
+            name="High Volume",
+            passed=is_high_volume(bar),
+        ),
+        requirement(
+            name="Above Average Spread",
+            passed=is_above_average_spread(bar),
+        ),
+        requirement(
+            name="Close Off Low",
+            passed=not is_weak_close(bar),
+        ),
+    )
+
+    if not requirements_passed(requirements):
+        return evidence
+
+    confirmations = (
+        requirement(
+            name="Very High Volume",
+            passed=is_very_high_volume(bar),
+        ),
+        requirement(
+            name="Wide Spread",
+            passed=has_strong_spread(bar),
+        ),
+        requirement(
+            name="Volume Increasing",
+            passed=volume_increasing(bar, previous),
+        ),
+        requirement(
+            name="Higher Low",
+            passed=makes_higher_low(bar, previous),
+        ),
+    )
+
+    evaluate_detector(
+        evidence=evidence,
+        ctx=ctx,
+        code=EvidenceCode.STOPPING_VOLUME,
+        requirements=requirements,
+        confirmations=confirmations,
     )
 
     return evidence

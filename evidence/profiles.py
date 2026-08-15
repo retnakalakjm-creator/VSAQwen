@@ -244,6 +244,20 @@ SUPPLY_PROFILES: tuple[EvidenceProfile, ...] = (
 # Demand Profiles 
 # ----------------------------------------------------------
 
+STOPPING_VOLUME = EvidenceProfile(
+    code=EvidenceCode.STOPPING_VOLUME,
+    category=EvidenceCategory.DEMAND,
+    direction=EvidenceDirection.BULLISH,
+    strength=0.90,
+    weight=1.00,
+    priority=95,
+    observation="Stopping Volume",
+    description=(
+        "Heavy selling effort after a decline with evidence of "
+        "professional demand capable of absorbing supply."
+    ),
+)
+
 SELLING_CLIMAX = EvidenceProfile(
     code=EvidenceCode.SELLING_CLIMAX,
     category=EvidenceCategory.DEMAND,
@@ -290,6 +304,8 @@ SHAKEOUT = EvidenceProfile(
 
 DEMAND_PROFILES: tuple[EvidenceProfile, ...] = (
 
+    STOPPING_VOLUME,
+
     SELLING_CLIMAX,
 
     NO_SUPPLY,
@@ -329,7 +345,6 @@ ALL_PROFILES = SUPPLY_PROFILES + DEMAND_PROFILES
 
     + PHASE_PROFILES
 ) """
-
 
 
 def _validate_profiles(
