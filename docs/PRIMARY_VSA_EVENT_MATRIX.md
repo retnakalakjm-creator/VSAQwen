@@ -10,6 +10,7 @@ It is a specification/diagnostic artifact only. It does not change detector logi
 
 - `collect_supply()`
 - `collect_demand()`
+- `collect_spring()`
 - `collect_structural_progression()`
 
 Inside `collect_supply()`, these detectors are currently called for every eligible bar:
@@ -23,6 +24,8 @@ Inside `collect_supply()`, these detectors are currently called for every eligib
 - `NO_DEMAND`
 
 Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Selling Climax remains disabled. TEST is production-enabled as contextual evidence and remains non-scoring.
+
+Spring is collected through `evidence/spring.py::collect_spring()` on the current bar only, using point-in-time candidate/test/confirmation validation. The production Spring weight is provisionally fixed at `0.75`.
 
 ## Matrix
 
@@ -44,7 +47,7 @@ Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Sell
 | `DEMAND_DRYING_UP` | No active production detector identified | NO | Candidate / missing | Supporting / exhaustion context | Bullish observation of drying demand | Must be distinguished from bearish absence-of-demand events. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | NO (commented out) | Audit-complete / frozen | Primary demand / reversal | Bullish | Detector exists but is disabled in `collect_demand()`. Historical audit completed across 8 symbols; no defensible production scoring weight or extra confirmation gate was established. |
 | `TEST` | `evidence/demand.py::_collect_test` | YES | Audit-complete / frozen semantics | Primary confirmation | Bullish | Detector is production-enabled but remains non-scoring. Multi-symbol validation confirms it is a contextual probe, not proof of demand control. |
-| `SPRING` | No active production detector identified | NO | Candidate / missing | Primary trap / reversal | Bullish | Enum exists; needs explicit strict-VSA/Wyckoff definition. |
+| `SPRING` | `evidence/spring.py::collect_spring` | **YES** | **Production-integrated / regression-verified** | Primary trap / reversal | Bullish | Strict point-in-time candidate → low-volume test → bullish follow-through confirmation. Production filters include test volume ratio `<= 0.75` and candidate penetration `<= 0.50`. Current calibrated production weight is `0.75`. A same-bar `UPTHRUST` or `BUYING_CLIMAX` does not reject the Spring; it reduces Spring evidence quality to `0.50`. |
 | `ABSORPTION` | No dedicated production detector confirmed | NO | Present in model/registry | Primary/supporting absorption | Neutral / directional by context | Atomic effort-result observation; must be given one canonical production detector before use. |
 | `EFFORT_GT_RESULT` | `evidence/effort.py` | Engine invocation currently disabled | Present | Effort/result context | Neutral | Separate from primary supply/demand event detection. |
 | `RESULT_GT_EFFORT` | `evidence/effort.py` | Engine invocation currently disabled | Present | Effort/result context | Neutral | Separate from primary supply/demand event detection. |
@@ -57,12 +60,14 @@ Inside `collect_demand()`, `SHAKEOUT` and `NO_SUPPLY` are currently active. Sell
 
 ## Immediate conclusions
 
-1. The production event layer is currently **supply-heavy**. Multiple bearish/supply detectors are active, while several canonical bullish/demand-side VSA events are implemented but disabled or not yet implemented.
+1. The production event layer is currently **supply-heavy**, but the canonical Spring reversal event is now active in production alongside the existing supply/demand paths.
 2. `NO_DEMAND` is being collected from the supply collector. That is a semantic organization issue worth cleaning up later, but not by changing its detector behavior in this milestone.
 3. `SUPPLY_DRYING_UP` is an important semantic case: it should remain an observation/context event and should not automatically imply stronger bearish pressure.
 4. `ABSORPTION` is an atomic effort-result observation in the model/registry, but it currently lacks a single canonical production detector and should not be scored until semantics are frozen.
 5. `EFFORT_GT_RESULT`, `RESULT_GT_EFFORT`, trend, phase, and structural progression belong to separate analytical layers and should not be promoted into the primary VSA event set.
 6. `INCREASING_DEMAND` is now the first newly calibrated demand-side evidence weight activated from the recent audit campaign: **0.85 provisionally**. The next detector should continue through the same audit-first process rather than inheriting this weight automatically.
+7. Spring production validation is currently **provisional but integrated**: 13 verified production events across 6 symbols, with 6 positive, 4 negative, and 3 flat 8-bar outcomes and zero replay failures. A failed outcome is not itself evidence that the Spring detector was invalid; production quality must be judged by the VSA evidence at the event bar.
+8. Spring interaction audit found one meaningful conflict case: a same-bar `UPTHRUST` + `BUYING_CLIMAX` coinciding with a Spring. The production implementation keeps the Spring but reduces its evidence quality to `0.50`; it does not reject the event or change the calibrated weight.
 
 ## INCREASING_DEMAND calibration record
 
@@ -83,6 +88,62 @@ Leave-one-symbol-out validation remained positive in every case:
 - excluding TCS: `+6`
 
 The result is therefore not dependent on a single stock. The weight is provisional and should be revisited as the sample universe grows.
+
+## Spring validation record
+
+Spring completed the same audit-first promotion process used elsewhere in the project before production integration:
+
+1. Point-in-time Spring candidate detection.
+2. Point-in-time low-volume test validation.
+3. Point-in-time bullish follow-through confirmation.
+4. Outcome classification over 8 future bars for audit only.
+5. Interaction audit across same-bar and nearby VSA evidence.
+6. Focused regression coverage.
+7. Production replay verification.
+
+Current production Spring criteria:
+
+```text
+support touches          >= 2
+candidate penetration    <= 0.50 spread-normalized
+successful test          required
+test distance            <= 1.00 spread-normalized
+test penetration         <= 0.50 spread-normalized
+test volume ratio        <= 0.75
+ test close position      >= 2
+bullish confirmation     required within the configured lookahead
+production weight        0.75
+normal quality           1.00
+same-bar UPTHRUST/BUYING_CLIMAX quality 0.50
+```
+
+The current production replay baseline is:
+
+- production Spring events: `13`
+- symbols with events: `6 / 8`
+- `POSITIVE_8_BAR`: `6`
+- `NEGATIVE_8_BAR`: `4`
+- `FLAT_8_BAR`: `3`
+- failures: `0`
+
+The sample is intentionally treated as provisional. No additional threshold tightening or weight increase is justified from the 13-event sample alone.
+
+### Frozen Spring semantic interpretation
+
+> **A Spring is a bullish reversal/trap event produced by a point-in-time break below established support, recovery, low-effort test, and later bullish follow-through. Real-market Springs need not be textbook-perfect; the evidence must remain faithful to strict VSA methodology without forcing artificial pattern conformity.**
+
+### Spring conflict policy
+
+A same-bar `UPTHRUST` or `BUYING_CLIMAX` is a direct bearish contradiction to the bullish Spring interpretation. The production policy is therefore:
+
+```text
+Spring detected           KEEP
+Spring weight             0.75
+same-bar bearish conflict quality 0.50
+Spring rejection          NO
+```
+
+This is a quality/confidence interaction, not a detector gate. The observed interaction audit had one such same-bar conflict among the 13 production Springs, so stronger rejection logic is not currently justified.
 
 ## TEST audit findings
 

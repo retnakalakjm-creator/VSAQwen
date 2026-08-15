@@ -7,7 +7,7 @@
 - Yahoo Finance data is cached locally as CSV files under `cache/`; cached data is reused unless the download function is explicitly called with `refresh=True`.
 - The metrics layer is operational for bar geometry, historical rolling statistics, ratios, percentile ranks, and semantic classifications. It deliberately performs quantitative preparation rather than VSA interpretation.
 - The market-structure layer currently contains swing detection/history, structural swing scoring, structural progression, trend context, smart-money scoring, and related context models.
-- The evidence layer is operational for the currently enabled supply, demand, and structural-progression collection paths, with evidence represented as immutable `Evidence` objects and returned through `EvidenceResult`.
+- The evidence layer is operational for the currently enabled supply, demand, Spring, and structural-progression collection paths, with evidence represented as immutable `Evidence` objects and returned through `EvidenceResult`. Spring is collected point-in-time through `evidence/spring.py::collect_spring()`.
 - Evidence aggregation is operational: evidence is grouped by `(bar_index, direction)`, multiple observations on the same bar/direction are treated as one event, primary/supporting/effort-result/structural roles are separated, and event contribution is calculated without blindly summing duplicate evidence.
 - Professional scoring is operational for trend, supply, demand, effort, strength, weakness, and confidence; scanner evaluation combines structural qualification with current/recent directional VSA confirmation.
 - The current scanner therefore has a functioning analysis chain from market data through metrics, market structure, evidence, professional scoring, qualification, ranking, and actionable-candidate output.
@@ -113,6 +113,7 @@
 │   ├── rules.py                         # Low-level evidence rule predicates.
 │   ├── scoring.py                       # Evidence scoring helpers.
 │   ├── strength.py                      # Evidence-strength support.
+│   ├── spring.py                        # Production Spring detection, test validation, confirmation, and conflict-quality adjustment.
 │   ├── supply.py                        # Supply-side evidence collection.
 │   ├── trend_context.py                 # Trend-context evidence collection.
 │   └── weight.py                        # Dynamic evidence-weight calculation.
@@ -393,9 +394,9 @@ The standard promotion sequence is:
 - Daily-to-weekly OHLCV resampling.
 - Quantitative metrics, historical rolling statistics, percentile normalization, and semantic bar classification.
 - Confirmed swing detection, swing history, HH/HL/LH/LL classification, structural swing scoring, structural progression, trend direction/state/strength/confidence, and VSA context construction.
-- EvidenceEngine context construction and active supply, demand, and structural-progression collection paths.
+- EvidenceEngine context construction and active supply, demand, Spring, and structural-progression collection paths.
 - Evidence construction through the evidence registry and dynamic evidence weights.
-- Active VSA detectors represented in the current evidence code/configuration, including supply observations, demand observations, stopping volume, upthrust, buying climax, shakeout, spring/test codes, and structural progression codes where corresponding detector logic is present.
+- Active VSA detectors represented in the current evidence code/configuration, including supply observations, demand observations, stopping volume, upthrust, buying climax, shakeout, Spring, TEST, and structural progression codes where corresponding detector logic is present. Spring uses point-in-time candidate/test/confirmation validation, has a provisional production weight of 0.75, and retains the event while reducing evidence quality to 0.50 when the same bar also emits UPTHRUST or BUYING_CLIMAX.
 - Shakeout validation/recovery scoring is implemented, including the five-component recovery-quality calculation and combined shakeout quality.
 - Event-level evidence aggregation by bar/direction, primary/supporting/effort-result/structural role separation, combined-event contribution calculation, and bullish/bearish/neutral bias calculation.
 - Professional scoring of trend, supply, demand, effort, strength, weakness, and confidence.
