@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Point-in-time Spring detection and validation.
 
 Spring is treated as a structural Wyckoff event, not a candlestick pattern.
@@ -5,6 +6,9 @@ The production collector emits evidence only when the validated interaction
 is present on the current bar: confirmed Spring + low-volume test + shallow
 penetration.
 """
+=======
+"""Point-in-time Spring detection and validation."""
+>>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -77,17 +81,10 @@ class SpringValidation:
 
 
 def _prior_low_swings(structural_swings: tuple[StructuralSwing, ...], bar_index: int) -> list[StructuralSwing]:
-    return [
-        item for item in structural_swings
-        if item.swing.type is SwingType.LOW and item.swing.bar_index < bar_index
-    ]
+    return [item for item in structural_swings if item.swing.type is SwingType.LOW and item.swing.bar_index < bar_index]
 
 
-def _support_from_prior_lows(
-    structural_swings: tuple[StructuralSwing, ...],
-    bar_index: int,
-    spread: float,
-) -> tuple[float, int] | None:
+def _support_from_prior_lows(structural_swings: tuple[StructuralSwing, ...], bar_index: int, spread: float) -> tuple[float, int] | None:
     lows = _prior_low_swings(structural_swings, bar_index)
     if len(lows) < _MIN_SUPPORT_TOUCHES:
         return None
@@ -98,12 +95,7 @@ def _support_from_prior_lows(
     return min(prices), len(recent)
 
 
-def detect_spring_candidate(
-    metrics: pd.DataFrame,
-    *,
-    bar_index: int,
-    structural_swings: tuple[StructuralSwing, ...],
-) -> SpringCandidate | None:
+def detect_spring_candidate(metrics: pd.DataFrame, *, bar_index: int, structural_swings: tuple[StructuralSwing, ...]) -> SpringCandidate | None:
     """Detect a Spring candidate using only information known at bar_index."""
     if bar_index <= 0 or bar_index >= len(metrics):
         return None
@@ -126,6 +118,7 @@ def detect_spring_candidate(
     volume = float(row[COL_VOLUME])
     previous_volume = float(previous[COL_VOLUME])
     volume_ratio = volume / previous_volume if previous_volume > 0.0 else None
+<<<<<<< HEAD
     return SpringCandidate(
         bar_index=bar_index,
         support=support,
@@ -137,10 +130,12 @@ def detect_spring_candidate(
         recovery=True,
         support_touches=support_touches,
     )
+=======
+    return SpringCandidate(bar_index, support, penetration_ratio, spread, volume, volume_ratio, int(row[COL_CLOSE_POSITION]), True, support_touches)
+>>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
 
 
 def validate_spring_test(metrics: pd.DataFrame, candidate: SpringCandidate) -> SpringTest:
-    """Validate the first subsequent low-effort test of the Spring area."""
     start = candidate.bar_index + 1
     end = min(len(metrics), start + _CONFIRMATION_LOOKAHEAD + 2)
     for index in range(start, end):
@@ -152,25 +147,15 @@ def validate_spring_test(metrics: pd.DataFrame, candidate: SpringCandidate) -> S
         distance_ratio = abs(low - candidate.support) / candidate.spread
         penetration_ratio = (candidate.support - low) / candidate.spread
         volume_ratio = volume / candidate.volume if candidate.volume > 0.0 else 1.0
-        if distance_ratio > _TEST_MAX_DISTANCE_SPREADS:
+        if distance_ratio > _TEST_MAX_DISTANCE_SPREADS or penetration_ratio > _TEST_MAX_PENETRATION_SPREADS:
             continue
-        if penetration_ratio > _TEST_MAX_PENETRATION_SPREADS:
-            continue
-        if volume_ratio > _TEST_MAX_VOLUME_RATIO:
-            continue
-        if close_position < _TEST_MIN_CLOSE_POSITION or spread <= 0.0:
+        if volume_ratio > _TEST_MAX_VOLUME_RATIO or close_position < _TEST_MIN_CLOSE_POSITION or spread <= 0.0:
             continue
         return SpringTest(SpringValidationResult.TESTED, index, distance_ratio, penetration_ratio, volume_ratio, close_position)
     return SpringTest(SpringValidationResult.NO_TEST, None, None, None, None, None)
 
 
-def validate_spring_confirmation(
-    metrics: pd.DataFrame,
-    *,
-    candidate: SpringCandidate,
-    test: SpringTest,
-) -> SpringConfirmation:
-    """Validate bullish follow-through after an accepted Spring test."""
+def validate_spring_confirmation(metrics: pd.DataFrame, *, candidate: SpringCandidate, test: SpringTest) -> SpringConfirmation:
     if test.test_index is None:
         return SpringConfirmation(SpringValidationResult.NO_TEST, None)
     start = test.test_index + 1
@@ -184,7 +169,6 @@ def validate_spring_confirmation(
 
 
 def validate_spring(metrics: pd.DataFrame, *, candidate: SpringCandidate) -> SpringValidation:
-    """Run candidate -> test -> confirmation validation."""
     test = validate_spring_test(metrics, candidate)
     confirmation = validate_spring_confirmation(metrics, candidate=candidate, test=test)
     return SpringValidation(candidate, test, confirmation)
@@ -195,6 +179,7 @@ def collect_spring(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Eviden
     current_index = ctx.current.bar_index
     if current_index <= 0:
         return []
+<<<<<<< HEAD
 
     point_in_time = metrics.iloc[: current_index + 1].copy()
     start = max(1, current_index - _PRODUCTION_CANDIDATE_LOOKBACK)
@@ -208,6 +193,14 @@ def collect_spring(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Eviden
         if candidate is None:
             continue
 
+=======
+    point_in_time = metrics.iloc[: current_index + 1].copy()
+    start = max(1, current_index - _PRODUCTION_CANDIDATE_LOOKBACK)
+    for candidate_index in range(current_index - 1, start - 1, -1):
+        candidate = detect_spring_candidate(point_in_time, bar_index=candidate_index, structural_swings=ctx.structural_swings)
+        if candidate is None:
+            continue
+>>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
         validation = validate_spring(point_in_time, candidate=candidate)
         if validation.confirmation.result is not SpringValidationResult.CONFIRMED:
             continue
@@ -219,6 +212,7 @@ def collect_spring(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Eviden
             continue
         if candidate.penetration_ratio > _TARGET_PENETRATION_RATIO:
             continue
+<<<<<<< HEAD
 
         profile = EVIDENCE_LIBRARY[EvidenceCode.SPRING]
         return [
@@ -246,3 +240,24 @@ __all__ = [
     "SpringValidationResult", "detect_spring_candidate", "validate_spring",
     "validate_spring_confirmation", "validate_spring_test", "collect_spring",
 ]
+=======
+        profile = EVIDENCE_LIBRARY[EvidenceCode.SPRING]
+        return [Evidence(
+            code=EvidenceCode.SPRING,
+            category=profile.category,
+            direction=profile.direction,
+            strength=profile.strength,
+            quality=1.0,
+            weight=_CALIBRATED_WEIGHT,
+            observation=profile.observation,
+            description=profile.description,
+            bar_index=current_index,
+            week_beginning=ctx.current.week_beginning,
+            test_index=validation.test.test_index,
+            recovery_index=current_index,
+        )]
+    return []
+
+
+__all__ = ["SpringCandidate", "SpringConfirmation", "SpringTest", "SpringValidation", "SpringValidationResult", "detect_spring_candidate", "validate_spring", "validate_spring_confirmation", "validate_spring_test", "collect_spring"]
+>>>>>>> 2bb1f9c94c1f4e565ceb4cd1bdcaa1bd4b662288
