@@ -1,159 +1,193 @@
 from __future__ import annotations
 
 import sys
-from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Lock
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import config
 from data import daily_to_weekly, download_data
-from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
-from evidence.campaign import has_selling_campaign, validate_shakeout
+from debug.diagnose_shakeout_outcomes_recovery_anchor import inspect_symbol as validated_inspect_symbol
+from engine.columns import COL_CLOSE, COL_WEEK
 from evidence.engine import EvidenceEngine
-from evidence.rules import has_strong_spread, is_bearish_bar, is_very_high_volume, makes_lower_low
-from metrics_engine import MetricsEngine
-from models import Direction, EvidenceCode, SpreadClass, VolumeClass
+from evidence.evidence_registry import build_evidence
+from model.evidence_result_model import EvidenceResult
+from models import EvidenceCategory, EvidenceCode, EvidenceDirection, Evidence
 from professional.scoring_engine import ProfessionalScoringEngine
 from trend import TrendAnalyzer
 
 DEFAULT_SYMBOLS = (
-    "BHARTIARTL.NS", "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS",
-    "INFY.NS", "TCS.NS", "SBIN.NS", "LT.NS",
+    "BHARTIARTL.NS",
+    "RELIANCE.NS",
+    "HDFCBANK.NS",
+    "ICICIBANK.NS",
+    "INFY.NS",
+    "TCS.NS",
+    "SBIN.NS",
+    "LT.NS",
 )
-MIN_REPLAY_BARS = 20
 WEIGHTS = (0.50, 0.60, 0.70, 0.80, 0.90, 1.00)
+CONFIG_LOCK = Lock()
+EPS = 1e-12
 
 
-def candidate_indices(metrics) -> list[int]:
-    out: list[int] = []
-    for index in range(MIN_REPLAY_BARS, len(metrics)):
-        row = metrics.iloc[index]
-        if (
-            Direction(int(row[COL_DIRECTION])) == Direction.DOWN
-            and VolumeClass(int(row[COL_VOLUME_CLASS])) >= VolumeClass.VERY_HIGH
-            and SpreadClass(int(row[COL_SPREAD_CLASS])) >= SpreadClass.WIDE
-        ):
-            out.append(index)
-    return out
-
-
-def confirmed_shakeouts(metrics, symbol: str) -> list[dict]:
-    events: list[dict] = []
-    for candidate_index in candidate_indices(metrics):
-        replay = metrics.iloc[: candidate_index + 1].copy()
-        trend = TrendAnalyzer().analyze(replay)
-        structural_swings = tuple(trend.structure.structural_swings)
-        engine = EvidenceEngine()
-        engine.collect(metrics=replay, trend=trend, structural_swings=structural_swings)
-        ctx = engine._ctx
-        if ctx is None or ctx.previous is None:
-            continue
-        bar = ctx.current
-        previous = ctx.previous
-        if not (
-            has_selling_campaign(ctx)
-            and is_bearish_bar(bar)
-            and has_strong_spread(bar)
-            and is_very_high_volume(bar)
-            and makes_lower_low(bar, previous)
-        ):
-            continue
-        validation = validate_shakeout(metrics=metrics, shakeout_index=candidate_index)
-        recovery_index = validation.recovery.recovery_index
-        if recovery_index is None:
-            continue
-        recovery_index = int(recovery_index)
-        events.append({
-            "symbol": symbol,
-            "candidate_index": candidate_index,
-            "recovery_index": recovery_index,
-            "quality": float(__import__('evidence.demand', fromlist=['calculate_shakeout_quality']).calculate_shakeout_quality(validation=validation)),
-        })
-    return events
-
-
-def decision_snapshot(*, trend, evidence_result, weight: float) -> float:
-    # Measure only the SHAKEOUT contribution to net strength as a controlled
-    # counterfactual, leaving all other evidence unchanged.
-    scoring_items = []
-    for item in evidence_result.evidence:
-        if item.code is EvidenceCode.SHAKEOUT:
-            scoring_items.append(item)
-    if not scoring_items:
-        return 0.0
-    from dataclasses import replace
-    counterfactual = tuple(
-        replace(item, weight=weight)
-        for item in scoring_items
-    )
-    from model.evidence_result_model import EvidenceResult
-    result = EvidenceResult(
-        context=evidence_result.context,
-        evidence=counterfactual,
-    )
-    professional = ProfessionalScoringEngine().calculate(
+def professional_advantage(*, trend, evidence: EvidenceResult) -> float:
+    scores = ProfessionalScoringEngine().calculate(
         trend=trend,
-        evidence=result,
+        evidence=evidence,
+    ).scores
+    return float(scores.strength - scores.weakness)
+
+
+def make_shakeout(event: dict, weight: float) -> Evidence:
+    return Evidence(
+        code=EvidenceCode.SHAKEOUT,
+        category=EvidenceCategory.DEMAND,
+        direction=EvidenceDirection.BULLISH,
+        strength=max(0.0, min(float(event["quality"]), 1.0)),
+        weight=float(weight),
+        observation="Shakeout",
+        description="Validated recovery-anchored SHAKEOUT counterfactual for weight calibration.",
+        bar_index=int(event["recovery_bar_index"]),
+        week_beginning=str(event["recovery_week"]),
     )
-    return float(professional.scores.net_strength)
+
+
+def evaluate(event: dict, metrics, weight: float) -> float:
+    recovery_index = int(event["recovery_bar_index"])
+    replay = metrics.iloc[: recovery_index + 1].copy()
+    trend = TrendAnalyzer().analyze(replay)
+    structural_swings = tuple(trend.structure.structural_swings)
+    evidence = EvidenceEngine().collect(
+        metrics=replay,
+        trend=trend,
+        structural_swings=structural_swings,
+    )
+
+    base_items = tuple(
+        item for item in evidence.evidence
+        if item.code is not EvidenceCode.SHAKEOUT
+    )
+    synthetic = make_shakeout(event, weight)
+    counterfactual = EvidenceResult(
+        context=evidence.context,
+        evidence=base_items + (synthetic,),
+    )
+
+    original_weights = config.DEMAND_EVIDENCE_WEIGHTS
+    with CONFIG_LOCK:
+        try:
+            patched = dict(original_weights)
+            patched[EvidenceCode.SHAKEOUT] = float(weight)
+            config.DEMAND_EVIDENCE_WEIGHTS = patched
+            return professional_advantage(
+                trend=trend,
+                evidence=counterfactual,
+            )
+        finally:
+            config.DEMAND_EVIDENCE_WEIGHTS = original_weights
+
+
+def baseline(event: dict, metrics) -> float:
+    recovery_index = int(event["recovery_bar_index"])
+    replay = metrics.iloc[: recovery_index + 1].copy()
+    trend = TrendAnalyzer().analyze(replay)
+    structural_swings = tuple(trend.structure.structural_swings)
+    evidence = EvidenceEngine().collect(
+        metrics=replay,
+        trend=trend,
+        structural_swings=structural_swings,
+    )
+    base_items = tuple(
+        item for item in evidence.evidence
+        if item.code is not EvidenceCode.SHAKEOUT
+    )
+    return professional_advantage(
+        trend=trend,
+        evidence=EvidenceResult(
+            context=evidence.context,
+            evidence=base_items,
+        ),
+    )
+
+
+def classify(event: dict, delta: float) -> str:
+    if abs(delta) <= EPS:
+        return "UNCHANGED"
+    if event["outcome"] == "POSITIVE_8_BAR":
+        return "BENEFICIAL" if delta > 0 else "HARMFUL"
+    if event["outcome"] == "NEGATIVE_8_BAR":
+        return "HARMFUL" if delta > 0 else "BENEFICIAL"
+    return "NEUTRAL"
 
 
 def inspect_symbol(symbol: str) -> list[dict]:
+    validated = validated_inspect_symbol(symbol)
+    if not validated:
+        return []
+
     daily = download_data(symbol)
     weekly = daily_to_weekly(daily)
+    # validated_inspect_symbol already determines the exact 18-event population;
+    # this metrics dataframe is used only for counterfactual scoring at those anchors.
+    from metrics_engine import MetricsEngine
     metrics = MetricsEngine().calculate(weekly)
-    events = confirmed_shakeouts(metrics, symbol)
+
     rows: list[dict] = []
-    for event in events:
-        idx = event["recovery_index"]
-        replay = metrics.iloc[: idx + 1].copy()
-        trend = TrendAnalyzer().analyze(replay)
-        structural_swings = tuple(trend.structure.structural_swings)
-        evidence = EvidenceEngine().collect(
-            metrics=replay,
-            trend=trend,
-            structural_swings=structural_swings,
-        )
-        actual = decision_snapshot(trend=trend, evidence_result=evidence, weight=0.0)
-        snapshots = {}
+    for event in validated:
+        recovery_index = int(event["recovery_bar_index"])
+        base = baseline(event, metrics)
+        deltas: dict[str, float] = {}
+        classifications: dict[str, str] = {}
         for weight in WEIGHTS:
-            snapshots[f"{weight:.2f}"] = decision_snapshot(
-                trend=trend,
-                evidence_result=evidence,
-                weight=weight,
-            )
+            score = evaluate(event, metrics, weight)
+            delta = score - base
+            key = f"{weight:.2f}"
+            deltas[key] = delta
+            classifications[key] = classify(event, delta)
+
+        current_close = float(weekly.iloc[recovery_index][COL_CLOSE])
+        future_close = float(weekly.iloc[recovery_index + 8][COL_CLOSE])
+        forward_return = (future_close - current_close) / current_close
+
         rows.append({
             **event,
-            "baseline_without_shakeout": actual,
-            "candidate_weight_strength": snapshots,
+            "forward_return": forward_return,
+            "baseline_advantage": base,
+            "deltas": deltas,
+            "classifications": classifications,
         })
     return rows
 
 
-def classify_counterfactual(rows: list[dict], weight_key: str) -> dict:
-    beneficial = harmful = unchanged = 0
-    magnitudes_beneficial: list[float] = []
-    magnitudes_harmful: list[float] = []
+def stats(rows: list[dict], key: str) -> dict:
+    beneficial = harmful = unchanged = neutral = 0
+    deltas = []
     for row in rows:
-        base = float(row["baseline_without_shakeout"])
-        candidate = float(row["candidate_weight_strength"][weight_key])
-        if candidate > base:
+        cls = row["classifications"][key]
+        if cls == "BENEFICIAL":
             beneficial += 1
-            magnitudes_beneficial.append(candidate - base)
-        elif candidate < base:
+        elif cls == "HARMFUL":
             harmful += 1
-            magnitudes_harmful.append(base - candidate)
-        else:
+        elif cls == "UNCHANGED":
             unchanged += 1
+        else:
+            neutral += 1
+        deltas.append(row["deltas"][key])
+
     return {
-        "beneficial_decision_changes": beneficial,
-        "harmful_decision_changes": harmful,
+        "beneficial_changes": beneficial,
+        "harmful_changes": harmful,
         "unchanged": unchanged,
+        "neutral": neutral,
         "net_benefit": beneficial - harmful,
-        "benefit_harm_ratio": (beneficial / harmful) if harmful else float("inf"),
+        "benefit_harm_ratio": beneficial / harmful if harmful else float("inf"),
+        "mean_advantage_delta": sum(deltas) / len(deltas) if deltas else 0.0,
+        "decision_relevant_change_rate": (beneficial + harmful) / len(rows) if rows else 0.0,
     }
 
 
@@ -171,21 +205,27 @@ def main() -> None:
                 failures.append({"symbol": symbol, "error": repr(exc)})
 
     print("SHAKEOUT RECOVERY-ANCHOR WEIGHT CALIBRATION SUMMARY")
-    print({"events": len(all_rows), "symbols_with_events": len({r['symbol'] for r in all_rows}), "failures": failures})
+    print({
+        "events": len(all_rows),
+        "symbols_with_events": len({r['symbol'] for r in all_rows}),
+        "failures": failures,
+    })
 
     for weight in WEIGHTS:
         key = f"{weight:.2f}"
-        stats = classify_counterfactual(all_rows, key)
-        print({"weight": weight, **stats})
+        print({"weight": weight, **stats(all_rows, key)})
 
     print("SHAKEOUT RECOVERY-ANCHOR WEIGHT CALIBRATION LEAVE_ONE_OUT")
     for excluded in symbols:
         rows = [r for r in all_rows if r["symbol"] != excluded]
-        per_weight = []
-        for weight in WEIGHTS:
-            key = f"{weight:.2f}"
-            per_weight.append({"weight": weight, **classify_counterfactual(rows, key)})
-        print({"excluded_symbol": excluded, "events": len(rows), "weights": per_weight})
+        print({
+            "excluded_symbol": excluded,
+            "events": len(rows),
+            "weights": [
+                {"weight": weight, **stats(rows, f"{weight:.2f}")}
+                for weight in WEIGHTS
+            ],
+        })
 
     print("SHAKEOUT RECOVERY-ANCHOR WEIGHT CALIBRATION EVENTS")
     for row in all_rows:
