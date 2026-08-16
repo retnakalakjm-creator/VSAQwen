@@ -7,7 +7,7 @@
 - Yahoo Finance data is cached locally as CSV files under `cache/`; cached data is reused unless the download function is explicitly called with `refresh=True`.
 - The metrics layer is operational for bar geometry, historical rolling statistics, ratios, percentile ranks, and semantic classifications. It deliberately performs quantitative preparation rather than VSA interpretation.
 - The market-structure layer currently contains swing detection/history, structural swing scoring, structural progression, trend context, smart-money scoring, and related context models.
-- The evidence layer is operational for the currently enabled supply, demand, TEST, Stopping Volume, Spring, and structural-progression collection paths, with evidence represented as immutable `Evidence` objects and returned through `EvidenceResult`. TEST, Stopping Volume, and Spring are collected point-in-time through the demand/evidence production paths.
+- The evidence layer is operational for the currently enabled supply, demand, TEST, Stopping Volume, SHAKEOUT, Spring, and structural-progression collection paths. TEST remains a non-scoring contextual confirmation event. Stopping Volume and SHAKEOUT are production-integrated and validation-complete; Spring is production-integrated but remains provisional.
 - Evidence aggregation is operational: evidence is grouped by `(bar_index, direction)`, multiple observations on the same bar/direction are treated as one event, primary/supporting/effort-result/structural roles are separated, and event contribution is calculated without blindly summing duplicate evidence.
 - Professional scoring is operational for trend, supply, demand, effort, strength, weakness, and confidence; scanner evaluation combines structural qualification with current/recent directional VSA confirmation.
 - The current scanner therefore has a functioning analysis chain from market data through metrics, market structure, evidence, professional scoring, qualification, ranking, and actionable-candidate output.
@@ -88,12 +88,17 @@
 ├── diagnose_structural_invalidation.py  # Structural qualification/invalidation diagnostic script.
 │
 ├── docs/
-│   ├── PRIMARY_VSA_EVENT_MATRIX.md      # Current primary-VSA event-role matrix.
-│   ├── TEST_EVENT_SPEC.md               # Current TEST event specification.
+│   ├── PRIMARY_VSA_EVENT_MATRIX.md      # Master VSA event status/role matrix.
+│   ├── TEST_EVENT_SPEC.md               # Detailed TEST audit/specification record.
+│   ├── TEST_QUALIFICATION_INTEGRATION.md
+│   ├── TEST_SCORING_INTEGRATION_AUDIT.md
 │   ├── rulebook/
-│   │   └── 001_buying_climax.md         # Empty placeholder file currently.
-│   └── specifications/
-│       └── 001_stopping_volume.md       # Current stopping-volume specification.
+│   │   └── 001_buying_climax.md         # Placeholder / not yet production-frozen.
+│   └── specifications/                   # Canonical per-event VSA rulebook.
+│       ├── 001_stopping_volume.md        # Production-integrated / validation-complete.
+│       ├── 002_shakeout.md               # Production-integrated / validation-complete.
+│       ├── 003_test.md                   # Production-integrated contextual confirmation / non-scoring.
+│       └── 004_spring.md                 # Production-integrated / provisional.
 │
 ├── engine/
 │   └── columns.py                       # Shared DataFrame column-name definitions.
@@ -329,6 +334,24 @@ Evidence is grouped by `(bar_index, EvidenceDirection)`. Each group stores all c
 - If no primary event exists, supporting evidence contributes at 60%, effort/result at 25%, and structural context at 15%.
 - Event contribution is capped by the configured maximum combined event contribution of 1.50.
 - Current primary VSA codes include BUYING_CLIMAX, SELLING_CLIMAX, UPTHRUST, SHAKEOUT, SPRING, TEST, and STOPPING_VOLUME where the corresponding detector logic is production-enabled. Supporting codes include supply/demand observations such as supply coming in, increasing supply, hidden supply/demand, supply/demand drying up, no-supply, and no-demand; effort/result and structural progression have their own roles.
+- `SHAKEOUT` is recovery-anchored in production. Candidate semantics are evaluated point-in-time, followed by TEST and recovery validation; the production `SHAKEOUT` evidence is emitted on the confirmed recovery bar rather than the original candidate bar.
+
+### Current validated VSA production events
+
+| Event | Status | Base Weight | Validated Population |
+|---|---|---:|---:|
+| `STOPPING_VOLUME` | Production | `1.00` | 59 |
+| `SHAKEOUT` | Production | `0.50` | 18 |
+| `TEST` | Production / non-scoring | `0.00` | 47 |
+| `SPRING` | Production / provisional | `0.75` | 13 |
+
+### Canonical VSA specification policy
+
+`docs/PRIMARY_VSA_EVENT_MATRIX.md` is the master event-status index.
+
+`docs/specifications/` is the canonical per-event rulebook.
+
+A new event specification file is created only after the event has sufficiently frozen semantics, validation evidence, and production status. Unvalidated candidate events should remain documented only in the master matrix until their audit process is complete.
 
 ### Shakeout recovery data currently used
 

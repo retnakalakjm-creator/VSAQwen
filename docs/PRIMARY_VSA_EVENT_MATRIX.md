@@ -4,6 +4,16 @@ This document is a production-coverage inventory for the VSA event layer on `mai
 
 It is a specification/diagnostic artifact only. It does not change detector logic, evidence weights, qualification rules, or scanner behavior.
 
+## Canonical event specifications
+
+The `docs/specifications/` directory is the canonical per-event rulebook. An event specification is created only after its semantics, validation, and production status are sufficiently frozen.
+
+Current canonical specifications:
+
+- `001_stopping_volume.md` — production-integrated / validation-complete.
+- `002_shakeout.md` — production-integrated / validation-complete.
+- `003_test.md` — production-integrated contextual confirmation / non-scoring.
+
 ## Production collection path
 
 `EvidenceEngine.collect()` currently invokes:
@@ -40,15 +50,15 @@ Spring is collected through `evidence/spring.py::collect_spring()` on the curren
 | `SUPPLY_DRYING_UP` | `evidence/supply.py::_collect_supply_drying_up` | YES | YES | Supporting / exhaustion context | Bearish observation of drying supply | Down bar + low volume + narrow spread; should not automatically be treated as bearish pressure. |
 | `UPTHRUST` | `evidence/supply.py::_collect_upthrust` | YES | YES | Primary trap / supply | Bearish | Buying campaign + bullish bar + very-high volume + above-average spread; confirmations include wide spread, weak close, lower close than previous. |
 | `NO_DEMAND` | `evidence/supply.py::_collect_no_demand` | YES | YES | Primary weakness / demand absence | Bearish | Detected in supply collector despite belonging semantically to demand absence. Bullish environment + bullish bar + low volume + narrow spread. |
-| `SHAKEOUT` | `evidence/demand.py::_collect_shakeout` | YES | YES | Primary reversal / demand | Bullish | Selling pressure + bearish bar + wide spread + very-high volume + strong close + lower low, then validated recovery/test. |
+| `SHAKEOUT` | `evidence/demand.py::_collect_shakeout` | **YES** | **Production-integrated / validation-complete** | Primary reversal / demand | Bullish | Canonical spec: `docs/specifications/002_shakeout.md`. Recovery-anchored event. Candidate requires selling pressure + bearish bar + wide spread + very-high volume + lower low. A valid low-effort TEST and bullish recovery are then required. The production event is emitted only on the confirmed recovery bar. Base weight is `0.50`. |
 | `NO_SUPPLY` | `evidence/demand.py::_collect_no_supply` | YES | Audit-capable | Primary demand absence | Bullish | Detector exists and is now enabled in `collect_demand()`. |
-| `STOPPING_VOLUME` | `evidence/demand.py::_collect_stopping_volume` | **YES** | **Production-integrated / validation-complete** | Primary demand | Bullish | Validated point-in-time production definition: selling campaign + bearish bar + high volume + above-average spread + close off low. Confirmations: very-high volume, wide spread, increasing volume, higher low. 59-event replay across 8 symbols; 39 positive, 14 negative, 6 flat; 73.58% positive decisive rate. Weight remains 1.00. |
+| `STOPPING_VOLUME` | `evidence/demand.py::_collect_stopping_volume` | **YES** | **Production-integrated / validation-complete** | Primary demand | Bullish | Canonical spec: `docs/specifications/001_stopping_volume.md`. Validated point-in-time production definition: selling campaign + bearish bar + high volume + above-average spread + close off low. Confirmations: very-high volume, wide spread, increasing volume, higher low. 59-event replay across 8 symbols; 39 positive, 14 negative, 6 flat; 73.58% positive decisive rate. Weight remains 1.00. |
 | `DEMAND_COMING_IN` | No active production detector identified | NO | Candidate / missing | Primary demand | Bullish | Enum exists; needs explicit detector specification. |
 | `INCREASING_DEMAND` | `EvidenceCode.INCREASING_DEMAND` registry entry | **YES — PROVISIONAL** | Calibration-complete | Primary demand | Bullish | Registered at **weight 0.85** after 902 point-in-time events across 8 symbols. Leave-one-symbol-out validation remained positive for all exclusions; minimum net benefit +6. Detector implementation remains subject to the existing demand collection path. |
 | `HIDDEN_DEMAND` | No active production detector identified | NO | Candidate / missing | Supporting demand | Bullish | Enum exists; needs explicit detector specification. |
 | `DEMAND_DRYING_UP` | No active production detector identified | NO | Candidate / missing | Supporting / exhaustion context | Bullish observation of drying demand | Must be distinguished from bearish absence-of-demand events. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | NO (commented out) | Audit-complete / frozen | Primary demand / reversal | Bullish | Detector exists but is disabled in `collect_demand()`. Historical audit completed across 8 symbols; no defensible production scoring weight or extra confirmation gate was established. |
-| `TEST` | `evidence/demand.py::_collect_test` | YES | Audit-complete / frozen semantics | Primary confirmation | Bullish | Detector is production-enabled but remains non-scoring. Multi-symbol validation confirms it is a contextual probe, not proof of demand control. |
+| `TEST` | `evidence/demand.py::_collect_test` | YES | **Production-integrated / frozen semantics** | Primary confirmation | Bullish | Canonical spec: `docs/specifications/003_test.md`. Production-enabled contextual confirmation event; non-scoring. Requires recent selling pressure + down bar + low volume + narrow spread. Confirmations include decreasing volume, strong/acceptable close, and higher low but remain non-mandatory. 47 point-in-time events across 8 symbols; 65.85% positive decisive rate; leave-one-out 62.86%–69.44%. |
 | `SPRING` | `evidence/spring.py::collect_spring` | **YES** | **Production-integrated / regression-verified** | Primary trap / reversal | Bullish | Strict point-in-time candidate → low-volume test → bullish follow-through confirmation. Production filters include test volume ratio `<= 0.75` and candidate penetration `<= 0.50`. Current calibrated production weight is `0.75`. A same-bar `UPTHRUST` or `BUYING_CLIMAX` does not reject the Spring; it reduces Spring evidence quality to `0.50`. |
 | `ABSORPTION` | No dedicated production detector confirmed | NO | Present in model/registry | Primary/supporting absorption | Neutral / directional by context | Atomic effort-result observation; must be given one canonical production detector before use. |
 | `EFFORT_GT_RESULT` | `evidence/effort.py` | Engine invocation currently disabled | Present | Effort/result context | Neutral | Separate from primary supply/demand event detection. |
@@ -98,8 +108,6 @@ Across the eight-symbol validation universe:
 
 Leave-one-symbol-out positive decisive rates remained between `68.29%` and `80.43%`.
 
-`RELIANCE.NS` remained materially weaker than the other symbols and was intentionally retained rather than filtered out. No production threshold or symbol-specific exception was introduced.
-
 ### Scoring decision
 
 The validated event definition is production-integrated with the existing baseline weight:
@@ -121,6 +129,77 @@ The audit did not justify a weight optimization, and no production weight change
 7. `INCREASING_DEMAND` is now the first newly calibrated demand-side evidence weight activated from the recent audit campaign: **0.85 provisionally**. The next detector should continue through the same audit-first process rather than inheriting this weight automatically.
 8. Spring production validation is currently **provisional but integrated**: 13 verified production events across 6 symbols, with 6 positive, 4 negative, and 3 flat 8-bar outcomes and zero replay failures. A failed outcome is not itself evidence that the Spring detector was invalid; production quality must be judged by the VSA evidence at the event bar.
 9. The current Stopping Volume production replay reproduces the validated 59-event point-in-time population exactly across the eight-symbol validation universe.
+10. `SHAKEOUT` is now production-integrated and recovery-anchored. The production replay reproduces all 18 validated recovery anchors with zero candidate-bar emissions and zero failures. Its base demand weight is `0.50`.
+11. `TEST` is now documented as a canonical production-integrated contextual confirmation event. Its validated population is 47 events across the eight-symbol universe, and it remains non-scoring.
+
+## SHAKEOUT production record
+
+### Frozen semantic definition
+
+> **SHAKEOUT is bullish reversal evidence produced when meaningful selling pressure drives a bearish lower-low bar on very high volume and wide spread, followed by a valid low-effort TEST and confirmed bullish recovery.**
+
+Candidate requirements:
+
+1. Selling pressure / selling campaign is present.
+2. Bearish candidate bar.
+3. Very-high VSA volume.
+4. Wide VSA spread.
+5. Lower low versus the previous bar.
+
+The candidate bar does **not** require a strong close.
+
+Sequence validation:
+
+1. Candidate is identified point-in-time.
+2. A valid low-effort TEST must occur within the configured lookahead.
+3. A valid bullish recovery must occur within the configured recovery window.
+4. The production SHAKEOUT event is emitted on the **recovery bar**, not the original candidate bar.
+
+### Point-in-time validation record
+
+Across the eight-symbol validation universe:
+
+- confirmed SHAKEOUT events: `18`
+- symbols with events: `7 / 8`
+- positive 8-bar outcomes: `12`
+- negative 8-bar outcomes: `6`
+- flat 8-bar outcomes: `0`
+- decisive outcomes: `18`
+- positive decisive rate: `66.67%`
+- replay failures: `0`
+
+Leave-one-symbol-out positive decisive rates remained between `62.50%` and `70.59%`.
+
+### Semantic-quality record
+
+Across the 18 confirmed events:
+
+- candidate semantics passed: `18 / 18`
+- valid TEST: `18 / 18`
+- valid recovery: `18 / 18`
+- recovery close-position requirement satisfied: `18 / 18`
+- test volume and spread both at or below `0.75`: `10 / 18`
+
+The stricter `test_volume <= 0.75` and `test_spread <= 0.75` combination is **not** a mandatory production gate.
+
+### Interaction record
+
+Among the 18 confirmed SHAKEOUTs:
+
+- same-bar conflict events: `1`
+- nearby conflict events: `6`
+- same-bar conflict: `NO_DEMAND`
+- nearby conflicts: primarily `INCREASING_SUPPLY`, with one `SUPPLY_COMING_IN`
+
+These interactions are retained as contextual quality information and do not currently justify rejecting a valid SHAKEOUT.
+
+### Weight decision
+
+The calibrated base production weight is:
+
+```text
+SHAKEOUT = 0.50
+```
 
 ## INCREASING_DEMAND calibration record
 
@@ -218,47 +297,14 @@ The optimized scanner was independently compared with the baseline scanner and p
 - optimized events: `47`
 - mismatches: `0`
 
-The 47-event contextual outcome audit does **not** identify a reliable standalone confluence rule. Examples:
-
-- `SUPPLY_DRYING_UP` alone: `7 positive / 4 negative / 6 flat`.
-- `INCREASING_SUPPLY + SUPPLY_DRYING_UP`: `5 positive / 4 negative / 3 flat`.
-- `INCREASING_SUPPLY + NO_SUPPLY + SUPPLY_DRYING_UP`: `2 positive / 2 negative / 0 flat`.
-- `BUYING_CLIMAX + UPTHRUST + SUPPLY_DRYING_UP`: `1 positive / 1 negative`.
-- `STRUCTURAL_PROGRESSION_WEAKENING + SUPPLY_DRYING_UP`: `1 positive / 1 negative`.
-
-Therefore no contextual combination is currently justified as a new TEST gate, numeric weight, or actionability rule.
+The 47-event contextual outcome audit does **not** identify a reliable standalone confluence rule. No contextual combination is currently justified as a new TEST gate, numeric weight, or actionability rule.
 
 ### Frozen TEST semantic interpretation
 
 > **TEST is a low-effort probe after meaningful recent selling pressure. It establishes an observation, not proof of demand control. Its meaning comes from the combined context and later validation rather than from a textbook-perfect single-bar pattern.**
 
-For implementation purposes, the layers are:
-
-1. **Event evidence:** down bar + low volume + narrow spread.
-2. **Campaign context:** meaningful recent selling pressure and broader structural environment.
-3. **Supporting evidence:** decreasing volume, higher low, acceptable/strong close, supply drying, or related structural context when present.
-4. **Contradictory context:** persistent supply, materially bearish structure, or other evidence inconsistent with a bullish Test interpretation should weaken the event rather than being ignored.
-5. **Validation:** post-TEST area holding and subsequent demand/supply response belong to downstream persistence/qualification, not to the historical detector itself.
-
-No single supporting factor is promoted to a mandatory textbook gate on the basis of the 47-event sample.
+TEST remains non-scoring and contextual.
 
 ### TEST scoring decision
 
-<!-- The audit also established that TEST currently has **no production scoring weight**. An audit-only weight sweep from `0.25` through `1.0` produced no useful separation between hold/failure groups, so no numeric weight is justified at this stage. -->
-Production replay:
-- `47` events
-- `27` positive
-- `14` negative
-- `6` flat
-- `0` failures
-
-Therefore:
-```text
-Status: Production
-Side: Demand / Bullish
-Role: Primary confirmation event
-Weight: existing validated weight
-Point-in-time validation: 47 events
-Positive decisive rate: 65.85%
-Robustness: 62.86%–69.44% leave-one-out
-```
+TEST currently has **no production scoring weight**. The event does not independently create demand dominance or trade actionability.
