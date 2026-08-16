@@ -79,13 +79,16 @@ def inspect_symbol(symbol: str) -> list[dict]:
         test_index = validation.test.test_index
         if test_index is None or recovery_index is None:
             continue
+        recovery_index = int(recovery_index)
 
-        start = max(0, int(recovery_index) - WINDOW)
-        end = min(len(metrics), int(recovery_index) + WINDOW + 1)
-        nearby_conflicts: list[str] = []
+        # Rebuild production-style point-in-time evidence at each bar in the
+        # local recovery window. Retrospective sequence validation determines
+        # the confirmed recovery anchor; conflict detection itself is causal.
+        start = max(0, recovery_index - WINDOW)
+        end = min(len(metrics), recovery_index + WINDOW + 1)
+        nearby_conflicts: list[dict] = []
         same_bar_conflicts: list[str] = []
 
-        # Rebuild production-style evidence prefix at each bar in the local window.
         for inspect_index in range(start, end):
             local_replay = metrics.iloc[: inspect_index + 1].copy()
             local_trend = TrendAnalyzer().analyze(local_replay)
@@ -95,15 +98,20 @@ def inspect_symbol(symbol: str) -> list[dict]:
                 trend=local_trend,
                 structural_swings=local_swings,
             )
-            for item in local_result.evidence:
-                if item.code not in CONFLICT_CODES:
-                    continue
-                if item.bar_index != inspect_index:
-                    continue
-                if inspect_index == recovery_index:
-                    same_bar_conflicts.append(str(item.code))
-                else:
-                    nearby_conflicts.append(str(item.code))
+            codes = sorted({
+                str(item.code)
+                for item in local_result.evidence
+                if item.code in CONFLICT_CODES
+                and item.bar_index == inspect_index
+            })
+            if inspect_index == recovery_index:
+                same_bar_conflicts.extend(codes)
+            elif codes:
+                nearby_conflicts.append({
+                    "bar_index": inspect_index,
+                    "offset": inspect_index - recovery_index,
+                    "codes": codes,
+                })
 
         rows.append({
             "symbol": symbol,
@@ -112,7 +120,7 @@ def inspect_symbol(symbol: str) -> list[dict]:
             "recovery_bar_index": recovery_index,
             "recovery_week": str(metrics.iloc[recovery_index][COL_WEEK]),
             "same_bar_conflicts": sorted(set(same_bar_conflicts)),
-            "nearby_conflicts": sorted(set(nearby_conflicts)),
+            "nearby_conflicts": nearby_conflicts,
         })
 
     return rows
@@ -132,10 +140,13 @@ def main() -> None:
 
     same_bar = sum(bool(e["same_bar_conflicts"]) for e in events)
     nearby = sum(bool(e["nearby_conflicts"]) for e in events)
-    conflict_counts = Counter()
-    for e in events:
-        for code in set(e["same_bar_conflicts"] + e["nearby_conflicts"]):
-            conflict_counts[code] += 1
+    same_counter = Counter(code for e in events for code in e["same_bar_conflicts"])
+    nearby_counter = Counter(
+        code
+        for e in events
+        for item in e["nearby_conflicts"]
+        for code in item["codes"]
+    )
 
     print("SHAKEOUT RECOVERY-ANCHOR INTERACTION AUDIT SUMMARY")
     print({
@@ -144,7 +155,8 @@ def main() -> None:
         "confirmed_shakeouts": len(events),
         "same_bar_conflict_events": same_bar,
         "nearby_conflict_events": nearby,
-        "conflict_event_counts": dict(sorted(conflict_counts.items())),
+        "same_bar_conflicts": dict(sorted(same_counter.items())),
+        "nearby_conflicts": dict(sorted(nearby_counter.items())),
         "failures": failures,
     })
 
@@ -160,7 +172,8 @@ def main() -> None:
 
     print("SHAKEOUT RECOVERY-ANCHOR INTERACTION AUDIT EVENTS")
     for e in events:
-        print(e)
+        if e["same_bar_conflicts"] or e["nearby_conflicts"]:
+            print(e)
 
 
 if __name__ == "__main__":
