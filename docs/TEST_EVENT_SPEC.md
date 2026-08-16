@@ -1,8 +1,8 @@
 # TEST Event Specification
 
-This document records the current audit-stage semantics for the VSA `TEST` event.
+This document records the current production semantics and validation record for the VSA `TEST` event.
 
-It is a research/specification artifact only. It does not enable TEST, change weights, qualification rules, or scanner actionability.
+`TEST` is production-enabled as a non-scoring contextual demand-side confirmation. This document does not independently change weights, qualification rules, or scanner actionability.
 
 ## Core principle
 
@@ -87,7 +87,7 @@ Those conclusions belong to downstream contextual qualification and persistence 
 
 ## Production status
 
-`TEST` has passed the current validation gates and is approved for production integration.
+`TEST` has passed the current validation gates and is **production-integrated** as a non-scoring contextual confirmation event.
 
 Validated point-in-time population:
 
@@ -101,11 +101,17 @@ Validated point-in-time population:
 - Semantic audit: 47/47 low-effort probes with meaningful selling context.
 - 0 tested persistent-downtrend contradictions.
 - Interaction audit: 4 same-bar NO_SUPPLY overlaps and 10 nearby conflicts; no hard conflict gate was justified.
+- Production replay: 47 events, 27 positive, 14 negative, 6 flat, 0 failures.
 
 TEST remains a contextual confirmation event and must not independently imply demand dominance, accumulation, or a trade entry.
 
-## Enablement requirement
+## Production enablement constraints
 
-Before production scoring or actionability is changed, the production integration must reproduce the validated 47-event point-in-time population and pass focused interaction/regression tests.
+TEST is enabled for evidence collection but remains **non-scoring**. No independent trade actionability is attached to the event.
 
-No future-response information may be used when determining whether TEST emits.
+The production implementation must continue to satisfy these constraints:
+
+- detection must be point-in-time;
+- no future-response information may be used when deciding whether TEST emits;
+- supporting confirmations remain non-mandatory;
+- interaction conflicts are handled as contextual evidence rather than a blanket rejection rule unless a future validation campaign justifies such a gate.

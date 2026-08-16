@@ -7,7 +7,7 @@
 - Yahoo Finance data is cached locally as CSV files under `cache/`; cached data is reused unless the download function is explicitly called with `refresh=True`.
 - The metrics layer is operational for bar geometry, historical rolling statistics, ratios, percentile ranks, and semantic classifications. It deliberately performs quantitative preparation rather than VSA interpretation.
 - The market-structure layer currently contains swing detection/history, structural swing scoring, structural progression, trend context, smart-money scoring, and related context models.
-- The evidence layer is operational for the currently enabled supply, demand, Stopping Volume, Spring, and structural-progression collection paths, with evidence represented as immutable `Evidence` objects and returned through `EvidenceResult`. Stopping Volume and Spring are collected point-in-time through the demand/evidence production paths.
+- The evidence layer is operational for the currently enabled supply, demand, TEST, Stopping Volume, Spring, and structural-progression collection paths, with evidence represented as immutable `Evidence` objects and returned through `EvidenceResult`. TEST, Stopping Volume, and Spring are collected point-in-time through the demand/evidence production paths.
 - Evidence aggregation is operational: evidence is grouped by `(bar_index, direction)`, multiple observations on the same bar/direction are treated as one event, primary/supporting/effort-result/structural roles are separated, and event contribution is calculated without blindly summing duplicate evidence.
 - Professional scoring is operational for trend, supply, demand, effort, strength, weakness, and confidence; scanner evaluation combines structural qualification with current/recent directional VSA confirmation.
 - The current scanner therefore has a functioning analysis chain from market data through metrics, market structure, evidence, professional scoring, qualification, ranking, and actionable-candidate output.
@@ -80,7 +80,7 @@
 │   ├── diagnose_test.py                # TEST detector diagnostics.
 │   ├── diagnose_test_sequence.py       # TEST sequence diagnostics.
 │   ├── professional_report.py          # Professional-analysis diagnostic/report support.
-│   └── replay.py                        # Replay/debug support for historical scanner behavior.
+│   └── replay.py                       # Replay/debug support for historical scanner behavior.
 │
 ├── diagnose_qualified_event.py         # Qualified-event diagnostic script.
 ├── diagnose_scanner.py                  # Scanner diagnostic script.
@@ -102,7 +102,7 @@
 │   ├── __init__.py                      # Evidence package initializer.
 │   ├── aggregator.py                    # Evidence aggregation and event-level contribution logic.
 │   ├── campaign.py                      # Campaign detection/support.
-│   ├── demand.py                        #  Demand-side evidence collection, including Stopping Volume, Test, Shakeout, and No Supply.
+│   ├── demand.py                        # Demand-side evidence collection, including TEST, Stopping Volume, Shakeout, and No Supply.
 │   ├── effort.py                        # Effort-vs-result evidence collection.
 │   ├── engine.py                        # Main EvidenceEngine orchestration and evidence context creation.
 │   ├── evidence_registry.py             # Evidence construction/registry mapping.
@@ -402,6 +402,31 @@ Point-in-time validation across the eight-symbol validation universe produced:
 
 Leave-one-symbol-out validation remained between 68.29% and 80.43% positive decisive rate.
 The production evidence weight remains 1.00. No weight optimization was promoted.
+
+### TEST production record
+
+`TEST` is a production-enabled, non-scoring demand-side confirmation event.
+
+Frozen semantics:
+
+- low-effort down bar
+- low VSA volume
+- narrow spread
+- meaningful recent selling pressure
+- no tested persistent-downtrend contradiction
+
+Validated point-in-time baseline:
+
+- 47 events across 8 symbols
+- 27 positive 8-bar outcomes
+- 14 negative 8-bar outcomes
+- 6 flat outcomes
+- 41 decisive outcomes
+- 65.85% positive decisive rate
+- 62.86%–69.44% leave-one-out range
+- 0 production replay failures
+
+TEST is contextual evidence only. It must not independently imply demand dominance, accumulation, support success, or trade entry.
 
 ### Calibration Promotion Rule
 

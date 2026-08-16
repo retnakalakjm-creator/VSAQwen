@@ -206,9 +206,11 @@ The subsequent production-enabled audit deliberately excluded the three strong-d
 
 The broader multi-symbol validation then confirmed **47 TEST events across 8 symbols**, with no scanner failures:
 
-- `20` positive 8-bar outcomes
-- `13` negative 8-bar outcomes
-- `14` flat 8-bar outcomes
+- `27` positive 8-bar outcomes
+- `14` negative 8-bar outcomes
+- `6` flat 8-bar outcomes
+- `41` decisive
+- `65.85%` positive decisive rate
 
 The optimized scanner was independently compared with the baseline scanner and passed exact equivalence:
 
@@ -243,9 +245,14 @@ No single supporting factor is promoted to a mandatory textbook gate on the basi
 ### TEST scoring decision
 
 <!-- The audit also established that TEST currently has **no production scoring weight**. An audit-only weight sweep from `0.25` through `1.0` produced no useful separation between hold/failure groups, so no numeric weight is justified at this stage. -->
+Production replay:
+- `47` events
+- `27` positive
+- `14` negative
+- `6` flat
+- `0` failures
 
 Therefore:
-
 ```text
 Status: Production
 Side: Demand / Bullish
