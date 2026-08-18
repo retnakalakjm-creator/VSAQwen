@@ -1,0 +1,33 @@
+NO SUPPLY SUPPORT-VALUE AUDIT SUMMARY
+{'symbols_requested': 8, 'symbols_with_primary_events': 8, 'anchor_events': 59, 'with_no_supply': 0, 'without_no_supply': 59, 'failures': []}
+NO SUPPLY SUPPORT-VALUE COMPARISON
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 59, 'positive': 44, 'negative': 15, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 59, 'positive_decisive_rate': 0.7457627118644068}}
+NO SUPPLY SUPPORT-VALUE BY_PRIMARY_EVENT
+stopping_volume
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 59, 'positive': 44, 'negative': 15, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 59, 'positive_decisive_rate': 0.7457627118644068}}
+NO SUPPLY SUPPORT-VALUE BY_SYMBOL
+BHARTIARTL.NS
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 9, 'positive': 6, 'negative': 3, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 9, 'positive_decisive_rate': 0.6666666666666666}}
+RELIANCE.NS
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 7, 'positive': 2, 'negative': 5, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 7, 'positive_decisive_rate': 0.2857142857142857}}
+HDFCBANK.NS
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 12, 'positive': 11, 'negative': 1, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 12, 'positive_decisive_rate': 0.9166666666666666}}
+ICICIBANK.NS
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 3, 'positive': 2, 'negative': 1, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 3, 'positive_decisive_rate': 0.6666666666666666}}
+INFY.NS
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 8, 'positive': 6, 'negative': 2, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 8, 'positive_decisive_rate': 0.75}}
+TCS.NS
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 7, 'positive': 6, 'negative': 1, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 7, 'positive_decisive_rate': 0.8571428571428571}}
+SBIN.NS
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 6, 'positive': 5, 'negative': 1, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 6, 'positive_decisive_rate': 0.8333333333333334}}
+LT.NS
+{'with_no_supply': {'events': 0, 'positive': 0, 'negative': 0, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 0, 'positive_decisive_rate': 0.0}, 'without_no_supply': {'events': 7, 'positive': 6, 'negative': 1, 'flat': 0, 'insufficient_forward_data': 0, 'decisive': 7, 'positive_decisive_rate': 0.8571428571428571}}
+NO SUPPLY SUPPORT-VALUE INTERACTIONS
+{'key': (False, ('increasing_supply', 'no_demand'), 'NEGATIVE_8_BAR'), 'count': 1}
+{'key': (False, ('increasing_supply', 'no_demand'), 'POSITIVE_8_BAR'), 'count': 1}
+{'key': (False, ('increasing_supply', 'no_demand', 'supply_coming_in'), 'NEGATIVE_8_BAR'), 'count': 1}
+{'key': (False, ('increasing_supply', 'supply_coming_in'), 'NEGATIVE_8_BAR'), 'count': 2}
+{'key': (False, ('increasing_supply', 'supply_coming_in'), 'POSITIVE_8_BAR'), 'count': 5}
+{'key': (False, ('increasing_supply',), 'NEGATIVE_8_BAR'), 'count': 8}
+{'key': (False, ('increasing_supply',), 'POSITIVE_8_BAR'), 'count': 31}
+{'key': (False, ('supply_coming_in',), 'POSITIVE_8_BAR'), 'count': 1}
