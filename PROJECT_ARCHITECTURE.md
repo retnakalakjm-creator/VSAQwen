@@ -2,505 +2,273 @@
 
 ## 1. Current System Overview
 
-- The repository is currently a Python-based VSA swing-scanner codebase for market analysis. Despite the project title, the present executable path is a command-line scanner; `gui.py` exists but is empty, so no desktop GUI workflow is currently implemented in the active code.
-- `main.py` accepts an optional Yahoo Finance symbol (default `SRF.NS`) and `--limit`, downloads daily OHLCV data, converts it to weekly bars, calculates quantitative metrics, runs the actionable scanner, and prints ranked actionable candidates. 
-- Yahoo Finance data is cached locally as CSV files under `cache/`; cached data is reused unless the download function is explicitly called with `refresh=True`.
-- The metrics layer is operational for bar geometry, historical rolling statistics, ratios, percentile ranks, and semantic classifications. It deliberately performs quantitative preparation rather than VSA interpretation.
-- The market-structure layer currently contains swing detection/history, structural swing scoring, structural progression, trend context, smart-money scoring, and related context models.
-- The evidence layer is operational for the currently enabled supply, demand, TEST, Stopping Volume, SHAKEOUT, Spring, and structural-progression collection paths. TEST remains a non-scoring contextual confirmation event. Stopping Volume and SHAKEOUT are production-integrated and validation-complete; Spring is production-integrated but remains provisional.
-- Evidence aggregation is operational: evidence is grouped by `(bar_index, direction)`, multiple observations on the same bar/direction are treated as one event, primary/supporting/effort-result/structural roles are separated, and event contribution is calculated without blindly summing duplicate evidence.
-- Professional scoring is operational for trend, supply, demand, effort, strength, weakness, and confidence; scanner evaluation combines structural qualification with current/recent directional VSA confirmation.
-- The current scanner therefore has a functioning analysis chain from market data through metrics, market structure, evidence, professional scoring, qualification, ranking, and actionable-candidate output.
+- The repository is a Python-based VSA swing-scanner codebase for market analysis. The active executable workflow remains the command-line scanner; `gui.py` exists but is not currently an operational GUI workflow.
+- `main.py` accepts an optional Yahoo Finance symbol and `--limit`, downloads daily OHLCV data, converts it to weekly bars, calculates quantitative metrics, runs the actionable scanner, and prints ranked candidates.
+- Yahoo Finance data is cached locally as CSV files under `cache/`.
+- The metrics layer performs quantitative preparation and semantic classifications; VSA interpretation belongs to the evidence layer rather than the raw metrics engine.
+- The market-structure layer provides swings, structural scoring, progression, trend context, smart-money context, and related models.
+- The evidence layer is operational for the currently enabled supply, demand, TEST, Stopping Volume, SHAKEOUT, Spring, and structural-progression paths. `DEMAND_COMING_IN` and `INCREASING_DEMAND` are now connected to the production evidence path but remain **provisional** after their audit campaigns.
+- Evidence aggregation is event-oriented: evidence is grouped by `(bar_index, direction)`, primary/supporting/effort-result/structural roles are separated, and duplicate observations are not blindly summed.
+- Professional scoring combines trend, supply, demand, effort, strength, weakness, and confidence; scanner qualification and ranking operate on the resulting evidence and structural context.
 
 ## 2. Active Python Tech Stack
 
-- **GUI Framework:** PySide6 is declared in `requirements.txt`, and GUI dimensions are present in `config.py`, but `gui.py` is currently empty and `main.py` does not import or initialize a GUI. Therefore no GUI framework is operational in the current execution path.
-- **Local Storage Method:** Standard local filesystem CSV cache. `data.py` writes downloaded OHLCV data to `cache/<symbol>.csv` and reads it back with pandas when a cached file exists. Logging is also configured to use `cache/vsa.log`.
-- **Calculation/Math Libraries:** pandas is actively used for DataFrames, resampling, rolling/statistical preparation, and analysis; numpy is declared as an active dependency; Python standard-library dataclasses, enums, pathlib, argparse, collections/defaultdict, and related utilities are used throughout. yfinance is the active market-data source. `openpyxl` and `reportlab` are declared dependencies, but the current main execution path does not establish them as active calculation components.
-- **Declared dependencies:** PySide6, pandas, numpy, yfinance, openpyxl, reportlab.
+- **Language:** Python.
+- **Data source:** yfinance.
+- **Analysis:** pandas, numpy, and Python standard-library dataclasses/enums/pathlib/argparse utilities.
+- **Declared GUI dependency:** PySide6, although the active CLI path does not initialize a GUI.
+- **Local storage:** filesystem CSV cache under `cache/` plus configured logging.
+- **Other declared dependencies:** openpyxl and reportlab remain declared but are not core components of the current scanner execution path.
 
-## 3. Existing Project File Structure
-
-```text
-.
-├── .gitignore                         # Repository ignore rules.
-├── __init__.py                        # Root package initializer.
-├── main.py                            # Current CLI production entry point and actionable scanner output.
-├── data.py                            # Yahoo Finance download/cache, validation, and daily-to-weekly conversion.
-├── metrics_engine.py                  # Quantitative market-metrics engine.
-├── classifiers.py                     # Semantic classifications for direction, volume, spread, and close position.
-├── config.py                          # Current application, analysis, VSA, scoring, threshold, and GUI constants.
-├── formatters.py                      # Output-formatting helpers.
-├── logger.py                          # Logging setup/helpers.
-├── models.py                          # Core enums, dataclasses, bar/swing/evidence/context models.
-├── scanner.py                          # Scanner candidate model, ranking, qualification, VSA confirmation, and point-in-time scan pipeline.
-├── stats_utils.py                     # Statistical helper functions used by metrics/scoring.
-├── trend.py                            # Trend/swing analysis and trend result generation.
-├── vsa.py                              # Empty module currently.
-├── gui.py                              # Empty module currently; no GUI implementation.
-├── output.txt                          # Current checked-in diagnostic/output text.
-├── requirements.txt                    # Declared Python dependencies.
-│
-├── background/
-│   ├── background_report.py            # Background-report support.
-│   ├── confluence.py                   # Background evidence/confluence support.
-│   ├── evidence_score.py               # Background evidence scoring support.
-│   ├── qualification.py                # Pattern qualification and actionable qualification logic.
-│   ├── structural_background.py        # Structural background analysis.
-│   └── structural_progression.py       # Structural progression evidence collection.
-│
-├── cache/
-│   ├── ASIANPAINT.NS.csv               # Cached daily OHLCV market data.
-│   ├── BHARTIARTL.NS.csv               # Cached daily OHLCV market data.
-│   ├── DLF.NS.csv                      # Cached daily OHLCV market data.
-│   ├── ETERNAL.NS.csv                  # Cached daily OHLCV market data.
-│   ├── HDFCBANK.NS.csv                 # Cached daily OHLCV market data.
-│   ├── HINDUNILVR.NS.csv               # Cached daily OHLCV market data.
-│   ├── LT.NS.csv                       # Cached daily OHLCV market data.
-│   ├── M&M.NS.csv                      # Cached daily OHLCV market data.
-│   ├── NTPC.NS.csv                     # Cached daily OHLCV market data.
-│   ├── RELIANCE.NS.csv                 # Cached daily OHLCV market data.
-│   ├── SBILIFE.NS.csv                  # Cached daily OHLCV market data.
-│   ├── SIEMENS.NS.csv                  # Cached daily OHLCV market data.
-│   ├── SRF.NS.csv                      # Cached daily OHLCV market data.
-│   ├── SUNPHARMA.NS.csv                # Cached daily OHLCV market data.
-│   ├── TATASTEEL.NS.csv                # Cached daily OHLCV market data.
-│   ├── TCS.NS.csv                      # Cached daily OHLCV market data.
-│   ├── TITAN.NS.csv                    # Cached daily OHLCV market data.
-│   ├── ULTRACEMCO.NS.csv               # Cached daily OHLCV market data.
-│   └── vsa.log                          # Runtime log destination configured by `config.py`.
-│
-├── Chat summary/
-│   ├── Chat Summary 1.md               # Large persisted conversation/recovery summary.
-│   ├── Chat Summary 2.md               # Large persisted conversation/recovery summary.
-│   └── Chat Summary 3.md               # Large persisted conversation/recovery summary.
-│
-├── debug/
-│   ├── confidence_diagnostics.py       # Confidence diagnostics.
-│   ├── diagnose_test.py                # TEST detector diagnostics.
-│   ├── diagnose_test_sequence.py       # TEST sequence diagnostics.
-│   ├── professional_report.py          # Professional-analysis diagnostic/report support.
-│   └── replay.py                       # Replay/debug support for historical scanner behavior.
-│
-├── diagnose_qualified_event.py         # Qualified-event diagnostic script.
-├── diagnose_scanner.py                  # Scanner diagnostic script.
-├── diagnose_scanner_ranking.py          # Scanner-ranking diagnostic script.
-├── diagnose_structural_invalidation.py  # Structural qualification/invalidation diagnostic script.
-│
-├── docs/
-│   ├── PRIMARY_VSA_EVENT_MATRIX.md      # Master VSA event status/role matrix.
-│   ├── TEST_EVENT_SPEC.md               # Detailed TEST audit/specification record.
-│   ├── TEST_QUALIFICATION_INTEGRATION.md
-│   ├── TEST_SCORING_INTEGRATION_AUDIT.md
-│   ├── rulebook/
-│   │   └── 001_buying_climax.md         # Placeholder / not yet production-frozen.
-│   └── specifications/                   # Canonical per-event VSA rulebook.
-│       ├── 001_stopping_volume.md        # Production-integrated / validation-complete.
-│       ├── 002_shakeout.md               # Production-integrated / validation-complete.
-│       ├── 003_test.md                   # Production-integrated contextual confirmation / non-scoring.
-│       └── 004_spring.md                 # Production-integrated / provisional.
-│
-├── engine/
-│   └── columns.py                       # Shared DataFrame column-name definitions.
-│
-├── evidence/
-│   ├── __init__.py                      # Evidence package initializer.
-│   ├── aggregator.py                    # Evidence aggregation and event-level contribution logic.
-│   ├── campaign.py                      # Campaign detection/support.
-│   ├── demand.py                        # Demand-side evidence collection, including TEST, Stopping Volume, Shakeout, and No Supply.
-│   ├── effort.py                        # Effort-vs-result evidence collection.
-│   ├── engine.py                        # Main EvidenceEngine orchestration and evidence context creation.
-│   ├── evidence_registry.py             # Evidence construction/registry mapping.
-│   ├── helpers.py                       # Evidence helper functions.
-│   ├── patterns..py                     # Empty module currently.
-│   ├── phase.py                         # Empty module currently.
-│   ├── profiles.py                      # Evidence profiles/supporting definitions.
-│   ├── rules.py                         # Low-level evidence rule predicates.
-│   ├── scoring.py                       # Evidence scoring helpers.
-│   ├── strength.py                      # Evidence-strength support.
-│   ├── spring.py                        # Production Spring detection, test validation, confirmation, and conflict-quality adjustment.
-│   ├── supply.py                        # Supply-side evidence collection.
-│   ├── trend_context.py                 # Trend-context evidence collection.
-│   └── weight.py                        # Dynamic evidence-weight calculation.
-│
-├── market_structure/
-│   ├── __init__.py                      # Market-structure package initializer.
-│   ├── professional_scorer.py           # Professional structural scoring.
-│   ├── progression.py                   # Structural progression determination.
-│   ├── smart_money.py                   # Smart-money structural scoring/context.
-│   ├── structural_swing_scorer.py       # Professional structural swing scoring.
-│   ├── structure_context.py             # Structural context model.
-│   ├── structure_filter.py              # Structural filtering.
-│   ├── swing_engine.py                  # Confirmed swing detection/confirmation.
-│   ├── swing_history.py                 # Historical swing metrics and snapshots.
-│   ├── swing_observation.py             # Swing observation model/support.
-│   ├── trend_analyzer.py                # Empty module currently.
-│   ├── vsa_context.py                   # VSA context construction.
-│   └── wyckoff_phase.py                 # Empty module currently.
-│
-├── model/
-│   ├── __init__.py                      # Model package exports.
-│   ├── evidence_result_model.py         # Immutable EvidenceResult and evidence query helpers.
-│   └── score_model.py                   # Professional scoring result models.
-│
-├── professional/
-│   ├── __init__.py                      # Professional package initializer.
-│   ├── score_weights.py                 # Empty module currently.
-│   ├── scoring_engine.py                # Professional trend/supply/demand/effort/strength/weakness/confidence scoring.
-│   └── scoring_rules.py                 # Empty module currently.
-│
-├── scripts/
-│   └── validate_stopping_volume.py      # Stopping-volume validation utility.
-│
-├── smart_money/
-│   ├── __init__.py                      # Smart-money package initializer.
-│   ├── base_percentile.py               # Smart-money percentile helper/base.
-│   ├── base_rule.py                     # Smart-money rule base.
-│   ├── evidence_engine.py               # Empty module currently.
-│   ├── evidence_registry.py             # Smart-money evidence registry.
-│   ├── evidence_rule.py                 # Smart-money evidence-rule base.
-│   └── rules/
-│       ├── __init__.py                  # Smart-money rules package initializer.
-│       ├── absorption.py                # Empty rule module currently.
-│       ├── accumulation.py              # Empty rule module currently.
-│       ├── buying_climax.py             # Empty rule module currently.
-│       ├── distribution.py              # Empty rule module currently.
-│       ├── effort_vs_result.py           # Empty rule module currently.
-│       ├── no_demand.py                 # Empty rule module currently.
-│       ├── no_supply.py                 # Empty rule module currently.
-│       ├── selling_climax.py            # Empty rule module currently.
-│       ├── shakeout.py                  # Empty rule module currently.
-│       ├── spring.py                    # Empty rule module currently.
-│       ├── stopping_volume.py           # Implemented stopping-volume rule module; production semantics validated point-in-time.
-│       ├── test.py                      # Empty rule module currently.
-│       └── upthrust.py                  # Empty rule module currently.
-│
-├── tests/
-│   ├── test_demand_detectors.py         # Tests demand-side detectors.
-│   ├── test_no_supply_scoring_role.py   # Tests no-supply scoring role.
-│   ├── test_primary_vsa_event_matrix.py # Tests primary VSA event-role matrix.
-│   ├── test_qualification.py            # Tests qualification behavior.
-│   ├── test_scanner_actionable.py       # Tests actionable scanner behavior.
-│   ├── test_scanner_current_actionable.py # Tests current actionable scanner behavior.
-│   └── test_scanner_latest_bar_regression.py # Regression test for latest-bar scanner behavior.
-│
-├── tools/
-│   ├── audit_anchor_incremental_value.py       # Audit of anchor incremental value.
-│   ├── audit_anchor_support_by_trend_state.py  # Audit of anchor support by trend state.
-│   ├── audit_clamp_outcomes.py                 # Audit of clamp outcomes.
-│   ├── audit_conditional_weight_effectiveness.py # Audit of conditional weight effectiveness.
-│   ├── audit_event_combinations.py              # Audit of evidence-event combinations.
-│   ├── audit_event_incremental_value.py         # Audit of incremental event value.
-│   ├── audit_event_specific_weight_calibration.py # Audit of event-specific weight calibration.
-│   ├── audit_trend_cases.py                     # Audit of trend cases.
-│   ├── audit_trend_counterfactual_outcomes.py   # Audit of trend counterfactual outcomes.
-│   ├── audit_trend_outcomes.py                  # Audit of trend outcomes.
-│   ├── audit_trend_weight_counterfactual.py     # Audit of trend-weight counterfactuals.
-│   ├── audit_weight_bucket_effectiveness.py     # Audit of weight-bucket effectiveness.
-│   ├── audit_weight_calibration_stability.py    # Audit of weight-calibration stability.
-│   ├── audit_weight_clamp.py                    # Audit of weight clamping.
-│   ├── audit_weight_incremental_effects.py      # Audit of incremental weight effects.
-│   ├── audit_weight_structure_trend_effectiveness.py # Audit of structure/trend weight effectiveness.
-│   ├── check_clamp_join.py                      # Clamp/join diagnostic check.
-│   ├── historical_validation.py                 # Historical validation utility.
-│   └── inventory_evidence_model.py              # Evidence-model inventory/audit utility.
-│
-├── utils/
-│   ├── ranking.py                      # Ranking helper.
-│   └── scoring.py                      # Score components, score bands, and score-combination utilities.
-│
-└── wyckoff/
-    ├── __init__.py                    # Wyckoff package initializer.
-    ├── engine.py                       # Wyckoff engine implementation.
-    └── wyckoff_model.py                # Wyckoff model definitions.
-```
-
-The tree above reflects the repository's current `main` tree; empty files are intentionally identified as empty rather than being treated as implemented architecture.
-
-## 4. Completed Functional Workflows
-
-### App Launch & UI Initialization
-
-1. `main.py` starts as the production entry point.
-2. `argparse` reads an optional symbol and `--limit`; the default symbol is `SRF.NS` and the default limit is 10.
-3. The symbol is passed to `download_data()`.
-4. `download_data()` first checks `cache/<symbol>.csv`; if present and `refresh=False`, it loads that CSV instead of downloading again.
-5. Otherwise yfinance downloads daily data with `period="max"`, `interval="1d"`, and `auto_adjust=False`.
-6. yfinance MultiIndex columns are flattened when necessary, only Open/High/Low/Close/Volume are retained, names are standardized to lowercase, dates are normalized/sorted, and an incomplete latest row is removed if it contains NaNs.
-7. The daily dataset is validated and cached.
-8. `daily_to_weekly()` resamples with `W-FRI`, using first Open, maximum High, minimum Low, last Close, and summed Volume; it also records the first trading day of each weekly group as `week_beginning`.
-9. `MetricsEngine.calculate()` creates quantitative metrics and semantic classifications.
-10. `ScannerEngine.scan_actionable(metrics)` runs the point-in-time scanner over the metric history and ranks actionable candidates.
-11. `main.py` prints the ranked candidates, including symbol, bar index/week, qualification, actionability, scores, confidence, target/campaign/qualifying/scoring evidence codes, and scoring-bar information.
-
-No GUI initialization occurs in this workflow. The declared PySide6 dependency and GUI dimensions are present, but `gui.py` is empty and is not imported by `main.py`.
-
-### Current Data Handling
-
-- Input is daily OHLCV data from Yahoo Finance.
-- Cache files are plain CSVs with the standardized fields `open`, `high`, `low`, `close`, and `volume`, indexed by date when loaded.
-- Weekly conversion produces `week_beginning`, `open`, `high`, `low`, `close`, and `volume`.
-- Metrics add quantitative geometry and historical normalization, including spread, body, upper/lower shadows, close ratio, previous-bar values, price change, price-change percentage, rolling average volume/spread, rolling standard deviations, volume/spread ratios, historical percentiles, and semantic spread/volume/direction/close-position classifications.
-- Historical percentile and rolling calculations are deliberately based on prior history rather than the current bar to avoid look-ahead bias.
-- Evidence is collected from a `BackgroundContext` built from the recent/background metric windows, trend structure, structural swings, structural pattern, and VSA context.
-- Evidence is stored as immutable records and grouped by `(bar_index, direction)` by the aggregator so multiple evidence codes on the same bar/direction become one aggregated market event.
-- Primary VSA evidence is treated as the anchor contribution; supporting, effort/result, and structural evidence modify the event rather than simply stacking all weights independently.
-- Current configured primary VSA codes include buying climax, selling climax, upthrust, shakeout, spring, and test; supporting codes include supply/demand observations such as supply coming in, increasing supply, hidden supply/demand, supply/demand drying up, stopping volume, no-supply, and no-demand; effort/result and structural progression have their own roles.
-- Professional scoring converts trend/supply/demand/effort information into normalized strength, weakness, and confidence measures and returns a `ProfessionalScoreResult`.
-- Scanner qualification requires persistent structural qualification plus sufficiently fresh directional VSA confirmation; the scanner can invalidate stale qualification, missing VSA confirmation, stale VSA confirmation, or contradictory VSA pressure.
-
-## 5. Current Data Models / File Schema
-
-### Market-data CSV schema
-
-The active cache schema is:
+## 3. Core Execution Flow
 
 ```text
-date index
-open
-high
-low
-close
-volume
+Yahoo Finance daily OHLCV
+        ↓
+local CSV cache
+        ↓
+daily_to_weekly()
+        ↓
+MetricsEngine.calculate()
+        ↓
+market structure / trend / swings
+        ↓
+EvidenceEngine.collect()
+        ├── supply evidence
+        ├── demand evidence
+        ├── Spring
+        └── structural progression
+        ↓
+evidence aggregation
+        ↓
+professional scoring
+        ↓
+qualification / freshness / contradiction checks
+        ↓
+scanner ranking
+        ↓
+actionable candidates
 ```
 
-### Weekly DataFrame schema
+All historical VSA audits are expected to respect point-in-time semantics and avoid look-ahead leakage.
+
+## 4. Evidence Architecture
+
+### Supply layer
+
+`evidence/supply.py` currently provides:
+
+- `BUYING_CLIMAX`
+- `SUPPLY_COMING_IN`
+- `HIDDEN_SUPPLY`
+- `INCREASING_SUPPLY`
+- `SUPPLY_DRYING_UP`
+- `UPTHRUST`
+- `NO_DEMAND`
+
+Some additional supply-descriptor blocks remain intentionally disabled until their semantics are frozen.
+
+### Demand layer
+
+`evidence/demand.py` currently provides active demand/context events including:
+
+- `STOPPING_VOLUME`
+- `SHAKEOUT`
+- `NO_SUPPLY`
+- `TEST`
+- `DEMAND_COMING_IN`
+- `INCREASING_DEMAND`
+
+`SELLING_CLIMAX` remains disabled.
+
+### Other evidence layers
+
+- `evidence/spring.py` handles Spring candidate/test/confirmation validation.
+- `evidence/effort.py` contains effort-result analysis, but its engine invocation is currently disabled.
+- `background/structural_progression.py` provides structural context and is kept separate from raw primary VSA evidence.
+
+## 5. Current Validated / Provisional VSA Event State
+
+| Event | Production path | Status | Base weight | Current interaction policy |
+|---|---:|---|---:|---|
+| `STOPPING_VOLUME` | YES | Production-integrated / validation-complete | `1.00` | No special penalty established |
+| `SHAKEOUT` | YES | Production-integrated / validation-complete | `0.50` | Existing contextual interaction policy |
+| `TEST` | YES | Production-integrated / non-scoring | `0.00` | Contextual only |
+| `NO_SUPPLY` | YES | Contextual / validation-complete | `0.00` | Does not independently create actionability |
+| `SPRING` | YES | Production-integrated / provisional | `0.75` | Same-bar `UPTHRUST`/`BUYING_CLIMAX` reduces Spring quality; does not reject |
+| `DEMAND_COMING_IN` | YES | **Provisional / audit-complete** | **0.38** | No conflict penalty established; rejection `NO` |
+| `INCREASING_DEMAND` | YES | **Provisional / audit-complete** | **0.85** | **Provisional conflict penalty `0.10`; rejection `NO`** |
+
+The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic.
+
+## 6. DEMAND_COMING_IN Current Audit State
+
+`DEMAND_COMING_IN` completed its audit cycle before being frozen at a provisional base weight of `0.38`.
+
+Key findings:
+
+- 281 candidate/production events across 8 symbols.
+- Production emissions were observed at weight `0.38`.
+- Candidate positive decisive rate: `66.19%` versus eligible-market `60.68%`.
+- Decision lift: `+5.52` percentage points.
+- At weight `0.38`, bias changed on `12 / 281` events (`4.27%`).
+- Interaction audit did not establish a meaningful supply-side conflict penalty.
+- Final qualification did not justify full promotion; the bias-changing sample was too small and had worse positive hit rate despite stronger return magnitude.
+
+Frozen audit policy:
 
 ```text
-week_beginning
-open
-high
-low
-close
-volume
+base weight        = 0.38
+conflict penalty   = 0.00
+rejection          = NO
+status             = PROVISIONAL
 ```
 
-### Metrics DataFrame fields currently generated
+## 7. INCREASING_DEMAND Current Audit State
 
-The active metrics engine creates/uses the following field families:
+`INCREASING_DEMAND` is connected to the production evidence path using the validated point-in-time detector definition:
+
+1. Bullish bar.
+2. High volume.
+3. Above-average spread.
+4. Increasing volume versus the previous bar.
+
+The detector intentionally allows imperfect but meaningful real-market VSA evidence rather than forcing textbook-perfect patterns.
+
+Production-path verification:
+
+- production hits: `905`
+- symbols with production hits: `8 / 8`
+- observed emitted weights: `[0.85]`
+
+Calibration:
+
+- calibration population: `902` events / 8 symbols.
+- beneficial decision changes: `26`
+- harmful decision changes: `15`
+- net benefit: `+11`
+- benefit/harm ratio: `1.7333`
+- leave-one-symbol-out minimum net benefit: `+6`
+
+Interaction audit:
+
+- conflicts: `41 / 902`
+- conflict rate: `4.55%`
+- hidden-supply-like conflicts: `41`
+- buying-climax-like conflicts: `16`
+- upthrust-like conflicts: `1`
+- supply-coming-in-like conflicts: `0`
+- increasing-supply-like conflicts: `0`
+- no-demand-like conflicts: `0`
+
+Conflict outcome audit:
+
+- usable events: `899`
+- conflict events: `41`
+- clean events: `858`
+- conflict mean return: `+0.72%`
+- clean mean return: `+3.83%`
+- conflict return gap: `-3.11` percentage points
+- conflict positive rate: `51.22%`
+- clean positive rate: `59.44%`
+- positive-rate gap: `-8.22` percentage points
+
+Penalty sensitivity recommended a provisional `0.10` conflict penalty, equivalent to an effective conflict-event weight of `0.765` while clean events retain `0.85`.
+
+Important: this `0.10` penalty is an **audit conclusion**, not a claim that the production scoring engine already applies it.
+
+Frozen audit policy:
 
 ```text
-open, high, low, close, volume
-spread
-body
-upper_shadow
-lower_shadow
-close_ratio
-prev_high
-prev_low
-prev_close
-prev_spread
-price_change
-price_change_pct
-avg_volume
-avg_spread
-std_volume
-std_spread
-volume_ratio
-spread_ratio
-spread_percentile
-volume_percentile
-spread_class
-volume_class
-direction
-close_position
-week_beginning
+base weight        = 0.85
+conflict penalty   = 0.10   # provisional audit policy
+rejection          = NO
+status             = PROVISIONAL
 ```
 
-### Core semantic enums/models
+## 8. Evidence Aggregation and Scoring Policy
 
-- `Direction`: DOWN=-1, NEUTRAL=0, UP=1.
-- `VolumeClass`: ULTRA_LOW, VERY_LOW, LOW, AVERAGE, HIGH, VERY_HIGH, ULTRA_HIGH.
-- `SpreadClass`: NARROW, BELOW_AVERAGE, AVERAGE, ABOVE_AVERAGE, WIDE, VERY_WIDE.
-- `ClosePosition`: ON_LOW=0, LOWER=1, MIDDLE=2, UPPER=3, ON_HIGH=4.
-- `EvidenceCategory`: SUPPLY, DEMAND, EFFORT, TREND, PHASE, VOLUME, SPREAD, SIGNAL, RESULT, ABSORPTION, EXHAUSTION, CONTINUATION, TRAP.
-- `EvidenceDirection`: BULLISH=1, NEUTRAL=0, BEARISH=-1.
-- `EvidenceCode`: current atomic codes include BUYING_CLIMAX, SUPPLY_COMING_IN, INCREASING_SUPPLY, HIDDEN_SUPPLY, SUPPLY_DRYING_UP, SUPPLY_HIGH_VOLUME, SUPPLY_WIDE_SPREAD, SUPPLY_ABSORPTION, STOPPING_VOLUME, DEMAND_COMING_IN, INCREASING_DEMAND, HIDDEN_DEMAND, DEMAND_DRYING_UP, NO_SUPPLY, EFFORT_GT_RESULT, RESULT_GT_EFFORT, ABSORPTION, STRONG_UPTREND, WEAK_UPTREND, STRONG_DOWNTREND, WEAK_DOWNTREND, SIDEWAYS_MARKET, ACCUMULATION, REACCUMULATION, MARKUP, DISTRIBUTION, REDISTRIBUTION, MARKDOWN, SPRING, UPTHRUST, TEST, NO_DEMAND, SELLING_CLIMAX, EFFORT_RESULT, SHAKEOUT, STRUCTURAL_PROGRESSION_IMPROVING, and STRUCTURAL_PROGRESSION_WEAKENING.
-- `TrendDirection`: UNKNOWN, UP, DOWN, RANGE.
-- `TrendState`: UNKNOWN, DEVELOPING, HEALTHY, CORRECTING, EXHAUSTED, REVERSING.
-- `MarketBias`: BULLISH, BEARISH, NEUTRAL.
-- `Swing`: confirmed swing type/price/pivot/confirmation/week/metrics index.
-- `ClassifiedSwing`: a confirmed swing plus HH/HL/LH/LL classification.
-- `StructuralSwing`: a swing plus professional evaluation, grade, and failure flag.
-- `TrendStructure`: direction, state, strength, confidence, swing counts, classified swings, structural swings, and HH/HL/LH/LL counts.
-- `EvidenceResult`: immutable `context` plus an immutable tuple of `Evidence` with supply/demand/trend/strength/weakness/category/code query helpers.
-- `ScannerCandidate`: immutable combination of evidence, professional score, qualification result, target-bar evidence, campaign evidence, qualifying evidence, scoring evidence, scoring-bar metadata, and actionability properties.
+Evidence is grouped by `(bar_index, EvidenceDirection)`. Within an event:
 
-### Evidence event aggregation
+- primary evidence provides the anchor contribution;
+- supporting evidence modifies the event rather than blindly stacking full weights;
+- effort/result and structural evidence have their own contribution roles;
+- duplicate observations are not treated as independent primary signals.
 
-Evidence is grouped by `(bar_index, EvidenceDirection)`. Each group stores all codes on that bar/direction. The current event contribution model is:
+Interaction audits are a separate quality layer. A contradiction does **not** automatically invalidate a detector. The project requires empirical evidence that the conflict is repeatedly harmful before applying a quality penalty, and a rejection rule requires substantially stronger evidence.
 
-- If a primary event exists, the strongest primary contribution is the anchor; supporting evidence modifies it by 15%, effort/result by 15%, and structural context by 10%.
-- If no primary event exists, supporting evidence contributes at 60%, effort/result at 25%, and structural context at 15%.
-- Event contribution is capped by the configured maximum combined event contribution of 1.50.
-- Current primary VSA codes include BUYING_CLIMAX, SELLING_CLIMAX, UPTHRUST, SHAKEOUT, SPRING, TEST, and STOPPING_VOLUME where the corresponding detector logic is production-enabled. Supporting codes include supply/demand observations such as supply coming in, increasing supply, hidden supply/demand, supply/demand drying up, no-supply, and no-demand; effort/result and structural progression have their own roles.
-- `SHAKEOUT` is recovery-anchored in production. Candidate semantics are evaluated point-in-time, followed by TEST and recovery validation; the production `SHAKEOUT` evidence is emitted on the confirmed recovery bar rather than the original candidate bar.
+For the current provisional events, audit conclusions are documented separately from active production scoring until the project explicitly promotes them.
 
-### Current validated VSA production events
+## 9. VSA Methodology Constraints
 
-| Event | Status | Base Weight | Validated Population |
-|---|---|---:|---:|
-| `STOPPING_VOLUME` | Production | `1.00` | 59 |
-| `SHAKEOUT` | Production | `0.50` | 18 |
-| `TEST` | Production / non-scoring | `0.00` | 47 |
-| `SPRING` | Production / provisional | `0.75` | 13 |
+The project is designed for real-market VSA, not textbook-pattern detection.
 
-### Canonical VSA specification policy
+Therefore:
 
-`docs/PRIMARY_VSA_EVENT_MATRIX.md` is the master event-status index.
+- point-in-time evidence is mandatory;
+- future bars may be used for audit outcomes, never for detector decisions;
+- imperfect but meaningful VSA evidence is acceptable;
+- detector semantics must remain faithful to strict VSA methodology;
+- contextual evidence should not be promoted to standalone actionability without incremental-value evidence;
+- conflicts should reduce quality only when validated by outcomes;
+- adding or tuning a numeric weight never substitutes for semantic validation.
 
-`docs/specifications/` is the canonical per-event rulebook.
+## 10. Audit-First Promotion Workflow
 
-A new event specification file is created only after the event has sufficiently frozen semantics, validation evidence, and production status. Unvalidated candidate events should remain documented only in the master matrix until their audit process is complete.
-
-### Shakeout recovery data currently used
-
-The implemented recovery validation stores:
+Every new provisional VSA event should follow this sequence:
 
 ```text
-test/reference low
- test/reference close
- test/reference spread
- test/reference volume
-recovery_index
-spread_ratio
-volume_ratio
-close_position
-close_change_ratio
-low_distance_from_test
+semantic definition
+    ↓
+point-in-time detector validation
+    ↓
+semantic-quality audit
+    ↓
+decision-value / outcome audit
+    ↓
+interaction / contradiction audit
+    ↓
+conflict-outcome audit
+    ↓
+weight sensitivity
+    ↓
+production-path verification
+    ↓
+regression / ranking safety
+    ↓
+final qualification decision
+    ↓
+documentation freeze
 ```
 
-The recovery quality calculation currently averages five normalized components: close position, close-change quality, low-hold quality, spread quality, and volume quality. The current configuration includes a recovery lookahead of 5 bars, minimum recovery close position 3, spread target 0.75, volume target 0.75, close-change target 0.10, and low-clearance target 0.25.
+A failed audit script is never treated as evidence about the event itself. The script must first reproduce the validated event population.
 
-### INCREASING_DEMAND Calibration Record
+## 11. Repository Documentation Policy
 
-INCREASING_DEMAND is provisionally registered at a production weight of 0.85.
+- `docs/PRIMARY_VSA_EVENT_MATRIX.md` is the master event-status index.
+- `docs/specifications/` is the canonical per-event semantic rulebook.
+- Dedicated audit records in `docs/` preserve completed event reasoning and frozen provisional decisions.
+- `PROJECT_ARCHITECTURE.md` describes the actual current code path and distinguishes production-integrated behavior from provisional audit policy.
+- `Chat summary/` preserves the project train of thought, prior bugs, design decisions, and audit rationale.
 
-Validation:
-- 902 point-in-time events across 8 symbols.
-- POSITIVE_8_BAR: 464
-- NEGATIVE_8_BAR: 303
-- FLAT_8_BAR: 135
-- Beneficial decision changes: 26
-- Harmful decision changes: 15
-- Net benefit: +11
-- Benefit/harm ratio: 1.7333
-- Leave-one-symbol-out validation remained positive for all 8 exclusions.
-- Minimum leave-one-symbol-out net benefit: +6.
-- Minimum leave-one-symbol-out benefit/harm ratio: 1.4286.
+No architecture document should claim a detector is production-approved merely because its enum, registry entry, or audit script exists.
 
-The result is not dependent on a single symbol. Excluding either RELIANCE.NS or TCS.NS still produced a net benefit of +6.
-The 0.85 weight is provisional and should be recalibrated when the validation universe or historical sample expands materially.
+## 12. Immediate Current State
 
-### Stopping Volume production record
+The system currently has a functioning end-to-end path from market data through metrics, structure, evidence, professional scoring, qualification, ranking, and actionable scanner output.
 
-`STOPPING_VOLUME` is a production-integrated primary demand-side VSA event.
+The current demand-side milestone is:
 
-Mandatory point-in-time requirements:
+```text
+DEMAND_COMING_IN
+    base weight = 0.38
+    conflict penalty = 0.00
+    status = PROVISIONAL
 
-1. Selling Campaign.
-2. Bearish current bar.
-3. High VSA volume or higher.
-4. Above-average spread.
-5. Close off the low.
+INCREASING_DEMAND
+    base weight = 0.85
+    conflict penalty = 0.10  # provisional audit policy
+    status = PROVISIONAL
+```
 
-Non-mandatory confirmations:
-
-- Very-high volume.
-- Wide spread.
-- Increasing volume.
-- Higher low.
-
-The detector intentionally allows imperfect real-market examples rather than requiring textbook-perfect bar geometry.
-Point-in-time validation across the eight-symbol validation universe produced:
-
-- 59 events.
-- 39 positive 8-bar outcomes.
-- 14 negative 8-bar outcomes.
-- 6 flat outcomes.
-- 53 decisive outcomes.
-- 73.58% positive decisive rate.
-- 8/8 symbols with events.
-- 0 replay failures.
-
-Leave-one-symbol-out validation remained between 68.29% and 80.43% positive decisive rate.
-The production evidence weight remains 1.00. No weight optimization was promoted.
-
-### TEST production record
-
-`TEST` is a production-enabled, non-scoring demand-side confirmation event.
-
-Frozen semantics:
-
-- low-effort down bar
-- low VSA volume
-- narrow spread
-- meaningful recent selling pressure
-- no tested persistent-downtrend contradiction
-
-Validated point-in-time baseline:
-
-- 47 events across 8 symbols
-- 27 positive 8-bar outcomes
-- 14 negative 8-bar outcomes
-- 6 flat outcomes
-- 41 decisive outcomes
-- 65.85% positive decisive rate
-- 62.86%–69.44% leave-one-out range
-- 0 production replay failures
-
-TEST is contextual evidence only. It must not independently imply demand dominance, accumulation, support success, or trade entry.
-
-### Calibration Promotion Rule
-
-An evidence detector should not be promoted to production solely because it produces historical events.
-The standard promotion sequence is:
-
-1. Point-in-time historical replay.
-2. Outcome classification.
-3. Candidate-weight calibration.
-4. Outcome-level attribution.
-5. Symbol-level robustness analysis.
-6. Leave-one-symbol-out validation.
-7. Provisional production registration.
-8. Later recalibration as the validation universe expands.
-
-`INCREASING_DEMAND` has completed this sequence and is therefore registered provisionally at weight `0.85`.
-
-## 6. Current Implementation Details
-
-### Fully coded and currently used
-
-- Yahoo Finance daily data acquisition and local CSV caching.
-- Daily OHLCV validation and incomplete-latest-bar removal.
-- Daily-to-weekly OHLCV resampling.
-- Quantitative metrics, historical rolling statistics, percentile normalization, and semantic bar classification.
-- Confirmed swing detection, swing history, HH/HL/LH/LL classification, structural swing scoring, structural progression, trend direction/state/strength/confidence, and VSA context construction.
-- EvidenceEngine context construction and active supply, demand, Spring, and structural-progression collection paths.
-- Evidence construction through the evidence registry and dynamic evidence weights.
-- Active VSA detectors represented in the current evidence code/configuration, including supply observations, demand observations, stopping volume, upthrust, buying climax, shakeout, Spring, TEST, and structural progression codes where corresponding detector logic is present. Spring uses point-in-time candidate/test/confirmation validation, has a provisional production weight of 0.75, and retains the event while reducing evidence quality to 0.50 when the same bar also emits UPTHRUST or BUYING_CLIMAX.
-- Shakeout validation/recovery scoring is implemented, including the five-component recovery-quality calculation and combined shakeout quality.
-- Event-level evidence aggregation by bar/direction, primary/supporting/effort-result/structural role separation, combined-event contribution calculation, and bullish/bearish/neutral bias calculation.
-- Professional scoring of trend, supply, demand, effort, strength, weakness, and confidence.
-- Pattern qualification and scanner invalidation/continuation logic for structural persistence and fresh directional VSA confirmation.
-- Actionable candidate ranking and CLI reporting.
-- A substantial test suite and a collection of diagnostic/audit scripts are present and used as development/validation tooling.
-
-### Present but empty or intentionally inactive in the current tree
-
-- `gui.py` is empty; there is no implemented desktop GUI workflow in the current main execution path.
-- `vsa.py` is empty.
-- `market_structure/trend_analyzer.py` is empty; the active trend implementation is currently in `trend.py`.
-- `market_structure/wyckoff_phase.py` is empty.
-- `evidence/patterns..py` is empty.
-- `evidence/phase.py` is empty.
-- `professional/score_weights.py` is empty.
-- `professional/scoring_rules.py` is empty.
-- `smart_money/evidence_engine.py` is empty.
-- Most files under `smart_money/rules/` are currently empty; `smart_money/rules/stopping_volume.py` is the implemented exception visible in the current tree.
-- `docs/rulebook/001_buying_climax.md` is empty.
-- Several collection calls in `EvidenceEngine.collect()` remain commented out, including separate `_collect_effort()`, `_collect_trend()`, `_collect_phase()`, and several detector-specific calls; the active orchestration currently calls supply, demand, and structural progression.
-
-### Current implementation boundary
-
-The checked-in code is therefore a functioning research/analysis scanner with an evidence-driven VSA pipeline and local cached market data, not yet a completed GUI desktop application. This document intentionally records that current boundary rather than inventing a future architecture or treating empty modules/comments as implemented features.
+Neither event is promoted to fully production-approved scoring status by the completion of these audits. The next provisional event must continue through the same audit-first process.
