@@ -14,13 +14,19 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from data import daily_to_weekly, download_data
+from engine.columns import (
+    COL_CLOSE_POSITION,
+    COL_DIRECTION,
+    COL_SPREAD_CLASS,
+    COL_VOLUME_CLASS,
+)
 from evidence.demand import collect_demand
 from evidence.engine import EvidenceEngine
 from evidence.evidence_registry import EVIDENCE_LIBRARY
 from evidence.scoring import _score_bias
 from evidence.weight import WeightCalculator
 from metrics_engine import MetricsEngine
-from models import EvidenceCode
+from models import EvidenceCode, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
 
 SYMBOL = "HDFCBANK.NS"
@@ -37,7 +43,6 @@ def main() -> None:
     metrics = MetricsEngine().calculate(
         daily_to_weekly(download_data(SYMBOL))
     )
-    trend = TrendAnalyzer().analyze(metrics)
 
     production_hits = 0
     candidate_bars = 0
@@ -45,12 +50,13 @@ def main() -> None:
     for index in range(20, len(metrics)):
         row = metrics.iloc[index]
         if not (
-            int(row["Direction"]) == -1
-            and int(row["VolumeClass"]) >= 5
-            and int(row["SpreadClass"]) >= 4
-            and int(row["ClosePosition"]) >= 2
+            int(row[COL_DIRECTION]) == -1
+            and VolumeClass(int(row[COL_VOLUME_CLASS])) >= VolumeClass.HIGH
+            and SpreadClass(int(row[COL_SPREAD_CLASS])) >= SpreadClass.ABOVE_AVERAGE
+            and int(row[COL_CLOSE_POSITION]) >= 2
         ):
             continue
+
         candidate_bars += 1
         replay = metrics.iloc[: index + 1]
         replay_trend = TrendAnalyzer().analyze(replay)
