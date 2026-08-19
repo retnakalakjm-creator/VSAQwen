@@ -18,16 +18,13 @@ from engine.columns import (
     COL_CLOSE,
     COL_CLOSE_POSITION,
     COL_DIRECTION,
-    COL_HIGH,
-    COL_LOW,
-    COL_OPEN,
     COL_SPREAD_CLASS,
     COL_VOLUME_CLASS,
     COL_WEEK,
 )
 from evidence.engine import EvidenceEngine
 from evidence.supply import collect_supply
-from evidence.rules import has_strong_spread, is_strong_close, is_very_high_volume, volume_increasing
+from evidence.rules import has_strong_spread, is_strong_close, volume_increasing
 from metrics_engine import MetricsEngine
 from models import Direction, EvidenceCode, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
@@ -115,6 +112,8 @@ def inspect_symbol(symbol: str) -> list[dict]:
         prev = metrics.iloc[index - 1]
         future_close = float(metrics.iloc[index + HORIZON][COL_CLOSE])
         current_close = float(current[COL_CLOSE])
+        volume_class = VolumeClass(int(current[COL_VOLUME_CLASS]))
+        spread_class = SpreadClass(int(current[COL_SPREAD_CLASS]))
 
         events.append({
             "symbol": symbol,
@@ -125,13 +124,13 @@ def inspect_symbol(symbol: str) -> list[dict]:
             "future_close": future_close,
             "return_8_bar": (future_close - current_close) / current_close,
             "direction": Direction(int(current[COL_DIRECTION])).name,
-            "volume_class": VolumeClass(int(current[COL_VOLUME_CLASS])).name,
-            "spread_class": SpreadClass(int(current[COL_SPREAD_CLASS])).name,
+            "volume_class": volume_class.name,
+            "spread_class": spread_class.name,
             "close_position": int(current[COL_CLOSE_POSITION]),
-            "very_high_volume": bool(is_very_high_volume(current)),
-            "wide_spread": bool(has_strong_spread(current)),
-            "strong_close": bool(is_strong_close(current)),
-            "volume_increasing": bool(volume_increasing(current, prev)),
+            "very_high_volume": volume_class >= VolumeClass.VERY_HIGH,
+            "wide_spread": spread_class >= SpreadClass.WIDE,
+            "strong_close": bool(is_strong_close(engine._ctx.current)),
+            "volume_increasing": bool(volume_increasing(engine._ctx.current, engine._ctx.previous)),
             "interaction_bars": {
                 str(bar_index): sorted(code.name for code in bar_codes)
                 for bar_index, bar_codes in sorted(interactions.items())
