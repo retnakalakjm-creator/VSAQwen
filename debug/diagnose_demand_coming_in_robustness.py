@@ -19,10 +19,15 @@ if str(ROOT) not in sys.path:
 
 import pandas as pd
 
-import config
 from data import download_data, daily_to_weekly
 from metrics_engine import MetricsEngine
-from engine.columns import COL_CLOSE_POSITION, COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
+from engine.columns import (
+    COL_CLOSE,
+    COL_CLOSE_POSITION,
+    COL_DIRECTION,
+    COL_SPREAD_CLASS,
+    COL_VOLUME_CLASS,
+)
 from models import Direction, SpreadClass, VolumeClass
 
 SYMBOLS = (
@@ -35,10 +40,11 @@ SYMBOLS = (
     "SBIN.NS",
     "LT.NS",
 )
+MIN_REPLAY_BARS = 20
 FORWARD_BARS = 8
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Event:
     symbol: str
     bar_index: int
@@ -52,33 +58,34 @@ def _metrics(symbol: str) -> pd.DataFrame:
 
 
 def _candidates(metrics: pd.DataFrame) -> list[int]:
-    """Cheap necessary-condition scan; no replay/context reconstruction."""
+    """Same cheap necessary-condition scan used by the semantic audit."""
     direction = metrics[COL_DIRECTION].to_numpy()
     volume = metrics[COL_VOLUME_CLASS].to_numpy()
     spread = metrics[COL_SPREAD_CLASS].to_numpy()
     close_pos = metrics[COL_CLOSE_POSITION].to_numpy()
 
     candidates: list[int] = []
-    for i in range(len(metrics)):
-        if Direction(int(direction[i])) != Direction.DOWN:
+    for index in range(MIN_REPLAY_BARS, len(metrics)):
+        if Direction(int(direction[index])) != Direction.DOWN:
             continue
-        if VolumeClass(int(volume[i])) < VolumeClass.HIGH:
+        if VolumeClass(int(volume[index])) < VolumeClass.HIGH:
             continue
-        if SpreadClass(int(spread[i])) < SpreadClass.BELOW_AVERAGE:
+        # Must match the semantic audit exactly.
+        if SpreadClass(int(spread[index])) < SpreadClass.ABOVE_AVERAGE:
             continue
-        # Middle or higher close position.
-        if int(close_pos[i]) < 2:
+        if int(close_pos[index]) < 2:
             continue
-        candidates.append(i)
+        candidates.append(index)
     return candidates
 
 
 def _outcome(metrics: pd.DataFrame, index: int) -> str | None:
-    future = metrics.iloc[index + 1:index + 1 + FORWARD_BARS]
+    future = metrics.iloc[index + 1 : index + 1 + FORWARD_BARS]
     if len(future) < FORWARD_BARS:
         return None
-    entry = float(metrics.iloc[index]["close"])
-    end = float(future.iloc[-1]["close"])
+
+    entry = float(metrics.iloc[index][COL_CLOSE])
+    end = float(future.iloc[-1][COL_CLOSE])
     if end > entry:
         return "POSITIVE_8_BAR"
     if end < entry:
@@ -89,18 +96,19 @@ def _outcome(metrics: pd.DataFrame, index: int) -> str | None:
 def _collect_symbol(symbol: str) -> list[Event]:
     metrics = _metrics(symbol)
     events: list[Event] = []
-    for i in _candidates(metrics):
-        outcome = _outcome(metrics, i)
+    for index in _candidates(metrics):
+        outcome = _outcome(metrics, index)
         if outcome is not None:
-            events.append(Event(symbol, i, outcome))
+            events.append(Event(symbol=symbol, bar_index=index, outcome=outcome))
     return events
 
 
 def _summary(events: list[Event]) -> dict:
-    positive = sum(e.outcome == "POSITIVE_8_BAR" for e in events)
-    negative = sum(e.outcome == "NEGATIVE_8_BAR" for e in events)
-    flat = sum(e.outcome == "FLAT_8_BAR" for e in events)
+    positive = sum(event.outcome == "POSITIVE_8_BAR" for event in events)
+    negative = sum(event.outcome == "NEGATIVE_8_BAR" for event in events)
+    flat = sum(event.outcome == "FLAT_8_BAR" for event in events)
     decisive = positive + negative
+
     return {
         "events": len(events),
         "positive": positive,
@@ -124,18 +132,22 @@ def main() -> None:
             by_symbol[symbol] = []
 
     all_events = [event for events in by_symbol.values() for event in events]
+
     print("DEMAND COMING IN ROBUSTNESS SUMMARY")
-    print({
-        "symbols_requested": len(SYMBOLS),
-        "symbols_with_candidates": sum(bool(events) for events in by_symbol.values()),
-        "failures": failures,
-        **_summary(all_events),
-    })
+    print(
+        {
+            "symbols_requested": len(SYMBOLS),
+            "symbols_with_candidates": sum(
+                bool(events) for events in by_symbol.values()
+            ),
+            "failures": failures,
+            **_summary(all_events),
+        }
+    )
 
     print("DEMAND COMING IN ROBUSTNESS BY_SYMBOL")
     for symbol in SYMBOLS:
-        summary = _summary(by_symbol[symbol])
-        print(symbol, summary)
+        print(symbol, _summary(by_symbol[symbol]))
 
     print("DEMAND COMING IN ROBUSTNESS LEAVE_ONE_OUT")
     for excluded in SYMBOLS:
