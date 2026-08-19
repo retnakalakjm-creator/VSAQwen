@@ -1,20 +1,20 @@
 """Optimized interaction/contradiction audit for INCREASING_DEMAND.
 
-Uses the validated INCREASING_DEMAND detector directly and evaluates
-same-bar supply-side contradictions without rebuilding the full
-EvidenceEngine for every historical bar.
+Uses the same BarContext-based conditions as the production detector and
+checks same-bar supply-side contradictions without rebuilding EvidenceEngine.
 """
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from data import daily_to_weekly, download_data
+from evidence.engine import EvidenceEngine
 from evidence.rules import (
     closes_lower,
     closes_lower_than_previous,
@@ -41,6 +41,7 @@ SYMBOLS = (
 
 def _audit_symbol(symbol: str) -> dict:
     metrics = MetricsEngine().calculate(daily_to_weekly(download_data(symbol)))
+    context_builder = EvidenceEngine()
     total = 0
     events_with_conflict = 0
     conflicts = {
@@ -53,8 +54,8 @@ def _audit_symbol(symbol: str) -> dict:
     }
 
     for index in range(21, len(metrics)):
-        bar = metrics.iloc[index]
-        previous = metrics.iloc[index - 1]
+        bar = context_builder._create_bar_context(metrics.iloc[index], index)
+        previous = context_builder._create_bar_context(metrics.iloc[index - 1], index - 1)
 
         demand = (
             is_bullish_bar(bar)
@@ -107,8 +108,7 @@ def _audit_symbol(symbol: str) -> dict:
             ),
         }
 
-        conflict_count = sum(flags.values())
-        if conflict_count:
+        if any(flags.values()):
             events_with_conflict += 1
             for name, passed in flags.items():
                 if passed:
@@ -127,7 +127,7 @@ def main() -> None:
     failures = []
     results = []
     with ThreadPoolExecutor(max_workers=min(4, len(SYMBOLS))) as executor:
-        futures = {executor.submit(_audit_symbol, s): s for s in SYMBOLS}
+        futures = {executor.submit(_audit_symbol, symbol): symbol for symbol in SYMBOLS}
         for future, symbol in futures.items():
             try:
                 results.append(future.result())
@@ -151,7 +151,7 @@ def main() -> None:
         "conflict_rate": conflict_rate,
         "aggregate_conflicts": aggregate,
         "failures": failures,
-        "status": "PASS" if not failures else "FAIL",
+        "status": "PASS" if not failures and total_events > 0 else "FAIL",
     })
     print("INCREASING DEMAND INTERACTION BY_SYMBOL")
     for item in results:
