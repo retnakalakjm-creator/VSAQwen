@@ -35,8 +35,7 @@ def _semantic_sweep(metrics):
         current = probe_engine._create_bar_context(metrics.iloc[index], index)
         previous = probe_engine._create_bar_context(metrics.iloc[index - 1], index - 1)
         ctx = SimpleNamespace(current=current, previous=previous)
-        evidence = []
-        _collect_increasing_demand(ctx, evidence)
+        evidence = _collect_increasing_demand(ctx)
         target = [item for item in evidence if item.code == TARGET]
         hits += len(target)
         weights.extend(item.weight for item in target)
