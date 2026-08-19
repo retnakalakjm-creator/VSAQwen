@@ -258,6 +258,19 @@ STOPPING_VOLUME = EvidenceProfile(
     ),
 )
 
+DEMAND_COMING_IN = EvidenceProfile(
+    code=EvidenceCode.DEMAND_COMING_IN,
+    category=EvidenceCategory.DEMAND,
+    direction=EvidenceDirection.BULLISH,
+    strength=0.90,
+    weight=1.00,
+    priority=85,
+    observation="Demand Coming In",
+    description=(
+        "Bullish effort/result evidence suggesting demand is entering the market."
+    ),
+)
+
 SELLING_CLIMAX = EvidenceProfile(
     code=EvidenceCode.SELLING_CLIMAX,
     category=EvidenceCategory.DEMAND,
@@ -305,6 +318,8 @@ SHAKEOUT = EvidenceProfile(
 DEMAND_PROFILES: tuple[EvidenceProfile, ...] = (
 
     STOPPING_VOLUME,
+
+    DEMAND_COMING_IN,
 
     SELLING_CLIMAX,
 

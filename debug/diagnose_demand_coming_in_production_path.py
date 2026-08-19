@@ -34,10 +34,8 @@ TARGET = EvidenceCode.DEMAND_COMING_IN
 
 
 def main() -> None:
-    demand_source = inspect.getsource(collect_demand)
     engine_source = inspect.getsource(EvidenceEngine.collect)
     weight_source = inspect.getsource(WeightCalculator.calculate)
-
     registry_definition = EVIDENCE_LIBRARY.get(TARGET)
 
     metrics = MetricsEngine().calculate(
@@ -69,12 +67,14 @@ def main() -> None:
         )
         production_hits += sum(item.code == TARGET for item in result.evidence)
 
+    collector_target_present = production_hits > 0
+
     print("DEMAND COMING IN PRODUCTION PATH AUDIT")
     print({
         "target": TARGET.name,
         "candidate_bars_replayed": candidate_bars,
         "actual_production_hits": production_hits,
-        "collector_contains_target": "DEMAND_COMING_IN" in demand_source,
+        "collector_contains_target": collector_target_present,
         "engine_collect_calls_demand": "self._collect_demand()" in engine_source,
         "weight_calculator_has_target_case": "EvidenceCode.DEMAND_COMING_IN" in weight_source,
         "registry_present": registry_definition is not None,
@@ -83,9 +83,9 @@ def main() -> None:
         "synthetic_scoring_weight_038": 0.38 * 0.90,
         "current_default_weight_if_emitted": 1.00,
         "production_path_status": (
-            "NOT_READY_TARGET_NOT_COLLECTED"
-            if production_hits == 0
-            else "TARGET_COLLECTED"
+            "TARGET_COLLECTED"
+            if production_hits > 0
+            else "NOT_READY_TARGET_NOT_COLLECTED"
         ),
         "notes": [
             "This audit does not modify collector, registry, weight, scoring, or aggregation logic.",

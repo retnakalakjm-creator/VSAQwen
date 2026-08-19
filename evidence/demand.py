@@ -14,9 +14,55 @@ from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadC
 def collect_demand(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Evidence]:
     evidence: list[Evidence] = []
     evidence.extend(_collect_stopping_volume(ctx))
+    evidence.extend(_collect_demand_coming_in(ctx))
     evidence.extend(_collect_test(ctx))
     evidence.extend(_collect_shakeout(ctx=ctx, validation_metrics=metrics))
     evidence.extend(_collect_no_supply(ctx))
+    return evidence
+
+
+def _collect_demand_coming_in(ctx: BackgroundContext) -> list[Evidence]:
+    """
+    Detect audited Demand Coming In candidates.
+
+    Mandatory conditions match the validated point-in-time definition:
+    bearish direction, high-or-higher volume, above-average-or-higher
+    spread, and close at least in the middle of the bar.
+    """
+    evidence: list[Evidence] = []
+    bar = ctx.current
+    previous = ctx.previous
+
+    requirements = (
+        requirement(name="Down Bar", passed=bar.direction == Direction.DOWN),
+        requirement(name="High Volume", passed=bar.volume >= VolumeClass.HIGH),
+        requirement(name="Above Average Spread", passed=bar.spread >= SpreadClass.ABOVE_AVERAGE),
+        requirement(name="Close Not Off Low", passed=int(bar.close_position) >= 2),
+    )
+
+    if not requirements_passed(requirements):
+        return evidence
+
+    confirmations = (
+        requirement(
+            name="Volume Increasing",
+            passed=previous is not None and volume_increasing(bar, previous),
+            mandatory=False,
+        ),
+        requirement(
+            name="Higher Low",
+            passed=previous is not None and makes_higher_low(bar, previous),
+            mandatory=False,
+        ),
+    )
+
+    evaluate_detector(
+        evidence=evidence,
+        ctx=ctx,
+        code=EvidenceCode.DEMAND_COMING_IN,
+        requirements=requirements,
+        confirmations=confirmations,
+    )
     return evidence
 
 
