@@ -13,6 +13,18 @@ Current canonical specifications:
 - `001_stopping_volume.md` — production-integrated / validation-complete.
 - `002_shakeout.md` — production-integrated / validation-complete.
 - `003_test.md` — production-integrated contextual confirmation / non-scoring.
+- `004_spring.md` — production-integrated / provisional.
+- `005_no_supply.md` — contextual / validation-complete for its current non-scoring role.
+
+## NO_SUPPLY status decision
+
+`NO_SUPPLY` has completed its current audit campaign. It remains a **contextual demand-absence probe** with a frozen weight of `0.00`.
+
+The current audit population contains `23` validated events across `7 / 8` symbols, with a `60.87%` positive decisive rate. Robustness remained stable under leave-one-symbol-out analysis, with positive decisive rates ranging from `52.63%` to `65.00%`.
+
+Semantic quality was `21 / 23` (`91.30%`) events, but the sequence-support audit did not establish meaningful incremental value when `NO_SUPPLY` occurred before an existing `STOPPING_VOLUME` anchor. The largest prior-window comparison was `4 / 4` events at a 20-bar window with `75.00%` positive outcomes versus `55` anchors without prior `NO_SUPPLY` at `74.55%` — only a `+0.45` percentage-point difference.
+
+Therefore `NO_SUPPLY` is not promoted to standalone demand-pressure scoring or actionability.
 
 ## Production collection path
 
@@ -51,7 +63,7 @@ Spring is collected through `evidence/spring.py::collect_spring()` on the curren
 | `UPTHRUST` | `evidence/supply.py::_collect_upthrust` | YES | YES | Primary trap / supply | Bearish | Buying campaign + bullish bar + very-high volume + above-average spread; confirmations include wide spread, weak close, lower close than previous. |
 | `NO_DEMAND` | `evidence/supply.py::_collect_no_demand` | YES | YES | Primary weakness / demand absence | Bearish | Detected in supply collector despite belonging semantically to demand absence. Bullish environment + bullish bar + low volume + narrow spread. |
 | `SHAKEOUT` | `evidence/demand.py::_collect_shakeout` | **YES** | **Production-integrated / validation-complete** | Primary reversal / demand | Bullish | Canonical spec: `docs/specifications/002_shakeout.md`. Recovery-anchored event. Candidate requires selling pressure + bearish bar + wide spread + very-high volume + lower low. A valid low-effort TEST and bullish recovery are then required. The production event is emitted only on the confirmed recovery bar. Base weight is `0.50`. |
-| `NO_SUPPLY` | `evidence/demand.py::_collect_no_supply` | YES | Audit-capable | Primary demand absence | Bullish | Detector exists and is now enabled in `collect_demand()`. |
+| `NO_SUPPLY` | `evidence/demand.py::_collect_no_supply` | YES | **Contextual / validation-complete** | Contextual demand absence | Bullish | Canonical spec: `docs/specifications/005_no_supply.md`. Frozen weight `0.00`. Demand-absence probe only; does not independently create demand pressure or actionability. |
 | `STOPPING_VOLUME` | `evidence/demand.py::_collect_stopping_volume` | **YES** | **Production-integrated / validation-complete** | Primary demand | Bullish | Canonical spec: `docs/specifications/001_stopping_volume.md`. Validated point-in-time production definition: selling campaign + bearish bar + high volume + above-average spread + close off low. Confirmations: very-high volume, wide spread, increasing volume, higher low. 59-event replay across 8 symbols; 39 positive, 14 negative, 6 flat; 73.58% positive decisive rate. Weight remains 1.00. |
 | `DEMAND_COMING_IN` | No active production detector identified | NO | Candidate / missing | Primary demand | Bullish | Enum exists; needs explicit detector specification. |
 | `INCREASING_DEMAND` | `EvidenceCode.INCREASING_DEMAND` registry entry | **YES — PROVISIONAL** | Calibration-complete | Primary demand | Bullish | Registered at **weight 0.85** after 902 point-in-time events across 8 symbols. Leave-one-symbol-out validation remained positive for all exclusions; minimum net benefit +6. Detector implementation remains subject to the existing demand collection path. |
@@ -59,7 +71,7 @@ Spring is collected through `evidence/spring.py::collect_spring()` on the curren
 | `DEMAND_DRYING_UP` | No active production detector identified | NO | Candidate / missing | Supporting / exhaustion context | Bullish observation of drying demand | Must be distinguished from bearish absence-of-demand events. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | NO (commented out) | Audit-complete / frozen | Primary demand / reversal | Bullish | Detector exists but is disabled in `collect_demand()`. Historical audit completed across 8 symbols; no defensible production scoring weight or extra confirmation gate was established. |
 | `TEST` | `evidence/demand.py::_collect_test` | YES | **Production-integrated / frozen semantics** | Primary confirmation | Bullish | Canonical spec: `docs/specifications/003_test.md`. Production-enabled contextual confirmation event; non-scoring. Requires recent selling pressure + down bar + low volume + narrow spread. Confirmations include decreasing volume, strong/acceptable close, and higher low but remain non-mandatory. 47 point-in-time events across 8 symbols; 65.85% positive decisive rate; leave-one-out 62.86%–69.44%. |
-| `SPRING` | `evidence/spring.py::collect_spring` | **YES** | **Production-integrated / regression-verified** | Primary trap / reversal | Bullish | Strict point-in-time candidate → low-volume test → bullish follow-through confirmation. Production filters include test volume ratio `<= 0.75` and candidate penetration `<= 0.50`. Current calibrated production weight is `0.75`. A same-bar `UPTHRUST` or `BUYING_CLIMAX` does not reject the Spring; it reduces Spring evidence quality to `0.50`. |
+| `SPRING` | `evidence/spring.py::collect_spring` | **YES** | **Production-integrated / regression-verified** | Primary trap / reversal | Bullish | Canonical spec: `docs/specifications/004_spring.md`. Strict point-in-time candidate → low-volume test → bullish follow-through confirmation. Production filters include test volume ratio `<= 0.75` and candidate penetration `<= 0.50`. Current calibrated production weight is `0.75`. A same-bar `UPTHRUST` or `BUYING_CLIMAX` does not reject the Spring; it reduces Spring evidence quality to `0.50`. |
 | `ABSORPTION` | No dedicated production detector confirmed | NO | Present in model/registry | Primary/supporting absorption | Neutral / directional by context | Atomic effort-result observation; must be given one canonical production detector before use. |
 | `EFFORT_GT_RESULT` | `evidence/effort.py` | Engine invocation currently disabled | Present | Effort/result context | Neutral | Separate from primary supply/demand event detection. |
 | `RESULT_GT_EFFORT` | `evidence/effort.py` | Engine invocation currently disabled | Present | Effort/result context | Neutral | Separate from primary supply/demand event detection. |
@@ -131,6 +143,7 @@ The audit did not justify a weight optimization, and no production weight change
 9. The current Stopping Volume production replay reproduces the validated 59-event point-in-time population exactly across the eight-symbol validation universe.
 10. `SHAKEOUT` is now production-integrated and recovery-anchored. The production replay reproduces all 18 validated recovery anchors with zero candidate-bar emissions and zero failures. Its base demand weight is `0.50`.
 11. `TEST` is now documented as a canonical production-integrated contextual confirmation event. Its validated population is 47 events across the eight-symbol universe, and it remains non-scoring.
+12. `NO_SUPPLY` is now documented as a canonical contextual demand-absence probe. Its current role is frozen at weight `0.00`; the completed sequence-support audit did not demonstrate measurable incremental value over the existing `STOPPING_VOLUME` anchor sample.
 
 ## SHAKEOUT production record
 
