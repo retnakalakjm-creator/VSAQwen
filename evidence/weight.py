@@ -35,9 +35,6 @@ class WeightCalculator:
             
             case EvidenceCode.SUPPLY_COMING_IN:
                 return WeightCalculator._supply_coming_in_weight(ctx)
-
-            case EvidenceCode.DEMAND_COMING_IN:
-                return 0.38
             
             case _:
                 return 1.00
@@ -716,10 +713,182 @@ class WeightCalculator:
         weight += structure
 
         # --------------------------------------------------
-        # Return
+        # Stopping / absorption
         # --------------------------------------------------
 
+        evaluation = ctx.latest_professional_evaluation
+
+        stopping = 0.0
+
+        if evaluation is not None:
+            stopping = WeightCalculator._stopping_adjustment(
+                evaluation.smart_money.stopping_volume,
+            )
+
+        weight += stopping
+
+        # --------------------------------------------------
+        # Clamp
+        # --------------------------------------------------
+
+        weight = max(
+            0.50,
+            min(weight, 2.00),
+        )
+        
+        return weight
+    
+    @staticmethod
+    def _shakeout_weight(
+        ctx: BackgroundContext,
+        quality: float = 1.0,
+    ) -> float:        
+
+        weight = 1.0
+
+        # --------------------------------------------------
+        # Environment
+        # --------------------------------------------------
+
+        environment = (
+            0.30
+            if ctx.is_bearish_environment()
+            else 0.00
+        )
+
+        weight += environment
+
+        # --------------------------------------------------
+        # Trend
+        # --------------------------------------------------
+
+        trend = WeightCalculator._shakeout_trend_adjustment(
+            ctx.trend.direction,
+            ctx.trend.state,
+        )
+
+        weight += trend
+
+        # --------------------------------------------------
+        # Structure
+        # --------------------------------------------------
+
+        structure = WeightCalculator._directional_structure_adjustment(
+            expected_bullish=True,
+            progression=ctx.structural_pattern,
+        )
+
         weight += structure
+
+        # --------------------------------------------------
+        # Stopping / absorption
+        # --------------------------------------------------
+
+        evaluation = ctx.latest_professional_evaluation
+
+        stopping = 0.0
+
+        if evaluation is not None:
+            stopping = WeightCalculator._stopping_adjustment(
+                evaluation.smart_money.stopping_volume,
+            )
+
+        weight += stopping
+
+        # --------------------------------------------------
+        # Clamp
+        # --------------------------------------------------
+
+        weight = max(
+            0.50,
+            min(weight, 2.00),
+        )
+
+        # --------------------------------------------------
+        # Apply validation quality
+        # --------------------------------------------------
+        weight *= quality
+        
+        weight = max(
+            0.00,
+            min(weight, 2.00),
+        )
+        print(
+            "SHAKEOUT WEIGHT",
+            {
+                "base_weight": 1.0,
+                # "environment": environment,
+                "trend": trend,
+                "structure": structure,
+                "stopping": stopping,
+                "quality": quality,
+                "final_weight": weight,
+            },
+        )
+        return weight
+        
+    @staticmethod
+    def _upthrust_weight(
+        ctx: BackgroundContext,
+    ) -> float:      
+
+        weight = 1.0
+
+        # --------------------------------------------------
+        # Environment
+        # --------------------------------------------------
+
+        # A non-bullish environment does not invalidate an upthrust.
+        # Contextual support may be added when the background model is richer;
+        # for now there is no environment penalty.
+        environment = (
+            0.30
+            if ctx.is_bullish_environment()
+            else 0.00
+        )
+
+        weight += environment
+
+        # --------------------------------------------------
+        # Trend
+        # --------------------------------------------------
+
+        trend = WeightCalculator._upthrust_trend_adjustment(
+            ctx.trend.direction,
+            ctx.trend.state,
+        )
+
+        weight += trend
+
+        # --------------------------------------------------
+        # Structure
+        # --------------------------------------------------
+
+        structure = WeightCalculator._directional_structure_adjustment(
+            expected_bullish=False,
+            progression=ctx.structural_pattern,
+        )
+
+        weight += structure
+
+        # --------------------------------------------------
+        # Climactic volume
+        # --------------------------------------------------
+
+        evaluation = ctx.latest_professional_evaluation
+
+        climactic = 0.0
+
+        if evaluation is not None:
+            climactic = WeightCalculator._climactic_adjustment(
+                evaluation.smart_money.climactic_volume,
+            )
+
+        weight += climactic
+
+        # --------------------------------------------------
+        # Clamp
+        # --------------------------------------------------
 
         weight = max(
             0.50,
@@ -729,14 +898,85 @@ class WeightCalculator:
         return weight
     
     @staticmethod
-    def _upthrust_weight(
+    def _no_demand_weight(
         ctx: BackgroundContext,
     ) -> float:
-        return 1.00
-    
+
+        components = {
+            "base": 1.0,
+            "environment": 0.0,
+            "trend": 0.0,
+            "structure": 0.0,
+            "stopping": 0.0,
+        }
+        
+        components["environment"] = (
+        WeightCalculator._environment_adjustment(
+            expected_bullish=True,
+            ctx=ctx,
+            )
+        )
+
+        components["trend"] = (
+             WeightCalculator._no_demand_trend_adjustment(
+                ctx.trend.direction,
+                ctx.trend.state,
+            )         
+        )
+
+        components["structure"] = (
+            WeightCalculator._structure_adjustment(ctx.structural_pattern)
+        )
+
+        evaluation = ctx.latest_professional_evaluation
+
+        stopping = 0.0
+
+        if evaluation is not None:
+            stopping = WeightCalculator._stopping_adjustment(
+                evaluation.smart_money.stopping_volume,
+            )       
+        
+        components["stopping"] = stopping
+        
+        final = sum(components.values())        
+
+        return max(
+            0.0,
+            final,
+        ) 
+        
     @staticmethod
-    def _shakeout_weight(
+    def _supply_coming_in_weight(
         ctx: BackgroundContext,
-        quality: float,
-    ) -> float:
-        return 0.75 * quality
+    ) -> float:        
+
+        weight = 1.0
+
+        # A non-bearish environment does not invalidate supply evidence.
+        # Contextual support may be added later when the background model
+        # is richer; for now there is no environment penalty.
+        environment = 0.0
+
+        weight += environment
+
+        trend = WeightCalculator._supply_coming_in_trend_adjustment(
+            ctx.trend.direction,
+            ctx.trend.state,
+        )
+
+        weight += trend
+
+        structure = WeightCalculator._directional_structure_adjustment(
+            expected_bullish=False,
+            progression=ctx.structural_pattern,
+        )
+
+        weight += structure
+
+        weight = max(
+            0.50,
+            min(weight, 2.00),
+        )
+
+        return weight       
