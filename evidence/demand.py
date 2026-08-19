@@ -4,64 +4,49 @@ import config
 from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, has_recent_weakness, has_selling_campaign, validate_shakeout, _recent_structural_weakness
 from evidence.helpers import evaluate_detector, requirement, requirements_passed
-from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_high_volume, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing
+from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_high_volume, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing, is_bullish_bar
 from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadClass, VolumeClass
 
 
-# -------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Public API
-# -------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 def collect_demand(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Evidence]:
     evidence: list[Evidence] = []
     evidence.extend(_collect_stopping_volume(ctx))
-    evidence.extend(_collect_demand_coming_in(ctx))
+    evidence.extend(_collect_increasing_demand(ctx))
     evidence.extend(_collect_test(ctx))
     evidence.extend(_collect_shakeout(ctx=ctx, validation_metrics=metrics))
     evidence.extend(_collect_no_supply(ctx))
     return evidence
 
 
-def _collect_demand_coming_in(ctx: BackgroundContext) -> list[Evidence]:
+def _collect_increasing_demand(ctx: BackgroundContext) -> list[Evidence]:
     """
-    Detect audited Demand Coming In candidates.
+    Detect the validated INCREASING_DEMAND production definition.
 
-    Mandatory conditions match the validated point-in-time definition:
-    bearish direction, high-or-higher volume, above-average-or-higher
-    spread, and close at least in the middle of the bar.
+    Mandatory conditions match the historical point-in-time calibration:
+    bullish bar, high volume, above-average spread, and increasing volume.
     """
     evidence: list[Evidence] = []
     bar = ctx.current
     previous = ctx.previous
 
     requirements = (
-        requirement(name="Down Bar", passed=bar.direction == Direction.DOWN),
-        requirement(name="High Volume", passed=bar.volume >= VolumeClass.HIGH),
-        requirement(name="Above Average Spread", passed=bar.spread >= SpreadClass.ABOVE_AVERAGE),
-        requirement(name="Close Not Off Low", passed=int(bar.close_position) >= 2),
-    )
-
-    if not requirements_passed(requirements):
-        return evidence
-
-    confirmations = (
+        requirement(name="Bullish Bar", passed=is_bullish_bar(bar)),
+        requirement(name="High Volume", passed=is_high_volume(bar)),
+        requirement(name="Above Average Spread", passed=is_above_average_spread(bar)),
         requirement(
             name="Volume Increasing",
             passed=previous is not None and volume_increasing(bar, previous),
-            mandatory=False,
-        ),
-        requirement(
-            name="Higher Low",
-            passed=previous is not None and makes_higher_low(bar, previous),
-            mandatory=False,
         ),
     )
 
     evaluate_detector(
         evidence=evidence,
         ctx=ctx,
-        code=EvidenceCode.DEMAND_COMING_IN,
+        code=EvidenceCode.INCREASING_DEMAND,
         requirements=requirements,
-        confirmations=confirmations,
     )
     return evidence
 

@@ -271,6 +271,22 @@ DEMAND_COMING_IN = EvidenceProfile(
     ),
 )
 
+INCREASING_DEMAND = EvidenceProfile(
+    code=EvidenceCode.INCREASING_DEMAND,
+    category=EvidenceCategory.DEMAND,
+    direction=EvidenceDirection.BULLISH,
+    strength=0.90,
+    weight=0.85,
+    priority=85,
+    observation="Increasing Demand",
+    description=(
+        "Bullish effort/result evidence showing increasing demand pressure. "
+        "Weight provisionally calibrated to 0.85 from point-in-time outcome "
+        "attribution and leave-one-symbol-out robustness across 902 events "
+        "and 8 symbols."
+    ),
+)
+
 SELLING_CLIMAX = EvidenceProfile(
     code=EvidenceCode.SELLING_CLIMAX,
     category=EvidenceCategory.DEMAND,
@@ -320,6 +336,8 @@ DEMAND_PROFILES: tuple[EvidenceProfile, ...] = (
     STOPPING_VOLUME,
 
     DEMAND_COMING_IN,
+
+    INCREASING_DEMAND,
 
     SELLING_CLIMAX,
 

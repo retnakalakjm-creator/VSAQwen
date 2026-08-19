@@ -35,6 +35,8 @@ def add_evidence(
 
     if code == EvidenceCode.DEMAND_COMING_IN:
         weight = 0.38
+    elif code == EvidenceCode.INCREASING_DEMAND:
+        weight = 0.85
     else:
         weight = WeightCalculator.calculate(
             code,
