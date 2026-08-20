@@ -37,7 +37,7 @@ Inside `collect_supply()`, these detectors are active for eligible bars:
 
 Inside `collect_demand()`, the validated demand-side detectors now include `STOPPING_VOLUME`, `SHAKEOUT`, `NO_SUPPLY`, `TEST`, `DEMAND_COMING_IN`, and `INCREASING_DEMAND`. `SELLING_CLIMAX` remains disabled. `TEST` and `NO_SUPPLY` remain non-scoring/contextual in their defined roles.
 
-`HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are not connected to the production collection path.
+`HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` are not connected to the production collection path.
 
 ## Matrix
 
@@ -60,7 +60,7 @@ Inside `collect_demand()`, the validated demand-side detectors now include `STOP
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | NO | Audit-complete / frozen | Primary demand / reversal | Bullish | — | Detector exists but remains disabled; audit did not establish a defensible production weight. |
 | `TEST` | `evidence/demand.py::_collect_test` | YES | Production-integrated / frozen semantics | Primary confirmation | Bullish | 0.00 | Contextual confirmation only; non-scoring. 47 validated events across 8 symbols. |
 | `SPRING` | `evidence/spring.py::collect_spring` | YES | Production-integrated / provisional | Primary trap / reversal | Bullish | 0.75 | Strict point-in-time candidate → low-volume test → bullish follow-through. Same-bar `UPTHRUST`/`BUYING_CLIMAX` reduces Spring quality to 0.50 rather than rejecting it. |
-| `ABSORPTION` | No dedicated production detector | NO | Candidate | Effort/result / absorption | Contextual | — | Must have one canonical production detector before scoring. |
+| `ABSORPTION` | No dedicated production detector | NO | **Audit-complete / provisional** | Effort/result / absorption | Contextual | **0.38** | 68 candidate events; 64.71% positive decisive rate. `INCREASING_SUPPLY_LIKE` conflict in 37/68 events (54.41%) materially degraded outcomes; provisional conflict penalty `0.20`. Decision-value lift +4.02 pp on positive rate, but mean-return lift −0.71 pp. No production collector, engine path, registry entry, or score mutation. |
 | `EFFORT_GT_RESULT` | `evidence/effort.py` | Disabled engine invocation | Present | Effort/result context | Neutral | — | Separate analytical layer. |
 | `RESULT_GT_EFFORT` | `evidence/effort.py` | Disabled engine invocation | Present | Effort/result context | Neutral | — | Separate analytical layer. |
 | `EFFORT_RESULT` | No dedicated active detector | NO | Candidate | Effort/result context | Neutral | — | Needs one canonical representation if retained. |
@@ -323,11 +323,105 @@ production_path = NO
 
 This is not a rejection of the VSA concept itself. It is a decision not to promote the current candidate definition into the scoring layer because its audited outcome does not demonstrate incremental value.
 
+## ABSORPTION audit record
+
+### Candidate semantic definition
+
+The audited `ABSORPTION` candidate was:
+
+1. Down/bearish bar.
+2. High volume.
+3. Above-average spread.
+4. Upper close.
+5. Lower low than the previous bar.
+
+Candidate / outcome audit:
+
+- candidate events: `68`
+- symbols with events: `8 / 8`
+- positive outcomes: `44`
+- negative outcomes: `24`
+- decisive outcomes: `68`
+- positive decisive rate: `64.71%`
+- mean 8-bar return: `+3.08%`
+
+Semantic-quality audit:
+
+- upper close: `68 / 68`
+- lower low: `68 / 68`
+- high volume: `16 / 68`
+- wide spread: `16 / 68`
+- semantic failures: `0`
+
+Interaction / contradiction audit:
+
+- supply-conflict events: `37 / 68`
+- conflict rate: `54.41%`
+- conflict class: `INCREASING_SUPPLY_LIKE` only (`37`)
+- other audited supply conflict classes: `0`
+- demand interaction events: `68 / 68`
+- demand interaction class: `STOPPING_VOLUME_LIKE` (`68`)
+
+Conflict outcome audit:
+
+- conflict events: `37`
+- clean events: `31`
+- conflict positive decisive rate: `59.46%`
+- clean positive decisive rate: `70.97%`
+- positive-rate gap: `-11.51` percentage points
+- conflict mean return: `-0.58%`
+- clean mean return: `+7.44%`
+- mean-return gap: `-8.02` percentage points
+
+Conflict penalty sensitivity recommended `0.20`; rejection was **not** justified.
+
+Decision-value audit:
+
+- candidate positive decisive rate: `64.71%`
+- eligible-market positive decisive rate: `60.68%`
+- positive-rate lift: `+4.02` percentage points
+- candidate mean return: `+3.08%`
+- eligible-market mean return: `+3.78%`
+- mean-return lift: `-0.71` percentage points
+- clean candidate positive decisive rate: `70.97%`
+- conflict candidate positive decisive rate: `59.46%`
+- candidate share of eligible events: `0.61%`
+
+The clean population shows useful directional behavior, but the `INCREASING_SUPPLY_LIKE` overlap is materially harmful. The audited provisional policy is therefore to keep the event as a candidate with reduced effective weight under conflict, rather than reject the underlying VSA concept.
+
+Production-readiness audit:
+
+- collector contains target: `False`
+- engine collection path mentions target: `False`
+- registry contains target: `False`
+- clean effective weight at proposed base: `0.38`
+- conflict effective weight at proposed penalty: `0.304`
+- true ranking impact: `NOT_APPLICABLE_PRODUCTION_PATH_ABSENT`
+- synthetic weight safety: `PASS`
+- production score mutation: `False`
+
+The canonical local registry is `evidence/evidence_registry.py`. `ABSORPTION` is intentionally absent from that registry and from the production collector.
+
+### Scoring decision
+
+```text
+ABSORPTION = 0.38          # provisional audit value only
+conflict_penalty = 0.20    # provisional audit policy
+rejection = NO
+status = AUDIT_COMPLETE / PROVISIONAL
+production_path = NO
+registry = NO
+collector = NO
+production_mutation = NO
+```
+
+This is an audit conclusion, not a production scoring change. A future promotion requires a dedicated production detector, registry entry, production-path verification, and real ranking-impact audit.
+
 ## Project-wide audit policy for these events
 
 The project treats interaction results as evidence-quality information, not automatic detector invalidation. A contradictory observation reduces confidence/quality only when the historical outcome audit shows a repeatable deterioration, and rejection requires materially stronger evidence than a modest conflict association.
 
-The current `DEMAND_COMING_IN`, `INCREASING_DEMAND`, `HIDDEN_DEMAND`, and `DEMAND_DRYING_UP` audit campaigns therefore freeze weights and interaction findings separately from production approval.
+The current `DEMAND_COMING_IN`, `INCREASING_DEMAND`, `HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` audit campaigns therefore freeze weights and interaction findings separately from production approval.
 
 ## Immediate conclusions
 
@@ -338,5 +432,7 @@ The current `DEMAND_COMING_IN`, `INCREASING_DEMAND`, `HIDDEN_DEMAND`, and `DEMAN
 5. `INCREASING_DEMAND` has a provisional interaction penalty of `0.10`; no rejection rule is justified.
 6. `HIDDEN_DEMAND` is audit-complete but remains non-scoring at `0.00`; its current candidate definition is not promoted into the production evidence path.
 7. `DEMAND_DRYING_UP` is audit-complete but remains contextual/non-scoring at `0.00`; no conflict penalty or rejection rule is justified.
-8. Neither `DEMAND_COMING_IN` nor `INCREASING_DEMAND` is promoted to fully production-approved status by these audit results.
-9. Future evidence events must follow the same audit-first process rather than inheriting weights or interaction penalties automatically.
+8. `ABSORPTION` is audit-complete and provisionally valued at `0.38` with a `0.20` conflict penalty, but remains unregistered and uncollected in production.
+9. The `ABSORPTION` readiness audit found no real ranking impact to measure because its production path is absent; synthetic weight safety passed without mutating production scoring.
+10. Neither `DEMAND_COMING_IN`, `INCREASING_DEMAND`, nor `ABSORPTION` is promoted to fully production-approved status by these audit results.
+11. Future evidence events must follow the same audit-first process rather than inheriting weights or interaction penalties automatically.
