@@ -1,36 +1,23 @@
 """Semantic-quality audit for campaign-qualified BUYING_CLIMAX events.
 
-Analysis-only. Uses the same point-in-time campaign-qualified candidate path as
-production and measures exact mandatory requirements plus confirmations.
-No production scoring mutation.
+Analysis-only. Uses the exact same cheap-candidate and campaign-qualified path as
+the validated BUYING_CLIMAX campaign audit, then measures mandatory requirements
+and confirmations on the qualified bars. No production scoring mutation.
 """
 from __future__ import annotations
 
 import os
 import sys
 
-import numpy as np
-
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from data import daily_to_weekly, download_data
-from engine.columns import (
-    COL_DIRECTION,
-    COL_SPREAD_CLASS,
-    COL_VOLUME_CLASS,
-)
+from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 from evidence.campaign import has_buying_campaign
 from evidence.engine import EvidenceEngine
-from evidence.rules import (
-    has_strong_spread,
-    is_above_average_spread,
-    is_bullish_bar,
-    is_very_high_volume,
-    is_weak_close,
-    volume_increasing,
-)
+from evidence.rules import has_strong_spread, is_weak_close, volume_increasing
 from metrics_engine import MetricsEngine
 from models import Direction, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
@@ -43,11 +30,15 @@ FORWARD_BARS = 8
 
 
 def _cheap_candidate(metrics, index: int) -> bool:
+    """Exactly match the validated BUYING_CLIMAX campaign audit."""
     row = metrics.iloc[index]
+    direction = Direction(int(row[COL_DIRECTION]))
+    volume = VolumeClass(int(row[COL_VOLUME_CLASS]))
+    spread = SpreadClass(int(row[COL_SPREAD_CLASS]))
     return (
-        Direction(int(row[COL_DIRECTION])) == Direction.UP
-        and VolumeClass(int(row[COL_VOLUME_CLASS])) == VolumeClass.VERY_HIGH
-        and SpreadClass(int(row[COL_SPREAD_CLASS])) >= SpreadClass.ABOVE_AVERAGE
+        direction == Direction.UP
+        and volume == VolumeClass.VERY_HIGH
+        and spread >= SpreadClass.ABOVE_AVERAGE
     )
 
 
@@ -92,28 +83,35 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
             rebuilds += 1
             if not has_buying_campaign(ctx):
                 continue
+
             qualified += 1
             row = metrics.iloc[index]
             previous = metrics.iloc[index - 1]
+
+            direction = Direction(int(row[COL_DIRECTION]))
+            volume = VolumeClass(int(row[COL_VOLUME_CLASS]))
+            spread = SpreadClass(int(row[COL_SPREAD_CLASS]))
+
             checks = {
-                "bullish_bar": is_bullish_bar(row),
-                "very_high_volume": is_very_high_volume(row),
-                "above_average_spread": is_above_average_spread(row),
+                "bullish_bar": direction == Direction.UP,
+                "very_high_volume": volume == VolumeClass.VERY_HIGH,
+                "above_average_spread": spread >= SpreadClass.ABOVE_AVERAGE,
                 "wide_spread": has_strong_spread(row),
                 "weak_close": is_weak_close(row),
                 "volume_increasing": volume_increasing(row, previous),
             }
+
             for key, passed in checks.items():
                 semantic[key] += int(passed)
-            mandatory_ok = all(
+
+            if not all(
                 checks[name]
                 for name in (
                     "bullish_bar",
                     "very_high_volume",
                     "above_average_spread",
                 )
-            )
-            if not mandatory_ok:
+            ):
                 semantic["semantic_failures"] += 1
         except Exception as exc:
             errors.append({"symbol": symbol, "index": str(index), "error": str(exc)})
@@ -131,6 +129,7 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
 def main() -> None:
     results: list[dict[str, object]] = []
     failures: list[dict[str, str]] = []
+
     for symbol in SYMBOLS:
         try:
             results.append(_audit_symbol(symbol))
@@ -138,6 +137,8 @@ def main() -> None:
             failures.append({"symbol": symbol, "error": str(exc)})
 
     candidates = sum(int(r["campaign_qualified_events"]) for r in results)
+    semantic_failures = sum(int(r["semantic_failures"]) for r in results)
+
     print("BUYING CLIMAX SEMANTIC-QUALITY AUDIT")
     print({
         "symbols_requested": len(SYMBOLS),
@@ -149,10 +150,10 @@ def main() -> None:
         "wide_spread": sum(int(r["wide_spread"]) for r in results),
         "weak_close": sum(int(r["weak_close"]) for r in results),
         "volume_increasing": sum(int(r["volume_increasing"]) for r in results),
-        "semantic_failures": sum(int(r["semantic_failures"]) for r in results),
+        "semantic_failures": semantic_failures,
         "heavy_context_rebuilds": sum(int(r["heavy_context_rebuilds"]) for r in results),
         "failures": failures,
-        "status": "PASS" if not failures and sum(int(r["semantic_failures"]) for r in results) == 0 else "FAIL",
+        "status": "PASS" if not failures and semantic_failures == 0 else "FAIL",
     })
 
 
