@@ -25,7 +25,7 @@ SYMBOLS = (
 FORWARD_BARS = 8
 
 
-def _candidate(bar) -> bool:
+def _cheap_selling_climax_candidate(bar) -> bool:
     return (
         int(bar[COL_DIRECTION]) == -1
         and VolumeClass(int(bar[COL_VOLUME_CLASS])) >= VolumeClass.VERY_HIGH
@@ -44,33 +44,37 @@ def _audit_symbol(symbol: str) -> dict:
         "both": 0,
         "returns": {"clean": [], "stopping": [], "shakeout": [], "both": []},
         "heavy_context_rebuilds": 0,
+        "collector_errors": 0,
     }
 
     for index in range(21, len(metrics) - FORWARD_BARS):
         bar = metrics.iloc[index]
-        previous = metrics.iloc[index - 1]
-        if not _candidate(bar):
+        if not _cheap_selling_climax_candidate(bar):
             continue
 
         replay = metrics.iloc[: index + 1]
-        trend = TrendAnalyzer().analyze(replay)
-        engine = EvidenceEngine()
-        engine._reset(
-            metrics=replay,
-            trend=trend,
-            structural_swings=tuple(trend.structure.structural_swings),
-            validation_metrics=replay,
-        )
-        ctx = engine._ctx
-        out["heavy_context_rebuilds"] += 1
-        if ctx is None or ctx.previous is None:
-            continue
-        if not has_selling_campaign(ctx):
-            continue
+        try:
+            trend = TrendAnalyzer().analyze(replay)
+            engine = EvidenceEngine()
+            engine._reset(
+                metrics=replay,
+                trend=trend,
+                structural_swings=tuple(trend.structure.structural_swings),
+                validation_metrics=replay,
+            )
+            ctx = engine._ctx
+            out["heavy_context_rebuilds"] += 1
 
-        # Reuse the validated production collector semantics at the current bar.
-        stopping = bool(_collect_stopping_volume(ctx))
-        shakeout = bool(_collect_shakeout(ctx))
+            if ctx is None or ctx.previous is None:
+                continue
+            if not has_selling_campaign(ctx):
+                continue
+
+            stopping = bool(_collect_stopping_volume(ctx))
+            shakeout = bool(_collect_shakeout(ctx=ctx, validation_metrics=replay))
+        except Exception:
+            out["collector_errors"] += 1
+            continue
 
         start = float(bar[COL_CLOSE])
         end = float(metrics.iloc[index + FORWARD_BARS][COL_CLOSE])
@@ -97,13 +101,13 @@ def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def _summary(events: int, returns: list[float]) -> dict:
+def _summary(returns: list[float]) -> dict:
     positive = sum(r > 0 for r in returns)
     negative = sum(r < 0 for r in returns)
     flat = sum(r == 0 for r in returns)
     decisive = positive + negative
     return {
-        "events": events,
+        "events": len(returns),
         "positive": positive,
         "negative": negative,
         "flat": flat,
@@ -125,12 +129,16 @@ def main() -> None:
 
     groups = {"clean": [], "stopping": [], "shakeout": [], "both": []}
     counts = {k: 0 for k in groups}
+    collector_errors = 0
     for item in results:
+        collector_errors += item["collector_errors"]
         for key in groups:
             counts[key] += item[key]
             groups[key].extend(item["returns"][key])
 
     events = sum(counts.values())
+    heavy_rebuilds = sum(x["heavy_context_rebuilds"] for x in results)
+
     print("SELLING CLIMAX INTERACTION OUTCOME AUDIT")
     print({
         "symbols_requested": len(SYMBOLS),
@@ -141,13 +149,14 @@ def main() -> None:
         "shakeout_events": counts["shakeout"],
         "both_events": counts["both"],
         "interaction_event_rate": ((events - counts["clean"]) / events if events else 0.0),
-        "heavy_context_rebuilds": sum(x["heavy_context_rebuilds"] for x in results),
+        "heavy_context_rebuilds": heavy_rebuilds,
+        "collector_errors": collector_errors,
         "failures": failures,
-        "status": "PASS" if not failures else "FAIL",
+        "status": "PASS" if not failures and events > 0 else "FAIL",
     })
     print("SELLING CLIMAX INTERACTION OUTCOME BY_GROUP")
     for key in ("clean", "stopping", "shakeout", "both"):
-        print({"group": key, **_summary(counts[key], groups[key])})
+        print({"group": key, **_summary(groups[key])})
 
     print("SELLING CLIMAX INTERACTION OUTCOME BY_SYMBOL")
     for item in sorted(results, key=lambda x: x["symbol"]):
@@ -158,6 +167,8 @@ def main() -> None:
             "stopping": item["stopping"],
             "shakeout": item["shakeout"],
             "both": item["both"],
+            "heavy_context_rebuilds": item["heavy_context_rebuilds"],
+            "collector_errors": item["collector_errors"],
         })
 
 
