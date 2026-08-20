@@ -68,6 +68,16 @@ EVIDENCE_LIBRARY = {
             description="Bullish effort/result evidence showing increasing demand pressure. Weight provisionally calibrated to 0.85 from point-in-time outcome attribution and leave-one-symbol-out robustness across 902 events and 8 symbols.",
         ),
 
+    EvidenceCode.SELLING_CLIMAX:
+        EvidenceDefinition(
+            category=EvidenceCategory.DEMAND,
+            direction=EvidenceDirection.BULLISH,
+            strength=0.95,
+            weight=0.38,
+            observation="Selling Climax",
+            description="Climactic selling that may indicate exhaustion and professional absorption. Provisional production weight 0.38 after point-in-time outcome and decision-value audits across 153 events and 8 symbols.",
+        ),
+
     EvidenceCode.UPTHRUST:
         EvidenceDefinition(
             category=EvidenceCategory.SUPPLY,

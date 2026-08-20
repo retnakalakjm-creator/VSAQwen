@@ -142,12 +142,19 @@ INCREASING_SUPPLY = EvidenceProfile(
 SUPPLY_DRYING_UP = EvidenceProfile(
 
     code=EvidenceCode.SUPPLY_DRYING_UP,
+
     category=EvidenceCategory.SUPPLY,
+
     direction=EvidenceDirection.BULLISH,
+
     strength=0.85,
+
     weight=0.90,
+
     priority=90,
+
     observation="Supply Drying Up",
+
     description=(
         "Selling pressure has diminished significantly."
     ),
@@ -292,10 +299,14 @@ SELLING_CLIMAX = EvidenceProfile(
     category=EvidenceCategory.DEMAND,
     direction=EvidenceDirection.BULLISH,
     strength=0.95,
-    weight=1.0,
+    weight=0.38,
     priority=100,
     observation="Selling Climax",
-    description="Climactic selling that may indicate exhaustion and professional absorption.",
+    description=(
+        "Climactic selling that may indicate exhaustion and professional "
+        "absorption. Provisional production weight 0.38 after point-in-time "
+        "outcome and decision-value audits across 153 events and 8 symbols."
+    ),
 )
 
 NO_SUPPLY = EvidenceProfile(

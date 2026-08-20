@@ -37,6 +37,8 @@ def add_evidence(
         weight = 0.38
     elif code == EvidenceCode.INCREASING_DEMAND:
         weight = 0.85
+    elif code == EvidenceCode.SELLING_CLIMAX:
+        weight = 0.38
     else:
         weight = WeightCalculator.calculate(
             code,
@@ -171,6 +173,7 @@ __all__ = [
     "has_evidence",
     "count_evidence",
     "requirement",
+    "requirements_passed",
     "confirmation_score",
     "confirmation_count",
     "passed_requirements",

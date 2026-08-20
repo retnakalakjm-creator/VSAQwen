@@ -79,7 +79,8 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 - `DEMAND_COMING_IN`
 - `INCREASING_DEMAND`
 
-`SELLING_CLIMAX` remains disabled. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` remain audit-only candidates and have no active production detectors.
+`SELLING_CLIMAX` is production-integrated and active at a base weight of 0.38 after completing candidate, semantic-quality, interaction, outcome, decision-value, readiness, and post-integration audits.
+`HIDDEN_DEMAND` and `DEMAND_DRYING_UP` remain audit-only candidates and have no active production detectors.
 
 ### Other evidence layers
 
@@ -102,7 +103,7 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `HIDDEN_DEMAND` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; not promoted into scoring |
 | `DEMAND_DRYING_UP` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; contextual/exhaustion role only |
 | `ABSORPTION` | NO | **Audit-complete / provisional** | **0.38** | **Provisional conflict penalty `0.20`; rejection `NO`; no production path** |
-
+| `SELLING_CLIMAX` | YES | Production-integrated / audit-complete | `0.38` | No conflict penalty; STOPPING_VOLUME interaction is confirming |
 The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic. `HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` are intentionally excluded from the production path until their production detectors and scoring integration are separately justified.
 
 ## 6. DEMAND_COMING_IN Current Audit State
@@ -466,6 +467,14 @@ ABSORPTION
     production path = NO
     registry = NO
     collector = NO
+SELLING_CLIMAX
+    base weight = 0.38
+    conflict penalty = 0.00
+    production path = YES
+    registry = YES
+    collector = YES
+    post-integration audit = PASS
+    status = PRODUCTION-ACTIVE    
 ```
 
 `DEMAND_COMING_IN` and `INCREASING_DEMAND` are not promoted to fully production-approved scoring status by the completion of these audits. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are explicitly not promoted into scoring because their audited candidate populations showed negative incremental value versus the eligible-market baseline. `ABSORPTION` is also not promoted into production: its clean candidate population showed positive directional value, but its `INCREASING_SUPPLY_LIKE` conflict population materially degraded outcomes, and the event currently has no production collection or registry path. The next candidate event must continue through the same audit-first process.

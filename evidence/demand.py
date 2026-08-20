@@ -14,6 +14,7 @@ from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadC
 def collect_demand(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Evidence]:
     evidence: list[Evidence] = []
     evidence.extend(_collect_stopping_volume(ctx))
+    evidence.extend(_collect_selling_climax(ctx))
     evidence.extend(_collect_increasing_demand(ctx))
     evidence.extend(_collect_test(ctx))
     evidence.extend(_collect_shakeout(ctx=ctx, validation_metrics=metrics))
