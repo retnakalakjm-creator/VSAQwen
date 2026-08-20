@@ -2,7 +2,7 @@
 
 Analysis-only. Replays cheap BUYING_CLIMAX candidates through the real
 campaign/context path and groups each campaign-qualified event by the exact
-non-self supply/demand evidence-code combination produced by the real engine.
+non-self supply/demand evidence-code combination produced by engine.collect().
 No production scoring mutation.
 """
 from __future__ import annotations
@@ -65,30 +65,27 @@ def _context(metrics, index: int):
     replay = metrics.iloc[: index + 1].copy()
     trend = TrendAnalyzer().analyze(replay)
     structural_swings = tuple(trend.structure.structural_swings)
-    engine = EvidenceEngine()
-    engine._reset(
-        metrics=replay,
-        trend=trend,
-        structural_swings=structural_swings,
-    )
-    assert engine._ctx is not None
-    return engine._ctx, engine
+    return replay, trend, structural_swings
 
 
 def _norm_code(code: object) -> str:
     return str(code).split(".")[-1]
 
 
-def _engine_codes(engine: EvidenceEngine) -> set[str]:
-    evidence = getattr(engine, "_evidence", ())
-    try:
-        items = list(evidence.values()) if isinstance(evidence, dict) else list(evidence)
-    except TypeError:
-        items = []
-
+def _collect_codes(
+    metrics,
+    trend,
+    structural_swings,
+) -> set[str]:
+    engine = EvidenceEngine()
+    result = engine.collect(
+        metrics=metrics,
+        trend=trend,
+        structural_swings=structural_swings,
+    )
     codes: set[str] = set()
-    for item in items:
-        code = _norm_code(getattr(item, "code", item))
+    for item in result.evidence:
+        code = _norm_code(item.code)
         if code in SELF_CODES:
             continue
         codes.add(code)
@@ -114,12 +111,35 @@ def _audit_symbol(symbol: str) -> tuple[list[tuple[str, float]], int, int]:
         if not _cheap_candidate(metrics, index):
             continue
         cheap_count += 1
-        ctx, engine = _context(metrics, index)
+        replay, trend, structural_swings = _context(metrics, index)
         rebuilds += 1
-        if not has_buying_campaign(ctx):
+
+        engine = EvidenceEngine()
+        # Build the exact real context path first because campaign validation
+        # depends on the current point-in-time BackgroundContext.
+        engine._reset(
+            metrics=replay,
+            trend=trend,
+            structural_swings=structural_swings,
+        )
+        assert engine._ctx is not None
+        if not has_buying_campaign(engine._ctx):
             continue
-        group = _group_for(_engine_codes(engine))
-        forward_return = float(closes[index + FORWARD_BARS] / closes[index] - 1.0)
+
+        result = engine.collect(
+            metrics=replay,
+            trend=trend,
+            structural_swings=structural_swings,
+        )
+        codes = {
+            _norm_code(item.code)
+            for item in result.evidence
+        }
+        codes.difference_update(SELF_CODES)
+        group = _group_for(codes)
+        forward_return = float(
+            closes[index + FORWARD_BARS] / closes[index] - 1.0
+        )
         observations.append((group, forward_return))
 
     return observations, cheap_count, rebuilds
