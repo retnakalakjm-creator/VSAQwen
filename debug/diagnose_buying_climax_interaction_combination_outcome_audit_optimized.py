@@ -2,7 +2,8 @@
 
 Analysis-only. Replays cheap BUYING_CLIMAX candidates through the real
 campaign/context path and groups each campaign-qualified event by the exact
-non-self supply/demand evidence-code combination on the target bar.
+non-self supply/demand evidence-code combination produced by the real engine.
+No production scoring mutation.
 """
 from __future__ import annotations
 
@@ -29,17 +30,25 @@ SYMBOLS = (
     "LT.NS", "RELIANCE.NS", "SBIN.NS", "TCS.NS",
 )
 FORWARD_BARS = 8
-SELF_CODES = {"EvidenceCode.BUYING_CLIMAX", "BUYING_CLIMAX"}
+SELF_CODES = {
+    "EvidenceCode.BUYING_CLIMAX",
+    "BUYING_CLIMAX",
+    "BUYING_CLIMAX_LIKE",
+}
 SUPPLY_CODES = {
     "UPTHRUST", "UPTHRUST_LIKE", "HIDDEN_SUPPLY", "HIDDEN_SUPPLY_LIKE",
-    "INCREASING_SUPPLY", "INCREASING_SUPPLY_LIKE", "SUPPLY_COMING_IN", "SUPPLY_COMING_IN_LIKE",
-    "SUPPLY_HIGH_VOLUME", "SUPPLY_HIGH_VOLUME_LIKE", "SUPPLY_WIDE_SPREAD", "SUPPLY_WIDE_SPREAD_LIKE",
-    "BUYING_CLIMAX", "BUYING_CLIMAX_LIKE",
+    "INCREASING_SUPPLY", "INCREASING_SUPPLY_LIKE",
+    "SUPPLY_COMING_IN", "SUPPLY_COMING_IN_LIKE",
+    "SUPPLY_HIGH_VOLUME", "SUPPLY_HIGH_VOLUME_LIKE",
+    "SUPPLY_WIDE_SPREAD", "SUPPLY_WIDE_SPREAD_LIKE",
 }
 DEMAND_CODES = {
-    "INCREASING_DEMAND", "INCREASING_DEMAND_LIKE", "DEMAND_COMING_IN", "DEMAND_COMING_IN_LIKE",
-    "STOPPING_VOLUME", "STOPPING_VOLUME_LIKE", "SPRING", "SPRING_LIKE", "TEST", "TEST_LIKE",
-    "NO_SUPPLY", "NO_SUPPLY_LIKE", "SHAKEOUT", "SHAKEOUT_LIKE", "SELLING_CLIMAX", "SELLING_CLIMAX_LIKE",
+    "INCREASING_DEMAND", "INCREASING_DEMAND_LIKE",
+    "DEMAND_COMING_IN", "DEMAND_COMING_IN_LIKE",
+    "STOPPING_VOLUME", "STOPPING_VOLUME_LIKE",
+    "SPRING", "SPRING_LIKE", "TEST", "TEST_LIKE",
+    "NO_SUPPLY", "NO_SUPPLY_LIKE", "SHAKEOUT", "SHAKEOUT_LIKE",
+    "SELLING_CLIMAX", "SELLING_CLIMAX_LIKE",
 }
 
 
@@ -57,23 +66,41 @@ def _context(metrics, index: int):
     trend = TrendAnalyzer().analyze(replay)
     structural_swings = tuple(trend.structure.structural_swings)
     engine = EvidenceEngine()
-    engine._reset(metrics=replay, trend=trend, structural_swings=structural_swings)
+    engine._reset(
+        metrics=replay,
+        trend=trend,
+        structural_swings=structural_swings,
+    )
     assert engine._ctx is not None
     return engine._ctx, engine
 
 
-def _norm_code(code) -> str:
-    text = str(code)
-    return text.split(".")[-1]
+def _norm_code(code: object) -> str:
+    return str(code).split(".")[-1]
+
+
+def _engine_codes(engine: EvidenceEngine) -> set[str]:
+    evidence = getattr(engine, "_evidence", ())
+    try:
+        items = list(evidence.values()) if isinstance(evidence, dict) else list(evidence)
+    except TypeError:
+        items = []
+
+    codes: set[str] = set()
+    for item in items:
+        code = _norm_code(getattr(item, "code", item))
+        if code in SELF_CODES:
+            continue
+        codes.add(code)
+    return codes
 
 
 def _group_for(codes: set[str]) -> str:
-    supply = sorted(code for code in codes if code in SUPPLY_CODES and code not in SELF_CODES)
-    demand = sorted(code for code in codes if code in DEMAND_CODES and code not in SELF_CODES)
+    supply = sorted(code for code in codes if code in SUPPLY_CODES)
+    demand = sorted(code for code in codes if code in DEMAND_CODES)
     if not supply and not demand:
         return "no_interaction"
-    key_parts = [*supply, *demand]
-    return " + ".join(key_parts)
+    return " + ".join([*supply, *demand])
 
 
 def _audit_symbol(symbol: str) -> tuple[list[tuple[str, float]], int, int]:
@@ -91,16 +118,27 @@ def _audit_symbol(symbol: str) -> tuple[list[tuple[str, float]], int, int]:
         rebuilds += 1
         if not has_buying_campaign(ctx):
             continue
-        row_codes = {
-            _norm_code(item.code)
-            for item in engine._evidence
-            if item.bar_index == index
-        }
-        row_codes.discard("BUYING_CLIMAX")
-        row_codes.discard("BUYING_CLIMAX_LIKE")
-        observations.append((_group_for(row_codes), float(closes[index + FORWARD_BARS] / closes[index] - 1.0)))
+        group = _group_for(_engine_codes(engine))
+        forward_return = float(closes[index + FORWARD_BARS] / closes[index] - 1.0)
+        observations.append((group, forward_return))
 
     return observations, cheap_count, rebuilds
+
+
+def _stats(values: list[float]) -> dict[str, object]:
+    positive = sum(v > 0.0 for v in values)
+    negative = sum(v < 0.0 for v in values)
+    flat = sum(v == 0.0 for v in values)
+    decisive = positive + negative
+    return {
+        "events": len(values),
+        "positive": positive,
+        "negative": negative,
+        "flat": flat,
+        "decisive": decisive,
+        "positive_decisive_rate": positive / decisive if decisive else 0.0,
+        "mean_return": float(np.mean(values)) if values else 0.0,
+    }
 
 
 def main() -> None:
@@ -125,6 +163,7 @@ def main() -> None:
         "cheap_candidates": cheap_total,
         "campaign_qualified_events": sum(len(v) for v in groups.values()),
         "combination_groups": len(groups),
+        "self_conflict_excluded": True,
         "heavy_context_rebuilds": rebuild_total,
         "failures": failures,
         "status": "PASS" if not failures else "FAIL",
@@ -132,20 +171,7 @@ def main() -> None:
 
     ranked = sorted(groups.items(), key=lambda item: len(item[1]), reverse=True)
     for group, values in ranked:
-        positive = sum(v > 0 for v in values)
-        negative = sum(v < 0 for v in values)
-        flat = sum(v == 0 for v in values)
-        decisive = positive + negative
-        print({
-            "combination": group,
-            "events": len(values),
-            "positive": positive,
-            "negative": negative,
-            "flat": flat,
-            "decisive": decisive,
-            "positive_decisive_rate": positive / decisive if decisive else 0.0,
-            "mean_return": float(np.mean(values)) if values else 0.0,
-        })
+        print({"combination": group, **_stats(values)})
 
 
 if __name__ == "__main__":
