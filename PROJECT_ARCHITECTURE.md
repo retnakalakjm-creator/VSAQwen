@@ -7,7 +7,7 @@
 - Yahoo Finance data is cached locally as CSV files under `cache/`.
 - The metrics layer performs quantitative preparation and semantic classifications; VSA interpretation belongs to the evidence layer rather than the raw metrics engine.
 - The market-structure layer provides swings, structural scoring, progression, trend context, smart-money context, and related models.
-- The evidence layer is operational for the currently enabled supply, demand, TEST, Stopping Volume, SHAKEOUT, Spring, and structural-progression paths. `DEMAND_COMING_IN` and `INCREASING_DEMAND` are connected to the production evidence path but remain **provisional** after their audit campaigns. `HIDDEN_DEMAND` is audit-complete but is not connected to the production evidence path.
+- The evidence layer is operational for the currently enabled supply, demand, TEST, Stopping Volume, SHAKEOUT, Spring, and structural-progression paths. `DEMAND_COMING_IN` and `INCREASING_DEMAND` are connected to the production evidence path but remain **provisional** after their audit campaigns. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are audit-complete but are not connected to the production evidence path.
 - Evidence aggregation is event-oriented: evidence is grouped by `(bar_index, direction)`, primary/supporting/effort-result/structural roles are separated, and duplicate observations are not blindly summed.
 - Professional scoring combines trend, supply, demand, effort, strength, weakness, and confidence; scanner qualification and ranking operate on the resulting evidence and structural context.
 
@@ -79,7 +79,7 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 - `DEMAND_COMING_IN`
 - `INCREASING_DEMAND`
 
-`SELLING_CLIMAX` remains disabled. `HIDDEN_DEMAND` remains an audit-only candidate and has no active production detector.
+`SELLING_CLIMAX` remains disabled. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` remain audit-only candidates and have no active production detectors.
 
 ### Other evidence layers
 
@@ -99,8 +99,9 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `DEMAND_COMING_IN` | YES | **Provisional / audit-complete** | **0.38** | No conflict penalty established; rejection `NO` |
 | `INCREASING_DEMAND` | YES | **Provisional / audit-complete** | **0.85** | **Provisional conflict penalty `0.10`; rejection `NO`** |
 | `HIDDEN_DEMAND` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; not promoted into scoring |
+| `DEMAND_DRYING_UP` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; contextual/exhaustion role only |
 
-The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic. `HIDDEN_DEMAND` is intentionally excluded from the production path because its current audited candidate population did not demonstrate incremental decision value.
+The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are intentionally excluded from the production path because their current audited populations did not demonstrate incremental decision value.
 
 ## 6. DEMAND_COMING_IN Current Audit State
 
@@ -226,7 +227,49 @@ production path    = NO
 
 This is not a rejection of the VSA concept itself. It is a decision not to promote the current candidate into the scoring layer because its audited outcome does not demonstrate incremental value over the eligible-market baseline.
 
-## 9. Evidence Aggregation and Scoring Policy
+## 9. DEMAND_DRYING_UP Current Audit State
+
+`DEMAND_DRYING_UP` remains an audit-only contextual candidate and is not connected to the production evidence path.
+
+Candidate semantic definition:
+
+1. Bullish/up bar.
+2. Volume declining versus the previous bar.
+3. Spread declining versus the previous bar.
+
+The event is interpreted as **demand effort drying**, not automatically as bullish or bearish primary evidence, and remains distinct from bearish `NO_DEMAND`.
+
+Audit findings:
+
+- candidate population: `1,068` events across 8 symbols.
+- positive decisive rate: `57.73%`.
+- mean 8-bar return: `+3.25%`.
+- semantic-quality population: `1,068` events; both volume and spread declined on all candidates; higher low `873` (`81.7%`); narrow/average spread `926` (`86.7%`).
+- supply-overlap events: `164 / 1,068` (`15.36%`).
+- overlap classes: `NO_DEMAND_LIKE` `136`; `BUYING_CLIMAX_LIKE` `28`; all other audited supply classes `0`.
+- conflict positive decisive rate: `56.10%` versus `58.03%` for clean events.
+- conflict mean return: `+2.57%` versus `+3.37%` for clean events.
+- positive-rate gap: `-1.93` percentage points.
+- mean-return gap: `-0.80` percentage points.
+- no conflict penalty or rejection rule was justified.
+- eligible-market positive decisive rate: `60.68%`.
+- decision lift: `-2.95` percentage points.
+- mean-return lift: `-0.53` percentage points.
+- candidate share of eligible events: `9.55%`.
+
+Decision:
+
+```text
+base weight        = 0.00
+conflict penalty   = 0.00
+rejection          = NO
+status             = AUDIT_COMPLETE / NON_SCORING
+production path    = NO
+```
+
+This is not a rejection of the VSA concept itself. It is a decision not to promote the current candidate definition into the scoring layer because its audited outcome does not demonstrate incremental value over the eligible-market baseline.
+
+## 10. Evidence Aggregation and Scoring Policy
 
 Evidence is grouped by `(bar_index, EvidenceDirection)`. Within an event:
 
@@ -237,9 +280,9 @@ Evidence is grouped by `(bar_index, EvidenceDirection)`. Within an event:
 
 Interaction audits are a separate quality layer. A contradiction does **not** automatically invalidate a detector. The project requires empirical evidence that the conflict is repeatedly harmful before applying a quality penalty, and a rejection rule requires substantially stronger evidence.
 
-For the current provisional events, audit conclusions are documented separately from active production scoring until the project explicitly promotes them. `HIDDEN_DEMAND` remains non-scoring and unregistered in production because its decision-value audit was negative.
+For the current provisional events, audit conclusions are documented separately from active production scoring until the project explicitly promotes them. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` remain non-scoring and unregistered in production because their decision-value audits were negative.
 
-## 10. VSA Methodology Constraints
+## 11. VSA Methodology Constraints
 
 The project is designed for real-market VSA, not textbook-pattern detection.
 
@@ -253,7 +296,7 @@ Therefore:
 - conflicts should reduce quality only when validated by outcomes;
 - adding or tuning a numeric weight never substitutes for semantic validation.
 
-## 11. Audit-First Promotion Workflow
+## 12. Audit-First Promotion Workflow
 
 Every new provisional VSA event should follow this sequence:
 
@@ -283,7 +326,7 @@ documentation freeze
 
 A failed audit script is never treated as evidence about the event itself. The script must first reproduce the validated event population.
 
-## 12. Repository Documentation Policy
+## 13. Repository Documentation Policy
 
 - `docs/PRIMARY_VSA_EVENT_MATRIX.md` is the master event-status index.
 - `docs/specifications/` is the canonical per-event semantic rulebook.
@@ -293,7 +336,7 @@ A failed audit script is never treated as evidence about the event itself. The s
 
 No architecture document should claim a detector is production-approved merely because its enum, registry entry, or audit script exists.
 
-## 13. Immediate Current State
+## 14. Immediate Current State
 
 The system currently has a functioning end-to-end path from market data through metrics, structure, evidence, professional scoring, qualification, ranking, and actionable scanner output.
 
@@ -315,6 +358,12 @@ HIDDEN_DEMAND
     conflict penalty = 0.00
     status = AUDIT_COMPLETE / NON_SCORING
     production path = NO
+
+DEMAND_DRYING_UP
+    base weight = 0.00
+    conflict penalty = 0.00
+    status = AUDIT_COMPLETE / NON_SCORING
+    production path = NO
 ```
 
-`DEMAND_COMING_IN` and `INCREASING_DEMAND` are not promoted to fully production-approved scoring status by the completion of these audits. `HIDDEN_DEMAND` is explicitly not promoted into scoring because the audited candidate population showed negative incremental value versus the eligible-market baseline. The next candidate event must continue through the same audit-first process.
+`DEMAND_COMING_IN` and `INCREASING_DEMAND` are not promoted to fully production-approved scoring status by the completion of these audits. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are explicitly not promoted into scoring because their audited candidate populations showed negative incremental value versus the eligible-market baseline. The next candidate event must continue through the same audit-first process.

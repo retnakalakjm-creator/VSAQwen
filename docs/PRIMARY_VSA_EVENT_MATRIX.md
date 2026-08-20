@@ -37,7 +37,7 @@ Inside `collect_supply()`, these detectors are active for eligible bars:
 
 Inside `collect_demand()`, the validated demand-side detectors now include `STOPPING_VOLUME`, `SHAKEOUT`, `NO_SUPPLY`, `TEST`, `DEMAND_COMING_IN`, and `INCREASING_DEMAND`. `SELLING_CLIMAX` remains disabled. `TEST` and `NO_SUPPLY` remain non-scoring/contextual in their defined roles.
 
-`HIDDEN_DEMAND` is not connected to the production collection path.
+`HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are not connected to the production collection path.
 
 ## Matrix
 
@@ -56,7 +56,7 @@ Inside `collect_demand()`, the validated demand-side detectors now include `STOP
 | `DEMAND_COMING_IN` | `evidence/demand.py::_collect_demand_coming_in` | YES | **Provisional / audit-complete** | Primary demand | Bullish | **0.38** | Production-path audit: 281 candidate events; all validated production emissions observed at 0.38. Interaction audit found no production conflict penalty. Weight remains provisional and is not yet promoted to production-approved status. |
 | `INCREASING_DEMAND` | `evidence/demand.py::_collect_increasing_demand` | YES | **Provisional / audit-complete** | Primary demand | Bullish | **0.85** | 902-point-in-time-event calibration across 8 symbols. Leave-one-symbol-out calibration remained positive. Conflict audit identified a 4.55% same-bar supply-conflict rate; conflict penalty **0.10** is provisional and is not yet an active production scoring rule. |
 | `HIDDEN_DEMAND` | No dedicated active production detector | NO | **Audit-complete / non-scoring** | Supporting demand | Bullish | **0.00** | Candidate population: 136 events across 8 symbols. Positive decisive rate 58.82% versus eligible-market 60.68% (−1.86 pp lift); mean-return lift −0.82 pp. Supply-conflict rate 29.41%, entirely `INCREASING_SUPPLY_LIKE`; conflict positive rate was 60.00% versus 58.33% clean, so no conflict penalty or rejection rule is justified. Not promoted into scoring. |
-| `DEMAND_DRYING_UP` | No dedicated active production detector | NO | Candidate / missing | Supporting / exhaustion context | Contextual | — | Must remain distinct from bearish absence-of-demand evidence. |
+| `DEMAND_DRYING_UP` | No dedicated active production detector | NO | **Audit-complete / non-scoring** | Supporting / exhaustion context | Contextual | **0.00** | Candidate population: 1,068 events across 8 symbols. Positive decisive rate 57.73% versus eligible-market 60.68% (−2.95 pp lift); mean-return lift −0.53 pp. Semantic quality was consistent: both volume and spread declined on all candidates; higher low 81.7%; narrow/average spread 86.7%. Supply-overlap rate 15.36%, driven by `NO_DEMAND_LIKE` (136) and `BUYING_CLIMAX_LIKE` (28). Conflict positive rate 56.10% versus 58.03% clean, so no conflict penalty or rejection rule is justified. Retained as contextual/non-scoring evidence only. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | NO | Audit-complete / frozen | Primary demand / reversal | Bullish | — | Detector exists but remains disabled; audit did not establish a defensible production weight. |
 | `TEST` | `evidence/demand.py::_collect_test` | YES | Production-integrated / frozen semantics | Primary confirmation | Bullish | 0.00 | Contextual confirmation only; non-scoring. 47 validated events across 8 symbols. |
 | `SPRING` | `evidence/spring.py::collect_spring` | YES | Production-integrated / provisional | Primary trap / reversal | Bullish | 0.75 | Strict point-in-time candidate → low-volume test → bullish follow-through. Same-bar `UPTHRUST`/`BUYING_CLIMAX` reduces Spring quality to 0.50 rather than rejecting it. |
@@ -245,11 +245,89 @@ production_path = NO
 
 This is not a rejection of the VSA concept. It is a decision not to promote the current detector candidate into the scoring layer because the audited population did not demonstrate incremental value over the eligible market baseline.
 
+## DEMAND_DRYING_UP audit record
+
+### Candidate semantic definition
+
+The audit-only candidate definition was intentionally narrow and contextual:
+
+1. Bullish/up bar.
+2. Volume declining versus the previous bar.
+3. Spread declining versus the previous bar.
+
+The event is interpreted as **demand effort drying**, not automatically as bullish or bearish primary evidence, and it remains distinct from bearish `NO_DEMAND`.
+
+Candidate / outcome audit:
+
+- candidate events: `1,068`
+- symbols with events: `8 / 8`
+- positive 8-bar outcomes: `616`
+- negative 8-bar outcomes: `451`
+- flat outcomes: `1`
+- decisive outcomes: `1,067`
+- positive decisive rate: `57.73%`
+- mean 8-bar return: `+3.25%`
+
+Semantic-quality audit:
+
+- events: `1,068`
+- both volume and spread declining: `1,068 / 1,068`
+- higher low: `873 / 1,068` (`81.7%`)
+- narrow/average spread: `926 / 1,068` (`86.7%`)
+- semantic audit failures: `0`
+
+Interaction audit:
+
+- supply-conflict events: `164 / 1,068`
+- conflict rate: `15.36%`
+- `NO_DEMAND_LIKE`: `136`
+- `BUYING_CLIMAX_LIKE`: `28`
+- all other audited supply conflict classes: `0`
+
+The overlap is interpreted primarily as contextual semantic overlap, not automatic contradiction: `DEMAND_DRYING_UP` describes weakening demand effort, while `NO_DEMAND` and `BUYING_CLIMAX` describe stronger weakness/exhaustion conditions.
+
+Conflict outcome audit:
+
+- conflict events: `164`
+- clean events: `904`
+- conflict positive decisive rate: `56.10%`
+- clean positive decisive rate: `58.03%`
+- conflict mean return: `+2.57%`
+- clean mean return: `+3.37%`
+- positive-rate gap: `-1.93` percentage points
+- mean-return gap: `-0.80` percentage points
+
+No conflict penalty or rejection rule is justified from this modest outcome deterioration.
+
+Decision-value audit:
+
+- candidate positive decisive rate: `57.73%`
+- eligible-market positive decisive rate: `60.68%`
+- positive-rate lift: `-2.95` percentage points
+- candidate mean return: `+3.25%`
+- eligible-market mean return: `+3.78%`
+- mean-return lift: `-0.53` percentage points
+- candidate share of eligible events: `9.55%`
+
+The broad candidate population does not demonstrate incremental decision value over the eligible-market baseline. Therefore the current definition is retained only as contextual/non-scoring evidence.
+
+### Scoring decision
+
+```text
+DEMAND_DRYING_UP = 0.00
+conflict_penalty = 0.00
+rejection = NO
+status = AUDIT_COMPLETE / NON_SCORING
+production_path = NO
+```
+
+This is not a rejection of the VSA concept itself. It is a decision not to promote the current candidate definition into the scoring layer because its audited outcome does not demonstrate incremental value.
+
 ## Project-wide audit policy for these events
 
 The project treats interaction results as evidence-quality information, not automatic detector invalidation. A contradictory observation reduces confidence/quality only when the historical outcome audit shows a repeatable deterioration, and rejection requires materially stronger evidence than a modest conflict association.
 
-The current `DEMAND_COMING_IN`, `INCREASING_DEMAND`, and `HIDDEN_DEMAND` audit campaigns therefore freeze weights and interaction findings separately from production approval.
+The current `DEMAND_COMING_IN`, `INCREASING_DEMAND`, `HIDDEN_DEMAND`, and `DEMAND_DRYING_UP` audit campaigns therefore freeze weights and interaction findings separately from production approval.
 
 ## Immediate conclusions
 
@@ -259,5 +337,6 @@ The current `DEMAND_COMING_IN`, `INCREASING_DEMAND`, and `HIDDEN_DEMAND` audit c
 4. `INCREASING_DEMAND` is production-connected at base weight `0.85`, but remains provisional.
 5. `INCREASING_DEMAND` has a provisional interaction penalty of `0.10`; no rejection rule is justified.
 6. `HIDDEN_DEMAND` is audit-complete but remains non-scoring at `0.00`; its current candidate definition is not promoted into the production evidence path.
-7. Neither `DEMAND_COMING_IN` nor `INCREASING_DEMAND` is promoted to fully production-approved status by these audit results.
-8. Future evidence events must follow the same audit-first process rather than inheriting weights or interaction penalties automatically.
+7. `DEMAND_DRYING_UP` is audit-complete but remains contextual/non-scoring at `0.00`; no conflict penalty or rejection rule is justified.
+8. Neither `DEMAND_COMING_IN` nor `INCREASING_DEMAND` is promoted to fully production-approved status by these audit results.
+9. Future evidence events must follow the same audit-first process rather than inheriting weights or interaction penalties automatically.
