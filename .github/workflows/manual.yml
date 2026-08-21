@@ -1,40 +1,38 @@
-name: Supply Coming In Production Audit
-
-on:
-  workflow_dispatch: # Allows manual triggering from the GitHub UI
-  push:
-    paths:
-      - 'debug/diagnose_supply_coming_in_production_path_readiness_audit_optimized.py'
-
 jobs:
-  execute-audit:
+  run-audit:
     runs-on: ubuntu-latest
     
+    # ADD THIS ENV BLOCK TO SILENCE THE NODE WARNING
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+      
     steps:
-    - name: Checkout Code
+    - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Setup Python
+    - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
     - name: Install Dependencies
       run: |
-        pip install -r requirements.txt || true
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install pandas numpy yfinance
 
-    - name: Execute Script and Save to Text File
+    - name: Execute Audit & Save to Text File
       run: |
-        # This is the exact command that runs your script and creates the text file
-        python debug/diagnose_supply_coming_in_production_path_readiness_audit_optimized.py > supply_audit_results.txt 2>&1
+        echo "Starting SUPPLY_COMING_IN Production Path Audit..."
+        # Run the script and redirect both stdout and stderr to the text file
+        python debug/diagnose_supply_coming_in_production_path_readiness_audit_optimized.py > supply_audit_output.txt 2>&1
         
-        echo "--- AUDIT OUTPUT ---"
-        cat supply_audit_results.txt
+        echo "Audit finished. Printing output to GitHub logs for visibility:"
+        cat supply_audit_output.txt
 
-    - name: Save Text File as Downloadable Artifact
+    - name: Upload Text File as Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Supply-Audit-Results
-        path: supply_audit_results.txt
-        retention-days: 15
+        name: Supply-Coming-In-Audit-Results
+        path: supply_audit_output.txt
+        retention-days: 30
