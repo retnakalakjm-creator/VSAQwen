@@ -22,7 +22,7 @@ from engine.columns import COL_CLOSE, COL_DIRECTION, COL_VOLUME_CLASS
 from evidence.campaign import has_buying_campaign
 from evidence.engine import EvidenceEngine
 from metrics_engine import MetricsEngine
-from models import Direction, SpreadClass, VolumeClass
+from models import Direction, EvidenceCode, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
 
 SYMBOLS = (
@@ -30,26 +30,25 @@ SYMBOLS = (
     "LT.NS", "RELIANCE.NS", "SBIN.NS", "TCS.NS",
 )
 FORWARD_BARS = 8
-SELF_CODES = {
-    "EvidenceCode.BUYING_CLIMAX",
-    "BUYING_CLIMAX",
-    "BUYING_CLIMAX_LIKE",
-}
-SUPPLY_CODES = {
-    "UPTHRUST", "UPTHRUST_LIKE", "HIDDEN_SUPPLY", "HIDDEN_SUPPLY_LIKE",
-    "INCREASING_SUPPLY", "INCREASING_SUPPLY_LIKE",
-    "SUPPLY_COMING_IN", "SUPPLY_COMING_IN_LIKE",
-    "SUPPLY_HIGH_VOLUME", "SUPPLY_HIGH_VOLUME_LIKE",
-    "SUPPLY_WIDE_SPREAD", "SUPPLY_WIDE_SPREAD_LIKE",
-}
-DEMAND_CODES = {
-    "INCREASING_DEMAND", "INCREASING_DEMAND_LIKE",
-    "DEMAND_COMING_IN", "DEMAND_COMING_IN_LIKE",
-    "STOPPING_VOLUME", "STOPPING_VOLUME_LIKE",
-    "SPRING", "SPRING_LIKE", "TEST", "TEST_LIKE",
-    "NO_SUPPLY", "NO_SUPPLY_LIKE", "SHAKEOUT", "SHAKEOUT_LIKE",
-    "SELLING_CLIMAX", "SELLING_CLIMAX_LIKE",
-}
+
+SUPPLY_CODES = (
+    EvidenceCode.SUPPLY_COMING_IN,
+    EvidenceCode.INCREASING_SUPPLY,
+    EvidenceCode.HIDDEN_SUPPLY,
+    EvidenceCode.UPTHRUST,
+    EvidenceCode.NO_DEMAND,
+)
+
+DEMAND_CODES = (
+    EvidenceCode.STOPPING_VOLUME,
+    EvidenceCode.NO_SUPPLY,
+    EvidenceCode.SHAKEOUT,
+    EvidenceCode.SPRING,
+    EvidenceCode.TEST,
+    EvidenceCode.DEMAND_COMING_IN,
+    EvidenceCode.INCREASING_DEMAND,
+    EvidenceCode.HIDDEN_DEMAND,
+)
 
 
 def _cheap_candidate(metrics, index: int) -> bool:
@@ -68,16 +67,12 @@ def _context(metrics, index: int):
     return replay, trend, structural_swings
 
 
-def _norm_code(code: object) -> str:
-    return str(code).split(".")[-1]
-
-
-def _group_for(codes: set[str]) -> str:
-    supply = sorted(code for code in codes if code in SUPPLY_CODES)
-    demand = sorted(code for code in codes if code in DEMAND_CODES)
+def _group_for(codes: set[EvidenceCode]) -> str:
+    supply = [code.name for code in SUPPLY_CODES if code in codes]
+    demand = [code.name for code in DEMAND_CODES if code in codes]
     if not supply and not demand:
         return "no_interaction"
-    return " + ".join([*supply, *demand])
+    return " + ".join(sorted([*supply, *demand]))
 
 
 def _audit_symbol(symbol: str) -> tuple[list[tuple[str, float]], int, int]:
@@ -111,11 +106,11 @@ def _audit_symbol(symbol: str) -> tuple[list[tuple[str, float]], int, int]:
         )
 
         target_codes = {
-            _norm_code(item.code)
+            item.code
             for item in result.evidence
             if getattr(item, "bar_index", None) == index
+            and item.code != EvidenceCode.BUYING_CLIMAX
         }
-        target_codes.difference_update(SELF_CODES)
 
         group = _group_for(target_codes)
         forward_return = float(
