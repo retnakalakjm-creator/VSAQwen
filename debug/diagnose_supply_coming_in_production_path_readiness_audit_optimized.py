@@ -20,13 +20,12 @@ import config
 from data import daily_to_weekly, download_data
 from evidence.campaign import has_buying_campaign
 from evidence.engine import EvidenceEngine
-from evidence.evidence_registry import EVIDENCE_REGISTRY
+from evidence.profiles import EVIDENCE_REGISTRY
 from evidence.weight import WeightCalculator
 from metrics_engine import MetricsEngine
-from models import EvidenceCode
+from models import EvidenceCode, Direction, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
-from engine.columns import COL_CLOSE, COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
-from models import Direction, SpreadClass, VolumeClass
+from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 
 SYMBOLS = (
     "BHARTIARTL.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
@@ -35,6 +34,7 @@ SYMBOLS = (
 TARGET_CODE = EvidenceCode.SUPPLY_COMING_IN
 EXPECTED_EVENTS = 189
 EMPIRICAL_REFERENCE_WEIGHT = 0.38
+RUNTIME_WEIGHT_BOUNDS = (0.50, 2.00)
 
 
 def _cheap_candidate(metrics, index: int) -> bool:
@@ -93,6 +93,10 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
             failures.append(
                 f"{symbol}:{index}: emitted weight {runtime_weight} != calculator weight {expected_runtime}"
             )
+        if not (RUNTIME_WEIGHT_BOUNDS[0] <= runtime_weight <= RUNTIME_WEIGHT_BOUNDS[1]):
+            failures.append(
+                f"{symbol}:{index}: runtime weight {runtime_weight} outside bounds {RUNTIME_WEIGHT_BOUNDS}"
+            )
         runtime_weights.append(runtime_weight)
 
     return {
@@ -142,6 +146,7 @@ def main() -> None:
         "expected_emissions": EXPECTED_EVENTS,
         "registry_weight": registry_weight,
         "empirical_reference_weight": EMPIRICAL_REFERENCE_WEIGHT,
+        "runtime_weight_bounds": RUNTIME_WEIGHT_BOUNDS,
         "runtime_weight_observed": {
             "min": observed_min,
             "max": observed_max,
