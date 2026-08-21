@@ -2,8 +2,8 @@
 
 Analysis-only. Replays cheap BUYING_CLIMAX candidates through the real
 campaign/context path and groups each campaign-qualified event by the exact
-non-self supply/demand evidence-code combination produced by engine.collect().
-No production scoring mutation.
+non-self supply/demand evidence-code combination produced by engine.collect()
+on the target bar. No production scoring mutation.
 """
 from __future__ import annotations
 
@@ -72,26 +72,6 @@ def _norm_code(code: object) -> str:
     return str(code).split(".")[-1]
 
 
-def _collect_codes(
-    metrics,
-    trend,
-    structural_swings,
-) -> set[str]:
-    engine = EvidenceEngine()
-    result = engine.collect(
-        metrics=metrics,
-        trend=trend,
-        structural_swings=structural_swings,
-    )
-    codes: set[str] = set()
-    for item in result.evidence:
-        code = _norm_code(item.code)
-        if code in SELF_CODES:
-            continue
-        codes.add(code)
-    return codes
-
-
 def _group_for(codes: set[str]) -> str:
     supply = sorted(code for code in codes if code in SUPPLY_CODES)
     demand = sorted(code for code in codes if code in DEMAND_CODES)
@@ -115,8 +95,6 @@ def _audit_symbol(symbol: str) -> tuple[list[tuple[str, float]], int, int]:
         rebuilds += 1
 
         engine = EvidenceEngine()
-        # Build the exact real context path first because campaign validation
-        # depends on the current point-in-time BackgroundContext.
         engine._reset(
             metrics=replay,
             trend=trend,
@@ -131,12 +109,15 @@ def _audit_symbol(symbol: str) -> tuple[list[tuple[str, float]], int, int]:
             trend=trend,
             structural_swings=structural_swings,
         )
-        codes = {
+
+        target_codes = {
             _norm_code(item.code)
             for item in result.evidence
+            if getattr(item, "bar_index", None) == index
         }
-        codes.difference_update(SELF_CODES)
-        group = _group_for(codes)
+        target_codes.difference_update(SELF_CODES)
+
+        group = _group_for(target_codes)
         forward_return = float(
             closes[index + FORWARD_BARS] / closes[index] - 1.0
         )
@@ -184,6 +165,7 @@ def main() -> None:
         "campaign_qualified_events": sum(len(v) for v in groups.values()),
         "combination_groups": len(groups),
         "self_conflict_excluded": True,
+        "target_bar_only": True,
         "heavy_context_rebuilds": rebuild_total,
         "failures": failures,
         "status": "PASS" if not failures else "FAIL",
