@@ -66,6 +66,20 @@ All historical VSA audits are expected to respect point-in-time semantics and av
 - `UPTHRUST`
 - `NO_DEMAND`
 
+`BUYING_CLIMAX` is production-active and has completed its current production-path audit.
+
+Its weighting has three distinct layers:
+
+- **Registry/profile weight:** `1.00`.
+- **Runtime weight:** dynamically calculated by `WeightCalculator._buying_climax_weight(ctx)`.
+- **Empirical reference weight:** `0.38`, used only for decision-value calibration and counterfactual analysis.
+
+The production runtime weight is not fixed at `0.38`. The production audit observed runtime weights from `0.9` to `2.0`, all within the validated runtime bounds of `0.50–2.00`.
+
+The current production path has been verified with `181 / 181` campaign-qualified emissions, zero duplicate emissions, zero campaign mismatches, zero runtime-weight bound violations, zero production score-mutation failures, and no production interaction penalty.
+
+A provisional interaction study identified `INCREASING_DEMAND + UPTHRUST` as a materially weaker `BUYING_CLIMAX` combination. A counterfactual `0.20` penalty improved aggregate historical decision-value metrics but remained below the eligible-market baseline, so the penalty is **analysis-only and not configured in production**.
+
 Some additional supply-descriptor blocks remain intentionally disabled until their semantics are frozen.
 
 ### Demand layer
@@ -104,9 +118,55 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `DEMAND_DRYING_UP` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; contextual/exhaustion role only |
 | `ABSORPTION` | NO | **Audit-complete / provisional** | **0.38** | **Provisional conflict penalty `0.20`; rejection `NO`; no production path** |
 | `SELLING_CLIMAX` | YES | Production-integrated / audit-complete | `0.38` | No conflict penalty; STOPPING_VOLUME interaction is confirming |
+| `BUYING_CLIMAX` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.9–2.0 observed; empirical 0.38 is calibration-only; provisional 0.20 penalty for `INCREASING_DEMAND + UPTHRUST` is not in production** |
+
 The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic. `HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` are intentionally excluded from the production path until their production detectors and scoring integration are separately justified.
 
-## 6. DEMAND_COMING_IN Current Audit State
+
+
+## 6. BUYING_CLIMAX Current Audit State
+
+`BUYING_CLIMAX` is connected to the production supply evidence path and has completed its current production-path verification.
+
+Production verification:
+
+- campaign-qualified events: `181`
+- production emissions: `181`
+- campaign mismatch: `0`
+- duplicate emissions: `0`
+- runtime-weight bounds: `0.50–2.00`
+- observed runtime-weight range: `0.9–2.0`
+- runtime-weight violations: `0`
+- production interaction penalty: `NOT CONFIGURED`
+- production score mutation: `False`
+- audit status: `PASS`
+
+The static registry value of `1.00` must not be confused with the runtime value. Runtime scoring is context-dependent.
+
+The empirical `0.38` value comes from counterfactual decision-value testing. It is **not** the current production weight.
+
+The interaction study found:
+
+- `INCREASING_DEMAND + UPTHRUST`: `119`
+- `UPTHRUST` only: `53`
+- other combinations: `9`
+
+A counterfactual `0.20` penalty improved the aggregate candidate metrics but did not overcome the eligible-market baseline. It therefore remains a provisional analysis policy rather than a production scoring rule.
+
+Frozen production state:
+
+```text
+collector          = YES
+registry           = 1.00
+runtime weighting  = dynamic
+empirical ref      = 0.38
+interaction penalty= 0.20 provisional / analysis-only
+production change  = NONE
+status             = PRODUCTION-ACTIVE
+```
+
+
+## 7. DEMAND_COMING_IN Current Audit State
 
 `DEMAND_COMING_IN` completed its audit cycle before being frozen at a provisional base weight of `0.38`.
 
@@ -129,7 +189,7 @@ rejection          = NO
 status             = PROVISIONAL
 ```
 
-## 7. INCREASING_DEMAND Current Audit State
+## 8. INCREASING_DEMAND Current Audit State
 
 `INCREASING_DEMAND` is connected to the production evidence path using the validated point-in-time detector definition:
 
@@ -191,7 +251,7 @@ rejection          = NO
 status             = PROVISIONAL
 ```
 
-## 8. HIDDEN_DEMAND Current Audit State
+## 9. HIDDEN_DEMAND Current Audit State
 
 `HIDDEN_DEMAND` remains an audit-only candidate and is not connected to the production evidence path.
 
@@ -230,7 +290,7 @@ production path    = NO
 
 This is not a rejection of the VSA concept itself. It is a decision not to promote the current candidate into the scoring layer because its audited outcome does not demonstrate incremental value over the eligible-market baseline.
 
-## 9. DEMAND_DRYING_UP Current Audit State
+## 10. DEMAND_DRYING_UP Current Audit State
 
 `DEMAND_DRYING_UP` remains an audit-only contextual candidate and is not connected to the production evidence path.
 
@@ -272,7 +332,7 @@ production path    = NO
 
 This is not a rejection of the VSA concept itself. It is a decision not to promote the current candidate definition into the scoring layer because its audited outcome does not demonstrate incremental value over the eligible-market baseline.
 
-## 10. ABSORPTION Current Audit State
+## 11. ABSORPTION Current Audit State
 
 `ABSORPTION` has completed its analysis-only candidate, semantic-quality, interaction/contradiction, conflict-outcome, conflict-penalty, decision-value, and production-readiness audit sequence. It is **not** connected to the production evidence path.
 
@@ -364,7 +424,7 @@ production mutation = NO
 status              = AUDIT_COMPLETE / PROVISIONAL
 ```
 
-## 11. Evidence Aggregation and Scoring Policy
+## 12. Evidence Aggregation and Scoring Policy
 
 Evidence is grouped by `(bar_index, EvidenceDirection)`. Within an event:
 
@@ -377,7 +437,7 @@ Interaction audits are a separate quality layer. A contradiction does **not** au
 
 For the current provisional events, audit conclusions are documented separately from active production scoring until the project explicitly promotes them. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` remain non-scoring and unregistered in production because their decision-value audits were negative. `ABSORPTION` remains unregistered because its production path is intentionally absent; its provisional weight and conflict penalty are documented only for future promotion work.
 
-## 12. VSA Methodology Constraints
+## 13. VSA Methodology Constraints
 
 The project is designed for real-market VSA, not textbook-pattern detection.
 
@@ -391,7 +451,7 @@ Therefore:
 - conflicts should reduce quality only when validated by outcomes;
 - adding or tuning a numeric weight never substitutes for semantic validation.
 
-## 13. Audit-First Promotion Workflow
+## 14. Audit-First Promotion Workflow
 
 Every new provisional VSA event should follow this sequence:
 
@@ -421,7 +481,7 @@ documentation freeze
 
 A failed audit script is never treated as evidence about the event itself. The script must first reproduce the validated event population.
 
-## 14. Repository Documentation Policy
+## 15. Repository Documentation Policy
 
 - `docs/PRIMARY_VSA_EVENT_MATRIX.md` is the master event-status index.
 - `docs/specifications/` is the canonical per-event semantic rulebook.
@@ -431,7 +491,7 @@ A failed audit script is never treated as evidence about the event itself. The s
 
 No architecture document should claim a detector is production-approved merely because its enum, registry entry, or audit script exists.
 
-## 15. Immediate Current State
+## 16. Immediate Current State
 
 The system currently has a functioning end-to-end path from market data through metrics, structure, evidence, professional scoring, qualification, ranking, and actionable scanner output.
 

@@ -43,7 +43,7 @@ Inside `collect_demand()`, the validated demand-side detectors now include `STOP
 
 | EvidenceCode | Detector / source | Production path | Status | Role | Direction | Base weight | Notes |
 |---|---|---:|---|---|---|---:|---|
-| `BUYING_CLIMAX` | `evidence/supply.py::_collect_buying_climax` | YES | Active | Primary weakness / supply | Bearish | Existing | Buying campaign + bullish bar + very-high volume + above-average spread; confirmations include wide spread, weak close, increasing volume. |
+| `BUYING_CLIMAX` | `evidence/supply.py::_collect_buying_climax` | YES | **Production-active / audit-complete** | Primary weakness / supply | Bearish | **Registry 1.00 / dynamic runtime** | Campaign-qualified production path verified: 181 emissions across 8 symbols, matching 181 expected campaign events; 0 duplicates, 0 campaign mismatches, 0 runtime-weight bound violations, and 0 production score-mutation failures. Runtime weights are calculated dynamically by `WeightCalculator`; observed distribution was 0.9–2.0. Empirical reference weight `0.38` is calibration-only and is not the production runtime weight. |
 | `SUPPLY_COMING_IN` | `evidence/supply.py::_collect_supply_coming_in` | YES | Active | Primary weakness / supply | Bearish | Existing | Down bar + high volume + above-average spread + weak close + increasing volume. |
 | `INCREASING_SUPPLY` | `evidence/supply.py::_collect_increasing_supply` | YES | Active | Primary weakness / supply | Bearish | Existing | Down bar + increasing volume + increasing spread. |
 | `HIDDEN_SUPPLY` | `evidence/supply.py::_collect_hidden_supply` | YES | **Active / audit-complete / non-scoring** | Supporting supply | Bearish | Existing | Candidate audit: 139 events, 58.99% positive decisive rate, +2.78% mean 8-bar return. Semantic-quality audit: 0 failures; all 139 had high volume and lower close semantics. Corrected interaction audit found no same-bar supply/demand conflicts after excluding self-conflict. Decision-value audit: positive-rate lift −1.81 pp and mean-return lift −1.05 pp versus eligible market. Current detector remains active, but the audited definition is not promoted as incremental scoring evidence. |
@@ -69,6 +69,67 @@ Inside `collect_demand()`, the validated demand-side detectors now include `STOP
 | `SUPPLY_WIDE_SPREAD` | Commented detector block | NO | Candidate | Supply descriptor | Bearish | — | Descriptive rather than standalone primary evidence. |
 | `STRUCTURAL_PROGRESSION_IMPROVING` | `background/structural_progression.py` | YES | Active | Structural context | Bullish | Separate layer | Not a raw primary VSA event. |
 | `STRUCTURAL_PROGRESSION_WEAKENING` | `background/structural_progression.py` | YES | Active | Structural context | Bearish | Separate layer | Not a raw primary VSA event. |
+
+## BUYING_CLIMAX audit record
+
+### Production semantics
+
+`BUYING_CLIMAX` is a supply-side weakness / climactic event requiring a valid buying campaign context together with:
+
+1. Bullish bar.
+2. Very-high volume.
+3. Above-average spread.
+
+Additional confirmations include wide spread, weak close, and increasing volume.
+
+The detector deliberately remains faithful to real-market VSA evidence rather than requiring textbook-perfect climactic structure.
+
+### Production-path verification
+
+- symbols requested: `8`
+- cheap candidates: `432`
+- engine replays: `432`
+- expected campaign events: `181`
+- production emissions: `181`
+- campaign mismatch: `0`
+- duplicate emissions: `0`
+- runtime weight bounds: `0.50–2.00`
+- runtime weights observed: `0.9–2.0`
+- runtime weights out of bounds: `0`
+- production interaction penalty configured: `NO`
+- production score mutation: `NO`
+- errors: `0`
+- audit status: `PASS`
+
+### Weight provenance
+
+There are three distinct concepts and they must not be conflated:
+
+```text
+registry/profile weight       = 1.00
+empirical reference weight    = 0.38
+production runtime weight     = dynamic
+```
+Interaction / contradiction audit:
+
+- INCREASING_DEMAND + UPTHRUST = 119 events
+- UPTHRUST only                 = 53 events
+- other combinations             = 9 events
+- positive decisive rate: 57.12% vs 60.79%
+- mean 8-bar return:      3.15%  vs 3.83%
+- interaction penalty = 0.20
+- status              = PROVISIONAL / ANALYSIS-ONLY
+- production penalty  = NO
+
+Frozen decision
+
+- production path       = YES
+- registry weight       = 1.00
+- runtime weight        = dynamic
+- empirical reference   = 0.38
+- interaction penalty   = 0.20 provisional / non-production
+- rejection             = NO
+- production mutation   = NO
 
 ## HIDDEN_SUPPLY audit record
 
