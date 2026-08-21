@@ -41,10 +41,6 @@ def _cheap_candidate(metrics, index: int) -> bool:
     )
 
 
-def _norm_code(code: object) -> str:
-    return str(code).split(".")[-1]
-
-
 def _audit_symbol(symbol: str):
     metrics = MetricsEngine().calculate(daily_to_weekly(download_data(symbol)))
     cheap = 0
@@ -101,7 +97,12 @@ def _audit_symbol(symbol: str):
             )
 
         for item in target_items:
-            weight = float(getattr(item, "weight", EXPECTED_BASE_WEIGHT))
+            if not hasattr(item, "weight"):
+                failures.append(
+                    f"{symbol}:{index}: BUYING_CLIMAX evidence has no weight attribute"
+                )
+                continue
+            weight = float(item.weight)
             emissions.append((index, weight, float(metrics.iloc[index][COL_CLOSE])))
             if abs(weight - EXPECTED_BASE_WEIGHT) > 1e-12:
                 wrong_weights.append((index, weight, EXPECTED_BASE_WEIGHT))
@@ -114,7 +115,7 @@ def main() -> None:
     cheap_total = 0
     rebuild_total = 0
     all_emissions: list[tuple[int, float, float]] = []
-    wrong_weights: list[tuple[int, float, float]] = []
+    wrong_weights: list[tuple[str, float, float]] = []
     duplicate_emissions = 0
     campaign_mismatch = 0
     failures: list[dict[str, str]] = []
@@ -133,7 +134,7 @@ def main() -> None:
             symbols_with_results += 1
             cheap_total += cheap
             rebuild_total += rebuilds
-            all_emissions.extend(emissions)
+            all_emissions.extend((i, w, c) for i, w, c in emissions)
             wrong_weights.extend((f"{symbol}:{i}", w, e) for i, w, e in wrong)
             duplicate_emissions += duplicates
             campaign_mismatch += mismatches
