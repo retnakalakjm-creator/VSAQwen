@@ -1,10 +1,13 @@
 """Semantic-quality audit for INCREASING_SUPPLY.
 
-Validates the frozen 528-event candidate population against the exact
-point-in-time production detector semantics:
+Validates each production emission against the exact immutable
+BackgroundContext objects used by the production collector:
 - down bar
 - increasing volume versus previous bar
 - increasing spread versus previous bar
+
+This avoids re-indexing/reconstructing the target bar from a separately
+loaded DataFrame after production collection.
 """
 from __future__ import annotations
 
@@ -42,7 +45,7 @@ def _cheap_candidate(metrics, index: int) -> bool:
 
 def _audit_symbol(symbol: str) -> dict[str, object]:
     metrics = MetricsEngine().calculate(daily_to_weekly(download_data(symbol)))
-    candidate_events: list[int] = []
+    emitted_events = 0
     semantic_counts = {
         "down_bar": 0,
         "volume_increasing": 0,
@@ -52,9 +55,6 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
     heavy_rebuilds = 0
 
     for index in range(1, len(metrics)):
-        # Restrict validation to the same frozen cheap-candidate population
-        # used by the candidate audit. This prevents unrelated historical
-        # production emissions from entering the semantic audit.
         if not _cheap_candidate(metrics, index):
             continue
 
@@ -82,8 +82,24 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
         if not target:
             continue
 
-        bar = replay.iloc[index]
-        previous = replay.iloc[index - 1]
+        emitted_events += 1
+
+        # Validate against the exact context used by EvidenceEngine.collect().
+        ctx = engine._ctx
+        if ctx is None or not ctx.has_previous:
+            failures.append(
+                f"{symbol}:{index}: production context missing current/previous bar"
+            )
+            continue
+
+        bar = ctx.current
+        previous = ctx.previous
+
+        if bar.bar_index != index:
+            failures.append(
+                f"{symbol}:{index}: context current bar_index={bar.bar_index}"
+            )
+            continue
 
         down = bool(is_down_bar(bar))
         vol_inc = bool(volume_increasing(bar, previous))
@@ -98,12 +114,9 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
                 f"{symbol}:{index}: emitted target failed semantic check "
                 f"down_bar={down}, volume_increasing={vol_inc}, spread_increasing={spread_inc}"
             )
-            continue
-
-        candidate_events.append(index)
 
     return {
-        "candidate_events": candidate_events,
+        "emitted_events": emitted_events,
         "semantic_counts": semantic_counts,
         "heavy_rebuilds": heavy_rebuilds,
         "failures": failures,
@@ -112,7 +125,7 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
 
 def main() -> None:
     symbols_with_results = 0
-    candidate_events = 0
+    emitted_events = 0
     semantic_counts = {
         "down_bar": 0,
         "volume_increasing": 0,
@@ -125,7 +138,7 @@ def main() -> None:
         try:
             result = _audit_symbol(symbol)
             symbols_with_results += 1
-            candidate_events += len(result["candidate_events"])
+            emitted_events += int(result["emitted_events"])
             counts = result["semantic_counts"]
             for key in semantic_counts:
                 semantic_counts[key] += int(counts[key])
@@ -143,16 +156,21 @@ def main() -> None:
     print({
         "symbols_requested": len(SYMBOLS),
         "symbols_with_results": symbols_with_results,
-        "candidate_events": candidate_events,
+        "candidate_events": emitted_events,
         "expected_candidate_events": EXPECTED_EVENTS,
         "semantic_counts": semantic_counts,
         "semantic_failures": semantic_failures,
         "heavy_context_rebuilds": heavy_rebuilds,
         "target_bar_only": True,
         "point_in_time": True,
+        "production_context_used": True,
         "frozen_candidate_population": True,
         "failures": failures,
-        "status": "PASS" if not failures and candidate_events == EXPECTED_EVENTS else "FAIL",
+        "status": (
+            "PASS"
+            if not failures and emitted_events == EXPECTED_EVENTS
+            else "FAIL"
+        ),
     })
 
 
