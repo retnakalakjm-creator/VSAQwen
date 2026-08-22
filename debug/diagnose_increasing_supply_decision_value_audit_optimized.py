@@ -2,6 +2,9 @@
 
 Compares the frozen 528-event point-in-time candidate population against
 an eligible-market baseline using the same 8-bar forward outcome convention.
+
+Heavy EvidenceEngine replays are restricted to the same cheap-candidate gate
+used by the candidate and semantic-quality audits.
 """
 from __future__ import annotations
 
@@ -15,10 +18,10 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from data import daily_to_weekly, download_data
-from engine.columns import COL_CLOSE
+from engine.columns import COL_CLOSE, COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 from evidence.engine import EvidenceEngine
 from metrics_engine import MetricsEngine
-from models import EvidenceCode
+from models import Direction, EvidenceCode, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
 
 SYMBOLS = (
@@ -30,9 +33,23 @@ EXPECTED_EVENTS = 528
 FORWARD_BARS = 8
 
 
-def _candidate_indices(symbol: str, metrics) -> list[int]:
+def _cheap_candidate(metrics, index: int) -> bool:
+    row = metrics.iloc[index]
+    return (
+        Direction(int(row[COL_DIRECTION])) == Direction.DOWN
+        and VolumeClass(int(row[COL_VOLUME_CLASS])) >= VolumeClass.HIGH
+        and SpreadClass(int(row[COL_SPREAD_CLASS])) >= SpreadClass.ABOVE_AVERAGE
+    )
+
+
+def _candidate_indices(metrics) -> tuple[list[int], int]:
     indices: list[int] = []
+    rebuilds = 0
+
     for index in range(1, len(metrics)):
+        if not _cheap_candidate(metrics, index):
+            continue
+
         replay = metrics.iloc[: index + 1].copy()
         trend = TrendAnalyzer().analyze(replay)
         engine = EvidenceEngine()
@@ -41,14 +58,21 @@ def _candidate_indices(symbol: str, metrics) -> list[int]:
             trend=trend,
             structural_swings=tuple(trend.structure.structural_swings),
         )
+        rebuilds += 1
+
         target = [
             e for e in result.evidence
             if e.code is TARGET_CODE
             and getattr(e, "bar_index", None) == index
         ]
+        if len(target) > 1:
+            raise RuntimeError(
+                f"Expected at most one {TARGET_CODE} emission at bar {index}, got {len(target)}"
+            )
         if target:
             indices.append(index)
-    return indices
+
+    return indices, rebuilds
 
 
 def _outcomes(metrics, indices: list[int]) -> tuple[int, int, int, list[float]]:
@@ -81,12 +105,17 @@ def main() -> None:
     failures: list[dict[str, str]] = []
     symbols_with_results = 0
     heavy_rebuilds = 0
+    cheap_candidates = 0
 
     for symbol in SYMBOLS:
         try:
             metrics = MetricsEngine().calculate(daily_to_weekly(download_data(symbol)))
-            indices = _candidate_indices(symbol, metrics)
-            heavy_rebuilds += len(metrics) - 1
+            cheap_candidates += sum(
+                1 for index in range(1, len(metrics)) if _cheap_candidate(metrics, index)
+            )
+
+            indices, rebuilds = _candidate_indices(metrics)
+            heavy_rebuilds += rebuilds
             symbols_with_results += 1
 
             p, n, f, rets = _outcomes(metrics, indices)
@@ -96,6 +125,8 @@ def main() -> None:
             candidate_flat += f
             candidate_returns.extend(rets)
 
+            # Eligible market is evaluated directly from the same metrics
+            # frame; no EvidenceEngine replay is needed for this baseline.
             eligible_indices = list(range(1, len(metrics) - FORWARD_BARS))
             cp, cn, cf, crets = _outcomes(metrics, eligible_indices)
             eligible_positive += cp
@@ -111,11 +142,13 @@ def main() -> None:
     eligible_rate = eligible_positive / eligible_decisive if eligible_decisive else 0.0
     candidate_mean = float(np.mean(candidate_returns)) if candidate_returns else 0.0
     eligible_mean = float(np.mean(eligible_returns)) if eligible_returns else 0.0
+    eligible_events = eligible_decisive + eligible_flat
 
     print("INCREASING SUPPLY DECISION-VALUE AUDIT")
     print({
         "symbols_requested": len(SYMBOLS),
         "symbols_with_results": symbols_with_results,
+        "cheap_candidates": cheap_candidates,
         "candidate_events": candidate_events,
         "expected_events": EXPECTED_EVENTS,
         "candidate_summary": {
@@ -128,7 +161,7 @@ def main() -> None:
             "mean_return": candidate_mean,
         },
         "eligible_market_summary": {
-            "events": eligible_decisive + eligible_flat,
+            "events": eligible_events,
             "positive": eligible_positive,
             "negative": eligible_negative,
             "flat": eligible_flat,
@@ -138,8 +171,7 @@ def main() -> None:
         },
         "positive_decisive_rate_lift_vs_market": candidate_rate - eligible_rate,
         "mean_return_lift_vs_market": candidate_mean - eligible_mean,
-        "candidate_share_of_eligible": candidate_events / (eligible_decisive + eligible_flat)
-        if (eligible_decisive + eligible_flat) else 0.0,
+        "candidate_share_of_eligible": candidate_events / eligible_events if eligible_events else 0.0,
         "heavy_context_rebuilds": heavy_rebuilds,
         "production_path_mutation": False,
         "failures": failures,
