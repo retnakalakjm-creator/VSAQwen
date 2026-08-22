@@ -14,7 +14,7 @@ from evidence.engine import EvidenceEngine
 from metrics_engine import MetricsEngine
 from models import EvidenceCode, Direction, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
-from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
+from engine.columns import COL_CLOSE, COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 
 SYMBOLS = (
     "BHARTIARTL.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
@@ -118,8 +118,8 @@ def main() -> None:
             metrics = MetricsEngine().calculate(daily_to_weekly(download_data(symbol)))
             if index + 8 >= len(metrics):
                 continue
-            start = float(metrics.iloc[index]["Close"])
-            end = float(metrics.iloc[index + 8]["Close"])
+            start = float(metrics.iloc[index][COL_CLOSE])
+            end = float(metrics.iloc[index + 8][COL_CLOSE])
             if start == 0.0:
                 continue
             ret = (end - start) / start
