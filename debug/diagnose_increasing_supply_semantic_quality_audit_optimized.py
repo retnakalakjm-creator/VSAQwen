@@ -1,6 +1,7 @@
 """Semantic-quality audit for INCREASING_SUPPLY.
 
-Point-in-time audit of the exact production detector semantics:
+Validates the frozen 528-event candidate population against the exact
+point-in-time production detector semantics:
 - down bar
 - increasing volume versus previous bar
 - increasing spread versus previous bar
@@ -10,8 +11,6 @@ from __future__ import annotations
 import os
 import sys
 
-import numpy as np
-
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -20,8 +19,9 @@ from data import daily_to_weekly, download_data
 from evidence.engine import EvidenceEngine
 from evidence.rules import is_down_bar, spread_increasing, volume_increasing
 from metrics_engine import MetricsEngine
-from models import EvidenceCode
+from models import EvidenceCode, Direction, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
+from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 
 SYMBOLS = (
     "BHARTIARTL.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
@@ -29,6 +29,15 @@ SYMBOLS = (
 )
 TARGET_CODE = EvidenceCode.INCREASING_SUPPLY
 EXPECTED_EVENTS = 528
+
+
+def _cheap_candidate(metrics, index: int) -> bool:
+    row = metrics.iloc[index]
+    return (
+        Direction(int(row[COL_DIRECTION])) == Direction.DOWN
+        and VolumeClass(int(row[COL_VOLUME_CLASS])) >= VolumeClass.HIGH
+        and SpreadClass(int(row[COL_SPREAD_CLASS])) >= SpreadClass.ABOVE_AVERAGE
+    )
 
 
 def _audit_symbol(symbol: str) -> dict[str, object]:
@@ -43,6 +52,12 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
     heavy_rebuilds = 0
 
     for index in range(1, len(metrics)):
+        # Restrict validation to the same frozen cheap-candidate population
+        # used by the candidate audit. This prevents unrelated historical
+        # production emissions from entering the semantic audit.
+        if not _cheap_candidate(metrics, index):
+            continue
+
         replay = metrics.iloc[: index + 1].copy()
         trend = TrendAnalyzer().analyze(replay)
         structural_swings = tuple(trend.structure.structural_swings)
@@ -135,6 +150,7 @@ def main() -> None:
         "heavy_context_rebuilds": heavy_rebuilds,
         "target_bar_only": True,
         "point_in_time": True,
+        "frozen_candidate_population": True,
         "failures": failures,
         "status": "PASS" if not failures and candidate_events == EXPECTED_EVENTS else "FAIL",
     })
