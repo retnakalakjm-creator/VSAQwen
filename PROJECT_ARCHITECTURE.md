@@ -118,13 +118,64 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `DEMAND_DRYING_UP` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; contextual/exhaustion role only |
 | `ABSORPTION` | NO | **Audit-complete / provisional** | **0.38** | **Provisional conflict penalty `0.20`; rejection `NO`; no production path** |
 | `SELLING_CLIMAX` | YES | Production-integrated / audit-complete | `0.38` | No conflict penalty; STOPPING_VOLUME interaction is confirming |
-| `BUYING_CLIMAX` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.9–2.0 observed; empirical 0.38 is calibration-only; provisional 0.20 penalty for `INCREASING_DEMAND + UPTHRUST` is not in production** |
+| `BUYING_CLIMAX` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.9–2.0 observed; empirical 0.38 is calibration-only; provisional 0.20 penalty for     `INCREASING_DEMAND + UPTHRUST` is not in production** |
+| `SUPPLY_COMING_IN` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.70–1.70 observed; empirical 0.38 is calibration-only; `INCREASING_SUPPLY` overlap is confirming and carries no production penalty** |
 
 The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic. `HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` are intentionally excluded from the production path until their production detectors and scoring integration are separately justified.
 
 
+## 6A. SUPPLY_COMING_IN Current Audit State
 
-## 6. BUYING_CLIMAX Current Audit State
+`SUPPLY_COMING_IN` has completed its current audit-first production validation sequence.
+
+Production verification:
+
+- candidate events: `189`
+- production emissions: `189`
+- campaign mismatch: `0`
+- expected-event mismatch: `0`
+- duplicate emissions: `0`
+- runtime weight range: `0.70–1.70`
+- runtime calculator/emission agreement: `100%`
+- runtime out-of-bounds: `0`
+- production interaction penalty: `NONE`
+- production score mutation: `False`
+- audit status: `PASS`
+
+Decision-value evidence:
+
+- positive decisive rate: `62.96%`
+- eligible-market positive decisive rate: `60.74%`
+- positive-rate lift: `+2.22 pp`
+- mean 8-bar return: `+3.76%`
+- eligible-market mean return: `+3.81%`
+- mean-return lift: `-0.05 pp`
+
+Interaction evidence:
+
+- `INCREASING_SUPPLY` overlap: `147 / 189` (`77.78%`)
+- clean events: `42`
+- overlap events: `147`
+- overlap positive decisive rate: `65.31%`
+- clean positive decisive rate: `54.76%`
+- overlap mean return: `+3.81%`
+- clean mean return: `+3.61%`
+
+The overlap is therefore treated as confirming supply pressure rather than a contradiction requiring a penalty.
+
+Frozen production state:
+
+```text
+collector          = YES
+registry            = 1.00
+runtime weighting   = dynamic
+empirical ref       = 0.38
+interaction penalty = NONE
+production change   = NONE
+status              = PRODUCTION-ACTIVE
+```
+
+## 6B. BUYING_CLIMAX Current Audit State
 
 `BUYING_CLIMAX` is connected to the production supply evidence path and has completed its current production-path verification.
 
@@ -146,7 +197,6 @@ The static registry value of `1.00` must not be confused with the runtime value.
 The empirical `0.38` value comes from counterfactual decision-value testing. It is **not** the current production weight.
 
 The interaction study found:
-
 - `INCREASING_DEMAND + UPTHRUST`: `119`
 - `UPTHRUST` only: `53`
 - other combinations: `9`
