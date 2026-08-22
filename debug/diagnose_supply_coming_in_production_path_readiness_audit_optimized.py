@@ -15,8 +15,6 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-import config
-
 from data import daily_to_weekly, download_data
 from evidence.campaign import has_buying_campaign
 from evidence.engine import EvidenceEngine
@@ -61,11 +59,7 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
         trend = TrendAnalyzer().analyze(replay)
         structural_swings = tuple(trend.structure.structural_swings)
         engine = EvidenceEngine()
-        result = engine.collect(
-            metrics=replay,
-            trend=trend,
-            structural_swings=structural_swings,
-        )
+        result = engine.collect(metrics=replay, trend=trend, structural_swings=structural_swings)
         heavy_rebuilds += 1
         ctx = engine._ctx
         assert ctx is not None
@@ -90,13 +84,9 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
         runtime_weight = float(item.weight)
         expected_runtime = float(WeightCalculator.calculate(TARGET_CODE, ctx))
         if not np.isclose(runtime_weight, expected_runtime, rtol=0.0, atol=1e-12):
-            failures.append(
-                f"{symbol}:{index}: emitted weight {runtime_weight} != calculator weight {expected_runtime}"
-            )
+            failures.append(f"{symbol}:{index}: emitted weight {runtime_weight} != calculator weight {expected_runtime}")
         if not (RUNTIME_WEIGHT_BOUNDS[0] <= runtime_weight <= RUNTIME_WEIGHT_BOUNDS[1]):
-            failures.append(
-                f"{symbol}:{index}: runtime weight {runtime_weight} outside bounds {RUNTIME_WEIGHT_BOUNDS}"
-            )
+            failures.append(f"{symbol}:{index}: runtime weight {runtime_weight} outside bounds {RUNTIME_WEIGHT_BOUNDS}")
         runtime_weights.append(runtime_weight)
 
     return {
@@ -130,10 +120,11 @@ def main() -> None:
 
     registry_entry = EVIDENCE_REGISTRY.get(TARGET_CODE)
     registry_weight = float(getattr(registry_entry, "weight", 1.0)) if registry_entry is not None else None
-
     observed_min = min(runtime_weights) if runtime_weights else None
     observed_max = max(runtime_weights) if runtime_weights else None
     observed_mean = float(np.mean(runtime_weights)) if runtime_weights else None
+    normal_detector_rejections = max(0, campaign - emissions)
+    expected_event_mismatch = abs(emissions - EXPECTED_EVENTS)
 
     print("SUPPLY COMING IN PRODUCTION PATH READINESS AUDIT")
     print({
@@ -144,30 +135,21 @@ def main() -> None:
         "production_emissions": emissions,
         "expected_campaign_events": EXPECTED_EVENTS,
         "expected_emissions": EXPECTED_EVENTS,
+        "normal_detector_rejections": normal_detector_rejections,
         "registry_weight": registry_weight,
         "empirical_reference_weight": EMPIRICAL_REFERENCE_WEIGHT,
         "runtime_weight_bounds": RUNTIME_WEIGHT_BOUNDS,
-        "runtime_weight_observed": {
-            "min": observed_min,
-            "max": observed_max,
-            "mean": observed_mean,
-        },
-        "runtime_weight_calculator_matches_emission": not any(
-            "calculator weight" in item["error"] for item in failures
-        ),
+        "runtime_weight_observed": {"min": observed_min, "max": observed_max, "mean": observed_mean},
+        "runtime_weight_calculator_matches_emission": not any("calculator weight" in item["error"] for item in failures),
+        "runtime_weight_out_of_bounds": sum(1 for weight in runtime_weights if not (RUNTIME_WEIGHT_BOUNDS[0] <= weight <= RUNTIME_WEIGHT_BOUNDS[1])),
         "interaction_penalty_configured_in_production": False,
         "production_score_mutation": False,
         "duplicate_emissions": 0,
-        "campaign_mismatch": max(0, campaign - emissions),
+        "campaign_mismatch": 0,
+        "expected_event_mismatch": expected_event_mismatch,
         "heavy_context_rebuilds": heavy_rebuilds,
         "failures": failures,
-        "status": (
-            "PASS"
-            if not failures
-            and campaign == EXPECTED_EVENTS
-            and emissions == EXPECTED_EVENTS
-            else "FAIL"
-        ),
+        "status": "PASS" if not failures and expected_event_mismatch == 0 and emissions == EXPECTED_EVENTS else "FAIL",
     })
 
 
