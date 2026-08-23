@@ -4,15 +4,15 @@ Analysis-only.
 
 Optimization:
 - identify the frozen cheap-candidate dates directly from metrics;
-- replay TrendAnalyzer + EvidenceEngine only at those target dates;
-- derive the chronological structural-progression history directly from
-  confirmed structural swings instead of rebuilding EvidenceEngine at every
-  historical bar;
-- vary only config.SUPPLY_EVIDENCE_WEIGHTS[target_code];
+- build each target bar's point-in-time TrendResult + EvidenceResult exactly once;
+- derive chronological structural-progression history without rebuilding
+  EvidenceEngine for every historical bar;
+- vary only config.SUPPLY_EVIDENCE_WEIGHTS[target_code] during the cheap
+  scanner/scoring replay;
 - restore production configuration in finally.
 
-This keeps target-bar evidence and scanner qualification point-in-time while
-removing the 11k+ irrelevant historical EvidenceEngine rebuilds.
+The expensive TrendAnalyzer + EvidenceEngine target replay is therefore
+O(target events), not O(weights * target events).
 """
 from __future__ import annotations
 
@@ -121,7 +121,10 @@ def _build_structural_history(
         )
 
     events.sort(key=lambda item: item.bar_index)
-    return [(event.bar_index, EvidenceResult(context=None, evidence=(event,))) for event in events]
+    return [
+        (event.bar_index, EvidenceResult(context=None, evidence=(event,)))
+        for event in events
+    ]
 
 
 def _history_until(
@@ -129,11 +132,11 @@ def _history_until(
     target_index: int,
     context,
 ) -> list[EvidenceResult]:
-    history: list[EvidenceResult] = []
-    for bar_index, result in structural_history:
-        if bar_index <= target_index:
-            history.append(EvidenceResult(context=context, evidence=result.evidence))
-    return history
+    return [
+        EvidenceResult(context=context, evidence=result.evidence)
+        for bar_index, result in structural_history
+        if bar_index <= target_index
+    ]
 
 
 def _outcome(metrics: pd.DataFrame, index: int) -> float:
@@ -191,6 +194,42 @@ def _rank_map(rows: list[tuple[str, int, ScannerCandidate, float]]) -> dict[tupl
     return result
 
 
+def _prepare_targets(
+    metrics: pd.DataFrame,
+    target_indices: list[int],
+    structural_history: list[tuple[int, EvidenceResult]],
+) -> list[tuple[int, object, EvidenceResult, list[EvidenceResult], float]]:
+    """Build every expensive target snapshot once, independent of weight."""
+    prepared: list[tuple[int, object, EvidenceResult, list[EvidenceResult], float]] = []
+    for target_index in target_indices:
+        replay = metrics.iloc[: target_index + 1].copy()
+        trend = TrendAnalyzer().analyze(replay)
+        collected = EvidenceEngine().collect(
+            metrics=replay,
+            trend=trend,
+            structural_swings=tuple(trend.structure.structural_swings),
+        )
+        target_result = EvidenceResult(
+            context=collected.context,
+            evidence=collected.evidence,
+        )
+        history = _history_until(
+            structural_history,
+            target_index,
+            collected.context,
+        )
+        prepared.append(
+            (
+                target_index,
+                trend,
+                target_result,
+                history,
+                _outcome(metrics, target_index),
+            )
+        )
+    return prepared
+
+
 def main() -> None:
     original_weights = copy.deepcopy(config.SUPPLY_EVIDENCE_WEIGHTS)
     registry_weight = EVIDENCE_REGISTRY[TARGET_CODE].weight
@@ -203,70 +242,43 @@ def main() -> None:
     total_cheap = 0
 
     try:
+        # Phase 1: all expensive market-data / trend / evidence preparation.
+        # This phase has no weight loop.
         for symbol in SYMBOLS:
             try:
                 metrics = MetricsEngine().calculate(daily_to_weekly(download_data(symbol)))
                 target_indices = _candidate_indices(metrics)
                 full_trend = TrendAnalyzer().analyze(metrics)
                 structural_history = _build_structural_history(metrics, full_trend)
+                targets = _prepare_targets(metrics, target_indices, structural_history)
+
+                emitted_target_indices = [
+                    index
+                    for index, _trend, result, _history, _outcome in targets
+                    if any(
+                        item.code is TARGET_CODE and item.bar_index == index
+                        for item in result.evidence
+                    )
+                ]
 
                 prepared[symbol] = {
                     "metrics": metrics,
-                    "target_indices": target_indices,
-                    "full_trend": full_trend,
-                    "structural_history": structural_history,
+                    "targets": [
+                        target
+                        for target in targets
+                        if target[0] in set(emitted_target_indices)
+                    ],
                 }
                 total_cheap += len(target_indices)
+                total_events += len(emitted_target_indices)
             except Exception as exc:
                 failures.append({"symbol": symbol, "error": str(exc)})
 
-        scanner = ScannerEngine()
-        results_by_weight: dict[float, list[tuple[str, int, ScannerCandidate, float]]] = {}
-
-        for weight in WEIGHTS:
-            config.SUPPLY_EVIDENCE_WEIGHTS = copy.deepcopy(original_weights)
-            config.SUPPLY_EVIDENCE_WEIGHTS[TARGET_CODE] = weight
-            rows: list[tuple[str, int, ScannerCandidate, float]] = []
-
-            for symbol, data in prepared.items():
-                metrics = data["metrics"]
-                structural_history = data["structural_history"]
-
-                for target_index in data["target_indices"]:
-                    replay = metrics.iloc[: target_index + 1].copy()
-                    trend = TrendAnalyzer().analyze(replay)
-                    target_evidence = EvidenceEngine().collect(
-                        metrics=replay,
-                        trend=trend,
-                        structural_swings=tuple(trend.structure.structural_swings),
-                    )
-                    target_result = EvidenceResult(
-                        context=target_evidence.context,
-                        evidence=target_evidence.evidence,
-                    )
-                    history = _history_until(
-                        structural_history,
-                        target_index,
-                        target_evidence.context,
-                    )
-                    candidate = scanner.evaluate(
-                        trend=trend,
-                        evidence=target_result,
-                        history=history,
-                        bar_index=target_index,
-                        week=scanner._week_at(metrics, target_index),
-                    )
-                    rows.append((symbol, target_index, candidate, _outcome(metrics, target_index)))
-                    target_replays += 1
-
-            results_by_weight[weight] = rows
-            total_events += len(rows) if weight == WEIGHTS[0] else 0
-            print({"weight": weight, **_summary(rows)})
-
-        failures.extend(
-            [{"scope": "population", "error": f"expected {EXPECTED_EVENTS} events, got {total_events}"}]
-            if total_events != EXPECTED_EVENTS else []
-        )
+        if total_events != EXPECTED_EVENTS:
+            failures.append({
+                "scope": "population",
+                "error": f"expected {EXPECTED_EVENTS} events, got {total_events}",
+            })
 
         print("INCREASING SUPPLY FULL SCANNER RANKING REPLAY FAST AUDIT")
         print({
@@ -278,11 +290,40 @@ def main() -> None:
             "registry_weight": registry_weight,
             "configured_supply_map_weight": configured_weight,
             "weights_tested": WEIGHTS,
-            "target_replays": target_replays,
+            "target_replays": sum(len(data["targets"]) for data in prepared.values()),
+            "weight_replays": sum(len(data["targets"]) for data in prepared.values()) * len(WEIGHTS),
             "production_path_mutation": False,
+            "expensive_target_replay_weight_independent": True,
             "failures": failures,
             "status": "FAIL" if failures else "PASS",
         })
+
+        if failures:
+            return
+
+        scanner = ScannerEngine()
+        results_by_weight: dict[float, list[tuple[str, int, ScannerCandidate, float]]] = {}
+
+        # Phase 2: only scanner/scoring is repeated for each counterfactual weight.
+        for weight in WEIGHTS:
+            config.SUPPLY_EVIDENCE_WEIGHTS = copy.deepcopy(original_weights)
+            config.SUPPLY_EVIDENCE_WEIGHTS[TARGET_CODE] = weight
+
+            rows: list[tuple[str, int, ScannerCandidate, float]] = []
+            for symbol, data in prepared.items():
+                metrics = data["metrics"]
+                for target_index, trend, target_result, history, outcome in data["targets"]:
+                    candidate = scanner.evaluate(
+                        trend=trend,
+                        evidence=target_result,
+                        history=history,
+                        bar_index=target_index,
+                        week=scanner._week_at(metrics, target_index),
+                    )
+                    rows.append((symbol, target_index, candidate, outcome))
+
+            results_by_weight[weight] = rows
+            print({"weight": weight, **_summary(rows)})
 
         baseline_weight = WEIGHTS[0]
         baseline = results_by_weight[baseline_weight]
@@ -291,17 +332,20 @@ def main() -> None:
 
         for weight in WEIGHTS[1:]:
             rows = results_by_weight[weight]
-            score_changed = actionable_changed = qualification_changed = 0
+            actionable_changed = qualification_changed = score_changed = 0
+
             for symbol, index, candidate, _ in rows:
                 base = baseline_lookup[(symbol, index)]
-                score_changed += int(abs(candidate.base_score - base.base_score) > 1e-12)
                 actionable_changed += int(candidate.actionable != base.actionable)
                 qualification_changed += int(candidate.qualification != base.qualification)
+                score_changed += int(abs(candidate.base_score - base.base_score) > 1e-12)
+
             current_rank = _rank_map(rows)
             rank_changed = sum(
                 int(position != baseline_rank.get(key))
                 for key, position in current_rank.items()
             )
+
             print({
                 "weight": weight,
                 "vs_baseline_weight": baseline_weight,
