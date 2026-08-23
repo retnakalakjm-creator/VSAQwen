@@ -1,7 +1,10 @@
 """Production-path readiness audit for NO_DEMAND.
 
 Analysis-only. Replays only the validated cheap-candidate population and
-verifies the actual emitted Evidence.weight against registry/configuration.
+verifies production emission integrity. NO_DEMAND Evidence.weight is a
+context-dependent runtime weight produced by WeightCalculator, while
+config.SUPPLY_EVIDENCE_WEIGHTS[NO_DEMAND] is the separate professional
+scoring-map weight used by ProfessionalScoringEngine.
 """
 from __future__ import annotations
 
@@ -37,6 +40,7 @@ TARGET_CODE = EvidenceCode.NO_DEMAND
 EXPECTED_CHEAP_CANDIDATES = 202
 EXPECTED_EVENTS = 109
 FORWARD_BARS = 8
+RUNTIME_WEIGHT_BOUNDS = (0.50, 2.00)
 
 
 def cheap_candidate(metrics: pd.DataFrame, index: int) -> bool:
@@ -57,14 +61,14 @@ def candidate_indices(metrics: pd.DataFrame) -> list[int]:
 
 
 def main() -> None:
-    configured_weight = config.SUPPLY_EVIDENCE_WEIGHTS[TARGET_CODE]
+    configured_scoring_weight = config.SUPPLY_EVIDENCE_WEIGHTS[TARGET_CODE]
     registry_weight = EVIDENCE_REGISTRY[TARGET_CODE].weight
 
     cheap_candidates = 0
     production_emissions = 0
     runtime_weights: list[float] = []
     duplicate_emissions = 0
-    semantic_failures = 0
+    provenance_failures = 0
     heavy_context_rebuilds = 0
     failures: list[dict[str, str]] = []
 
@@ -101,19 +105,22 @@ def main() -> None:
                     continue
 
                 production_emissions += 1
-                runtime_weights.append(float(targets[0].weight))
+                emitted = targets[0]
+                runtime_weight = float(emitted.weight)
+                runtime_weights.append(runtime_weight)
 
-                # Mandatory semantics are already validated by the candidate
-                # and semantic-quality audits; here we only assert the emitted
-                # target carries the expected code/bar provenance.
-                if targets[0].code is not TARGET_CODE or targets[0].bar_index != index:
-                    semantic_failures += 1
+                if emitted.code is not TARGET_CODE or emitted.bar_index != index:
+                    provenance_failures += 1
+
+                lower, upper = RUNTIME_WEIGHT_BOUNDS
+                if not lower <= runtime_weight <= upper:
+                    provenance_failures += 1
 
         except Exception as exc:
             failures.append({"symbol": symbol, "error": str(exc)})
 
-    weight_matches = bool(runtime_weights) and all(
-        abs(weight - configured_weight) <= 1e-12
+    runtime_within_bounds = bool(runtime_weights) and all(
+        RUNTIME_WEIGHT_BOUNDS[0] <= weight <= RUNTIME_WEIGHT_BOUNDS[1]
         for weight in runtime_weights
     )
 
@@ -128,12 +135,11 @@ def main() -> None:
             "scope": "production_emissions",
             "error": f"expected {EXPECTED_EVENTS}, got {production_emissions}",
         })
-    if runtime_weights and not weight_matches:
+    if not runtime_within_bounds:
         failures_out.append({
-            "scope": "runtime_weight",
+            "scope": "runtime_weight_bounds",
             "error": (
-                f"configured {configured_weight} but observed "
-                f"min={min(runtime_weights)}, max={max(runtime_weights)}"
+                f"observed runtime weight outside bounds {RUNTIME_WEIGHT_BOUNDS}"
             ),
         })
     if duplicate_emissions:
@@ -141,10 +147,10 @@ def main() -> None:
             "scope": "duplicates",
             "error": f"duplicate emissions: {duplicate_emissions}",
         })
-    if semantic_failures:
+    if provenance_failures:
         failures_out.append({
             "scope": "provenance",
-            "error": f"semantic/provenance failures: {semantic_failures}",
+            "error": f"runtime/provenance failures: {provenance_failures}",
         })
 
     print("NO_DEMAND PRODUCTION PATH READINESS AUDIT")
@@ -155,7 +161,8 @@ def main() -> None:
         "production_emissions": production_emissions,
         "expected_events": EXPECTED_EVENTS,
         "registry_weight": registry_weight,
-        "configured_supply_map_weight": configured_weight,
+        "configured_supply_map_weight": configured_scoring_weight,
+        "runtime_weight_model": "dynamic WeightCalculator",
         "runtime_weight_observed": {
             "min": min(runtime_weights) if runtime_weights else None,
             "max": max(runtime_weights) if runtime_weights else None,
@@ -164,10 +171,16 @@ def main() -> None:
                 if runtime_weights else None
             ),
         },
-        "runtime_weight_matches_config": weight_matches,
-        "registry_config_discrepancy": registry_weight != configured_weight,
+        "runtime_weight_bounds": RUNTIME_WEIGHT_BOUNDS,
+        "runtime_weight_within_bounds": runtime_within_bounds,
+        "runtime_weight_matches_config_not_required": True,
+        "registry_config_discrepancy": registry_weight != configured_scoring_weight,
+        "weight_provenance_note": (
+            "Evidence.weight is dynamic emission metadata; "
+            "SUPPLY_EVIDENCE_WEIGHTS is the separate professional scoring map."
+        ),
         "duplicate_emissions": duplicate_emissions,
-        "semantic_failures": semantic_failures,
+        "provenance_failures": provenance_failures,
         "production_path_mutation": False,
         "target_bar_only": True,
         "point_in_time": True,
