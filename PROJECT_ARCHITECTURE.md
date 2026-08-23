@@ -11,6 +11,7 @@
 - Evidence aggregation is event-oriented: evidence is grouped by `(bar_index, direction)`, primary/supporting/effort-result/structural roles are separated, and duplicate observations are not blindly summed.
 - Professional scoring combines trend, supply, demand, effort, strength, weakness, and confidence; scanner qualification and ranking operate on the resulting evidence and structural context.
 - Weight sensitivity must be evaluated through the actual production scoring path; changing `Evidence.weight` on cached objects alone is insufficient because `ProfessionalScoringEngine` reads `config.SUPPLY_EVIDENCE_WEIGHTS`.
+- Production-path readiness validates the actual runtime behavior of the production collector and scorer. It must not assume that registry values or static scoring-map values equal the dynamically emitted Evidence metadata.
 
 ## 2. Active Python Tech Stack
 
@@ -121,6 +122,7 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `SELLING_CLIMAX` | YES | Production-integrated / audit-complete | `0.38` | No conflict penalty; STOPPING_VOLUME interaction is confirming |
 | `BUYING_CLIMAX` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.9–2.0 observed; empirical 0.38 is calibration-only; provisional 0.20 penalty for     `INCREASING_DEMAND + UPTHRUST` is not in production** |
 | `SUPPLY_COMING_IN` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.70–1.70 observed; empirical 0.38 is calibration-only; `INCREASING_SUPPLY` overlap is confirming and carries no production penalty** |
+| `NO_DEMAND` | YES | **Production-active / audit-complete** | `0.60` | No interaction penalty; rejection `NO`; dynamic Evidence.weight is separate from scoring-map weight |
 
 The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic. `HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` are intentionally excluded from the production path until their production detectors and scoring integration are separately justified.
 
@@ -554,6 +556,60 @@ documentation freeze
 
 A failed audit script is never treated as evidence about the event itself. The script must first reproduce the validated event population.
 
+### Evidence emission weight vs professional scoring weight
+
+These are separate concepts and must not be conflated.
+
+`Evidence.weight` is emission-time metadata. It is calculated by
+`WeightCalculator` from the point-in-time `BackgroundContext` and may
+therefore vary from bar to bar.
+
+`config.SUPPLY_EVIDENCE_WEIGHTS` and
+`config.DEMAND_EVIDENCE_WEIGHTS` are the separate static scoring maps
+consumed by `ProfessionalScoringEngine`.
+
+Registry/profile weight is immutable reference metadata and is not proof
+of the runtime emission weight or the effective scoring weight.
+
+Therefore:
+
+Evidence.weight != necessarily configured scoring-map weight
+Evidence.weight != necessarily registry/profile weight
+
+### Requirements vs confirmations
+
+Detector `requirements` are emission gates.
+
+Detector `confirmations` are additional VSA evidence-quality information
+and are not mandatory unless the event specification explicitly declares
+them as requirements.
+
+A failed confirmation must therefore not be classified as a detector
+semantic failure by an audit.
+
+This distinction is required so audit logic does not accidentally
+strengthen production detector semantics.
+
+### Audit replay invariant
+
+Weight-sensitivity audits must not rebuild detector semantics for every
+counterfactual weight.
+
+The safe pattern is:
+
+historical data
+    -> point-in-time candidate/emission state
+    -> freeze validated target population
+    -> vary live scoring-map weight
+    -> recalculate scoring/ranking only
+
+`TrendAnalyzer` and `EvidenceEngine` must remain outside the weight loop
+whenever their inputs are weight-independent.
+
+Qualification and actionability must not be replayed per weight when the
+qualification logic is demonstrably weight-independent.
+
+
 ## 16. Repository Documentation Policy
 
 - `docs/PRIMARY_VSA_EVENT_MATRIX.md` is the master event-status index.
@@ -607,7 +663,14 @@ SELLING_CLIMAX
     registry = YES
     collector = YES
     post-integration audit = PASS
-    status = PRODUCTION-ACTIVE    
+    status = PRODUCTION-ACTIVE
+NO_DEMAND
+    scoring-map weight = 0.60
+    registry/reference weight = 1.00
+    runtime Evidence.weight = dynamic (0.70–1.50 observed)
+    interaction penalty = 0.00
+    status = PRODUCTION-ACTIVE / AUDIT-COMPLETE
+    production path = YES        
 ```
 
 `DEMAND_COMING_IN` and `INCREASING_DEMAND` are not promoted to fully production-approved scoring status by the completion of these audits. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are explicitly not promoted into scoring because their audited candidate populations showed negative incremental value versus the eligible-market baseline. `ABSORPTION` is also not promoted into production: its clean candidate population showed positive directional value, but its `INCREASING_SUPPLY_LIKE` conflict population materially degraded outcomes, and the event currently has no production collection or registry path. The next candidate event must continue through the same audit-first process.
