@@ -35,15 +35,7 @@ from evidence.profiles import EVIDENCE_REGISTRY
 from market_structure.progression import calculate_professional_progression
 from metrics_engine import MetricsEngine
 from model.evidence_result_model import EvidenceResult
-from models import (
-    Direction,
-    Evidence,
-    EvidenceCategory,
-    EvidenceCode,
-    EvidenceDirection,
-    SpreadClass,
-    VolumeClass,
-)
+from models import Evidence, EvidenceCategory, EvidenceCode, EvidenceDirection, Direction, SpreadClass, VolumeClass
 from scanner import ScannerCandidate, ScannerEngine, rank_candidates
 from trend import TrendAnalyzer
 
@@ -134,8 +126,8 @@ def history_until(structural_history: list[EvidenceResult], target_index: int, c
     ]
 
 
-def uncapped_supply_score(result: EvidenceResult) -> float:
-    """Raw supply contribution before the production supply-score cap."""
+def raw_supply_contribution(result: EvidenceResult) -> float:
+    """Uncapped supply contribution from the live scoring map."""
     return sum(
         float(config.SUPPLY_EVIDENCE_WEIGHTS.get(item.code, 0.0))
         for item in result.evidence
@@ -262,7 +254,7 @@ def main() -> None:
         # Phase 2: only the live scoring map changes per weight.
         scanner = ScannerEngine()
         results_by_weight: dict[float, list[tuple[str, int, ScannerCandidate, float]]] = {}
-        uncapped_supply_by_weight: dict[float, list[float]] = {}
+        raw_supply_by_weight: dict[float, list[float]] = {}
         capped_supply_by_weight: dict[float, list[float]] = {}
 
         for weight in WEIGHTS:
@@ -270,8 +262,8 @@ def main() -> None:
             config.SUPPLY_EVIDENCE_WEIGHTS[TARGET_CODE] = weight
 
             rows: list[tuple[str, int, ScannerCandidate, float]] = []
-            uncapped: list[float] = []
-            capped: list[float] = []
+            raw_values: list[float] = []
+            capped_values: list[float] = []
 
             for symbol, data in prepared.items():
                 metrics = data["metrics"]
@@ -291,27 +283,27 @@ def main() -> None:
                     )
                     rows.append((symbol, index, candidate, outcome(metrics, index)))
 
-                    raw = uncapped_supply_score(target_result)
-                    uncapped.append(raw)
-                    capped.append(min(raw, 1.0))
+                    raw = raw_supply_contribution(target_result)
+                    raw_values.append(raw)
+                    capped_values.append(min(raw, 1.0))
 
             results_by_weight[weight] = rows
-            uncapped_supply_by_weight[weight] = uncapped
-            capped_supply_by_weight[weight] = capped
+            raw_supply_by_weight[weight] = raw_values
+            capped_supply_by_weight[weight] = capped_values
 
             print({
                 "weight": weight,
                 **summary(rows),
-                "mean_uncapped_supply_contribution": sum(uncapped) / len(uncapped),
-                "mean_capped_supply_score": sum(capped) / len(capped),
-                "uncapped_supply_saturated_events": sum(x >= 1.0 for x in uncapped),
+                "mean_raw_supply_contribution": sum(raw_values) / len(raw_values),
+                "mean_production_capped_supply_score": sum(capped_values) / len(capped_values),
+                "raw_contribution_at_or_above_cap_events": sum(x >= 1.0 for x in raw_values),
             })
 
         baseline_weight = WEIGHTS[0]
         baseline = results_by_weight[baseline_weight]
         baseline_lookup = {(s, i): c for s, i, c, _ in baseline}
         baseline_rank = rank_map(baseline)
-        baseline_uncapped = uncapped_supply_by_weight[baseline_weight]
+        baseline_raw = raw_supply_by_weight[baseline_weight]
         baseline_capped = capped_supply_by_weight[baseline_weight]
 
         any_raw_change = False
@@ -332,9 +324,9 @@ def main() -> None:
                 for key, position in current_rank.items()
             )
 
-            current_uncapped = uncapped_supply_by_weight[weight]
+            current_raw = raw_supply_by_weight[weight]
             current_capped = capped_supply_by_weight[weight]
-            raw_changed = sum(int(abs(a - b) > 1e-12) for a, b in zip(baseline_uncapped, current_uncapped))
+            raw_changed = sum(int(abs(a - b) > 1e-12) for a, b in zip(baseline_raw, current_raw))
             capped_changed = sum(int(abs(a - b) > 1e-12) for a, b in zip(baseline_capped, current_capped))
             any_raw_change |= raw_changed > 0
             any_capped_change |= capped_changed > 0
@@ -343,8 +335,8 @@ def main() -> None:
                 "weight": weight,
                 "vs_baseline_weight": baseline_weight,
                 "events": len(rows),
-                "uncapped_supply_contribution_changed": raw_changed,
-                "capped_supply_score_changed": capped_changed,
+                "raw_supply_contribution_changed": raw_changed,
+                "production_capped_supply_score_changed": capped_changed,
                 "final_score_changed": score_changed,
                 "actionable_changed": actionable_changed,
                 "qualification_changed": qualification_changed,
@@ -355,12 +347,12 @@ def main() -> None:
         if not any_raw_change:
             failures.append({
                 "scope": "scoring_path",
-                "error": "Uncapped supply contribution did not change across tested weights; the config override is not reaching the supply scorer.",
+                "error": "Raw supply contribution did not change across tested weights; config override is not reaching the supply scorer.",
             })
 
         print({
             "scoring_path_wiring_check": "PASS" if any_raw_change else "FAIL",
-            "supply_cap_masking_present": bool(any_raw_change and not any_capped_change),
+            "production_cap_masking_present": bool(any_raw_change and not any_capped_change),
             "failures": failures,
             "status": "FAIL" if failures else "PASS",
         })
