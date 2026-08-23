@@ -1,7 +1,12 @@
 """Full point-in-time scanner replay for INCREASING_SUPPLY weight calibration.
 
-Analysis-only. Builds point-in-time scanner history once per symbol, then
-counterfactually varies only config.SUPPLY_EVIDENCE_WEIGHTS[target_code].
+Analysis-only. Builds point-in-time scanner history only at bars that can
+matter to this audit:
+- cheap candidate bars (for target-event scoring), and
+- structural swing confirmation bars (for persistent qualification history).
+
+This preserves the production qualification semantics while avoiding an
+expensive EvidenceEngine replay for every historical bar.
 Production configuration is restored in a finally block.
 """
 from __future__ import annotations
@@ -21,6 +26,7 @@ import config
 from data import daily_to_weekly, download_data
 from engine.columns import COL_CLOSE, COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 from evidence.engine import EvidenceEngine
+from evidence.profiles import EVIDENCE_REGISTRY
 from metrics_engine import MetricsEngine
 from models import Direction, EvidenceCode, SpreadClass, VolumeClass
 from scanner import ScannerCandidate, ScannerEngine, rank_candidates
@@ -46,9 +52,34 @@ def _cheap_candidate(metrics: pd.DataFrame, index: int) -> bool:
     )
 
 
-def _build_history(metrics: pd.DataFrame) -> list[tuple[int, object, object]]:
+def _cheap_candidate_indices(metrics: pd.DataFrame) -> set[int]:
+    return {
+        index
+        for index in range(1, len(metrics) - FORWARD_BARS)
+        if _cheap_candidate(metrics, index)
+    }
+
+
+def _structural_confirmation_indices(metrics: pd.DataFrame) -> set[int]:
+    """Find structural confirmation bars once; later bars cannot create past confirmations."""
+    full_trend = TrendAnalyzer().analyze(metrics)
+    confirmations: set[int] = set()
+    for structural_swing in full_trend.structure.structural_swings:
+        confirmation = getattr(structural_swing.swing, "confirmation_index", None)
+        if confirmation is not None:
+            confirmations.add(int(confirmation))
+    return confirmations
+
+
+def _build_history(
+    metrics: pd.DataFrame,
+    replay_indices: set[int],
+) -> list[tuple[int, object, object]]:
+    """Build reusable point-in-time history only at semantically relevant bars."""
     history: list[tuple[int, object, object]] = []
-    for index in range(MIN_REPLAY_BARS, len(metrics)):
+    for index in sorted(replay_indices):
+        if index < MIN_REPLAY_BARS or index >= len(metrics):
+            continue
         replay = metrics.iloc[: index + 1].copy()
         trend = TrendAnalyzer().analyze(replay)
         evidence = EvidenceEngine().collect(
@@ -62,14 +93,9 @@ def _build_history(metrics: pd.DataFrame) -> list[tuple[int, object, object]]:
 
 def _target_event_indices(
     history: list[tuple[int, object, object]],
-    metrics: pd.DataFrame,
+    candidate_set: set[int],
 ) -> list[int]:
     indices: list[int] = []
-    candidate_set = {
-        index
-        for index in range(1, len(metrics) - FORWARD_BARS)
-        if _cheap_candidate(metrics, index)
-    }
     for index, _trend, result in history:
         if index not in candidate_set:
             continue
@@ -96,9 +122,16 @@ def _evaluate_candidate(
     target_index: int,
     metrics: pd.DataFrame,
 ) -> ScannerCandidate:
-    trend = next(t for index, t, _e in history if index == target_index)
-    evidence = next(e for index, _t, e in history if index == target_index)
-    history_results = [e for index, _t, e in history if index <= target_index]
+    target_entry = next(
+        (entry for entry in history if entry[0] == target_index),
+        None,
+    )
+    if target_entry is None:
+        raise RuntimeError(f"Missing target history snapshot at bar {target_index}")
+
+    trend = target_entry[1]
+    evidence = target_entry[2]
+    history_results = [entry[2] for entry in history if entry[0] <= target_index]
     return scanner.evaluate(
         trend=trend,
         evidence=evidence,
@@ -155,41 +188,76 @@ def _rank_map(rows: list[tuple[str, int, ScannerCandidate, float]]) -> dict[tupl
     return result
 
 
+def _runtime_weight_observed(prepared: dict[str, dict[str, object]]) -> tuple[float, float, float]:
+    weights: list[float] = []
+    for data in prepared.values():
+        history = data["history"]
+        events = set(data["events"])
+        for index, _trend, result in history:
+            if index not in events:
+                continue
+            weights.extend(
+                float(item.weight)
+                for item in result.evidence
+                if item.code is TARGET_CODE and item.bar_index == index
+            )
+    if not weights:
+        return 0.0, 0.0, 0.0
+    return min(weights), max(weights), sum(weights) / len(weights)
+
+
 def main() -> None:
     original_weights = copy.deepcopy(config.SUPPLY_EVIDENCE_WEIGHTS)
+    authoritative_registry_weight = EVIDENCE_REGISTRY[TARGET_CODE].weight
+    configured_weight = original_weights[TARGET_CODE]
+
     prepared: dict[str, dict[str, object]] = {}
     failures: list[dict[str, str]] = []
-    heavy_context_rebuilds = 0
+    history_states_built = 0
     total_events = 0
+    total_cheap_candidates = 0
 
     try:
-        # Build point-in-time history once per symbol.
         for symbol in SYMBOLS:
             try:
                 metrics = MetricsEngine().calculate(daily_to_weekly(download_data(symbol)))
-                history = _build_history(metrics)
-                heavy_context_rebuilds += len(history)
-                events = _target_event_indices(history, metrics)
+                cheap_set = _cheap_candidate_indices(metrics)
+                confirmation_set = _structural_confirmation_indices(metrics)
+                replay_indices = cheap_set | confirmation_set
+                history = _build_history(metrics, replay_indices)
+                history_states_built += len(history)
+
+                events = _target_event_indices(history, cheap_set)
                 prepared[symbol] = {
                     "metrics": metrics,
                     "history": history,
                     "events": events,
                 }
+                total_cheap_candidates += len(cheap_set)
                 total_events += len(events)
             except Exception as exc:
                 failures.append({"symbol": symbol, "error": str(exc)})
+
+        observed_min, observed_max, observed_mean = _runtime_weight_observed(prepared)
 
         print("INCREASING SUPPLY FULL SCANNER RANKING REPLAY AUDIT")
         print({
             "symbols_requested": len(SYMBOLS),
             "symbols_with_results": len(prepared),
+            "cheap_candidates": total_cheap_candidates,
             "candidate_events": total_events,
             "expected_candidate_events": EXPECTED_EVENTS,
-            "registry_weight": original_weights[TARGET_CODE],
-            "runtime_reference_weight": 1.00,
+            "registry_weight": authoritative_registry_weight,
+            "configured_supply_map_weight": configured_weight,
+            "runtime_weight_observed": {
+                "min": observed_min,
+                "max": observed_max,
+                "mean": observed_mean,
+            },
             "weights_tested": WEIGHTS,
             "production_path_mutation": False,
-            "heavy_context_rebuilds": heavy_context_rebuilds,
+            "history_states_built": history_states_built,
+            "history_strategy": "cheap_candidates_plus_structural_confirmation_bars",
             "history_built_once_per_symbol": True,
             "failures": failures,
             "status": "FAIL" if failures or total_events != EXPECTED_EVENTS else "PASS",
@@ -222,7 +290,10 @@ def main() -> None:
 
         baseline_weight = WEIGHTS[0]
         baseline = results_by_weight[baseline_weight]
-        baseline_lookup = {(symbol, index): candidate for symbol, index, candidate, _outcome_value in baseline}
+        baseline_lookup = {
+            (symbol, index): candidate
+            for symbol, index, candidate, _outcome_value in baseline
+        }
         baseline_rank = _rank_map(baseline)
 
         for weight in WEIGHTS[1:]:
@@ -230,7 +301,6 @@ def main() -> None:
             actionable_changed = 0
             qualification_changed = 0
             score_changed = 0
-            rank_changed = 0
 
             for symbol, index, candidate, _outcome_value in rows:
                 base = baseline_lookup[(symbol, index)]
@@ -239,8 +309,11 @@ def main() -> None:
                 score_changed += int(abs(candidate.base_score - base.base_score) > 1e-12)
 
             current_rank = _rank_map(rows)
-            for key, position in current_rank.items():
-                rank_changed += int(position != baseline_rank.get(key))
+            rank_changed = sum(
+                1
+                for key, position in current_rank.items()
+                if position != baseline_rank.get(key)
+            )
 
             print({
                 "weight": weight,
