@@ -10,6 +10,7 @@
 - The evidence layer is operational for the currently enabled supply, demand, TEST, Stopping Volume, SHAKEOUT, Spring, and structural-progression paths. `DEMAND_COMING_IN` and `INCREASING_DEMAND` are connected to the production evidence path but remain **provisional** after their audit campaigns. `HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` are audit-complete but are not connected to the production evidence path.
 - Evidence aggregation is event-oriented: evidence is grouped by `(bar_index, direction)`, primary/supporting/effort-result/structural roles are separated, and duplicate observations are not blindly summed.
 - Professional scoring combines trend, supply, demand, effort, strength, weakness, and confidence; scanner qualification and ranking operate on the resulting evidence and structural context.
+- Weight sensitivity must be evaluated through the actual production scoring path; changing `Evidence.weight` on cached objects alone is insufficient because `ProfessionalScoringEngine` reads `config.SUPPLY_EVIDENCE_WEIGHTS`.
 
 ## 2. Active Python Tech Stack
 
@@ -473,8 +474,30 @@ collector           = NO
 production mutation = NO
 status              = AUDIT_COMPLETE / PROVISIONAL
 ```
+## 12. INCREASING_SUPPLY weighting provenance
 
-## 12. Evidence Aggregation and Scoring Policy
+`INCREASING_SUPPLY` has three distinct weight concepts:
+
+- **Evidence registry/profile:** `0.85` — empirical/reference calibration metadata.
+- **Configured supply evidence map:** `0.70` — current configuration entry.
+- **Production runtime emission:** `1.00` — verified actual emitted `Evidence.weight`.
+
+The production runtime value is the authoritative scanner value. The `0.85` empirical value is not automatically promoted into production scoring.
+
+The production-path readiness audit verified:
+
+- 1,022 cheap candidates
+- 528 expected / observed production emissions
+- 0 duplicate emissions
+- 0 semantic failures
+- runtime emission weight consistently `1.00`
+- no production configuration mutation
+
+Counterfactual scanner replay across `0.70–1.00` confirmed that `INCREASING_SUPPLY` weight affects final score and within-symbol ranking, but did not alter qualification or actionability in the frozen 528-event population.
+
+No interaction penalty is currently configured in production.
+
+## 13. Evidence Aggregation and Scoring Policy
 
 Evidence is grouped by `(bar_index, EvidenceDirection)`. Within an event:
 
@@ -487,7 +510,7 @@ Interaction audits are a separate quality layer. A contradiction does **not** au
 
 For the current provisional events, audit conclusions are documented separately from active production scoring until the project explicitly promotes them. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` remain non-scoring and unregistered in production because their decision-value audits were negative. `ABSORPTION` remains unregistered because its production path is intentionally absent; its provisional weight and conflict penalty are documented only for future promotion work.
 
-## 13. VSA Methodology Constraints
+## 14. VSA Methodology Constraints
 
 The project is designed for real-market VSA, not textbook-pattern detection.
 
@@ -501,7 +524,7 @@ Therefore:
 - conflicts should reduce quality only when validated by outcomes;
 - adding or tuning a numeric weight never substitutes for semantic validation.
 
-## 14. Audit-First Promotion Workflow
+## 15. Audit-First Promotion Workflow
 
 Every new provisional VSA event should follow this sequence:
 
@@ -531,7 +554,7 @@ documentation freeze
 
 A failed audit script is never treated as evidence about the event itself. The script must first reproduce the validated event population.
 
-## 15. Repository Documentation Policy
+## 16. Repository Documentation Policy
 
 - `docs/PRIMARY_VSA_EVENT_MATRIX.md` is the master event-status index.
 - `docs/specifications/` is the canonical per-event semantic rulebook.
@@ -541,7 +564,7 @@ A failed audit script is never treated as evidence about the event itself. The s
 
 No architecture document should claim a detector is production-approved merely because its enum, registry entry, or audit script exists.
 
-## 16. Immediate Current State
+## 17. Immediate Current State
 
 The system currently has a functioning end-to-end path from market data through metrics, structure, evidence, professional scoring, qualification, ranking, and actionable scanner output.
 
