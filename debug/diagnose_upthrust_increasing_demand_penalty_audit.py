@@ -38,7 +38,8 @@ SYMBOLS = (
 TARGET_CODE = EvidenceCode.UPTHRUST
 EXPECTED_CANDIDATES = 1319
 EXPECTED_EVENTS = 289
-EXPECTED_WITH_INCREASING_DEMAND = 212
+EXPECTED_PURE_INCREASING_DEMAND = 212
+EXPECTED_VARIANT_INCREASING_DEMAND = 12
 EXPECTED_WITHOUT_INCREASING_DEMAND = 65
 FORWARD_BARS = 8
 
@@ -57,12 +58,20 @@ def group_for_event(evidence) -> str:
         item.code
         for item in evidence
         if item.bar_index == evidence[0].bar_index
+        and item.code is not TARGET_CODE
     }
     if (
         EvidenceCode.BUYING_CLIMAX in codes
         and EvidenceCode.INCREASING_DEMAND in codes
+        and EvidenceCode.HIDDEN_SUPPLY not in codes
+        and EvidenceCode.SPRING not in codes
     ):
-        return "upthrust_buying_climax_increasing_demand"
+        return "pure_upthrust_buying_climax_increasing_demand"
+    if (
+        EvidenceCode.BUYING_CLIMAX in codes
+        and EvidenceCode.INCREASING_DEMAND in codes
+    ):
+        return "variant_increasing_demand"
     if EvidenceCode.BUYING_CLIMAX in codes:
         return "upthrust_buying_climax_only"
     return "other_upthrust"
@@ -171,15 +180,21 @@ def main() -> None:
         - summarize(without_demand)["mean_return"]
     )
 
-    if len(with_demand) != EXPECTED_WITH_INCREASING_DEMAND:
+    if len(with_demand) != EXPECTED_PURE_INCREASING_DEMAND:
         failures_out.append({
-            "scope": "increasing_demand_group",
-            "error": f"expected {EXPECTED_WITH_INCREASING_DEMAND}, got {len(with_demand)}",
+            "scope": "pure_increasing_demand_group",
+            "error": f"expected {EXPECTED_PURE_INCREASING_DEMAND}, got {len(with_demand)}",
         })
     if len(without_demand) != EXPECTED_WITHOUT_INCREASING_DEMAND:
         failures_out.append({
             "scope": "without_increasing_demand_group",
             "error": f"expected {EXPECTED_WITHOUT_INCREASING_DEMAND}, got {len(without_demand)}",
+        })
+
+    if len(variant_demand) != EXPECTED_VARIANT_INCREASING_DEMAND:
+        failures_out.append({
+            "scope": "variant_increasing_demand_group",
+            "error": f"expected {EXPECTED_VARIANT_INCREASING_DEMAND}, got {len(variant_demand)}",
         })
 
     print("UPTHRUST + INCREASING_DEMAND PENALTY AUDIT")
@@ -200,10 +215,12 @@ def main() -> None:
     })
 
     print({
-        "with_increasing_demand": summarize(with_demand),
+        "pure_increasing_demand": summarize(with_demand),
+        "variant_increasing_demand": summarize(variant_demand),
         "buying_climax_only_reference": summarize(without_demand),
         "positive_decisive_rate_delta": rate_delta,
         "mean_return_delta": return_delta,
+        "variant_population_total": len(variant_demand),
         "provisional_penalty_decision": (
             "STUDY_ONLY_NO_PRODUCTION_CHANGE"
             if not failures_out else "BLOCKED"
