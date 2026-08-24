@@ -168,7 +168,8 @@ def main() -> None:
             "mean_return": sum(values) / len(values) if values else 0.0,
         }
 
-    with_demand = groups["upthrust_buying_climax_increasing_demand"]
+    with_demand = groups["pure_upthrust_buying_climax_increasing_demand"]
+    variant_demand = groups["variant_increasing_demand"]
     without_demand = groups["upthrust_buying_climax_only"]
 
     rate_delta = (
