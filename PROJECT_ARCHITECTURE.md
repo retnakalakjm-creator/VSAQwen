@@ -112,7 +112,7 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `STOPPING_VOLUME` | YES | Production-integrated / validation-complete | `1.00` | No special penalty established |
 | `SHAKEOUT` | YES | Production-integrated / validation-complete | `0.50` | Existing contextual interaction policy |
 | `TEST` | YES | Production-integrated / non-scoring | `0.00` | Contextual only |
-| `NO_SUPPLY` | YES | Contextual / validation-complete | `0.00` | Does not independently create actionability |
+| `NO_SUPPLY` | YES | **Production-active / audit-complete / contextual-non-scoring** | `0.00 / no scoring-map entry` | `SUPPLY_DRYING_UP` overlap is contextual; `TEST` overlap is confirming/contextual; no penalty; rejection `NO` |
 | `SPRING` | YES | Production-integrated / provisional | `0.75` | Same-bar `UPTHRUST`/`BUYING_CLIMAX` reduces Spring quality; does not reject |
 | `DEMAND_COMING_IN` | YES | **Provisional / audit-complete** | **0.38** | No conflict penalty established; rejection `NO` |
 | `INCREASING_DEMAND` | YES | **Provisional / audit-complete** | **0.85** | **Provisional conflict penalty `0.10`; rejection `NO`** |
@@ -499,6 +499,29 @@ Counterfactual scanner replay across `0.70–1.00` confirmed that `INCREASING_SU
 
 No interaction penalty is currently configured in production.
 
+## 12A. NO_SUPPLY weighting provenance
+`NO_SUPPLY` has no professional scoring-map entry.
+
+Its emitted Evidence.weight is runtime metadata produced by WeightCalculator.
+That runtime weight must not be interpreted as a configurable professional
+scoring weight.
+
+Weight-sensitivity audits are therefore NOT APPLICABLE to NO_SUPPLY unless
+a professional scoring-map entry is deliberately introduced through a
+separate production-design decision.
+
+`NO_SUPPLY` audit conclusion:
+
+- semantic validation = PASS
+- interaction validation = PASS
+- interaction-outcome validation = PASS
+- decision-value = no incremental value demonstrated
+- professional scoring promotion = NO
+- interaction penalty = NO
+- rejection rule = NO
+- production path = YES
+- production role = contextual / non-scoring
+
 ## 13. Evidence Aggregation and Scoring Policy
 
 Evidence is grouped by `(bar_index, EvidenceDirection)`. Within an event:
@@ -670,7 +693,23 @@ NO_DEMAND
     runtime Evidence.weight = dynamic (0.70–1.50 observed)
     interaction penalty = 0.00
     status = PRODUCTION-ACTIVE / AUDIT-COMPLETE
-    production path = YES        
+    production path = YES
+NO_SUPPLY
+    production path = YES
+    role = CONTEXTUAL / NON-SCORING
+    registry/reference weight = 1.00
+    professional scoring-map entry = NONE
+    runtime Evidence.weight = dynamic
+    observed runtime Evidence.weight = 0.90–1.50
+    runtime bounds = 0.50–2.00
+    interaction = SUPPLY_DRYING_UP on 23/23
+    TEST interaction = 4/23
+    interaction penalty = NONE
+    rejection = NO
+    decision-value lift = +0.07 pp
+    mean-return lift = -2.81 pp
+    status = PRODUCTION-ACTIVE / AUDIT-COMPLETE            
 ```
 
 `DEMAND_COMING_IN` and `INCREASING_DEMAND` are not promoted to fully production-approved scoring status by the completion of these audits. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are explicitly not promoted into scoring because their audited candidate populations showed negative incremental value versus the eligible-market baseline. `ABSORPTION` is also not promoted into production: its clean candidate population showed positive directional value, but its `INCREASING_SUPPLY_LIKE` conflict population materially degraded outcomes, and the event currently has no production collection or registry path. The next candidate event must continue through the same audit-first process.
+
