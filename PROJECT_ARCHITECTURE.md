@@ -80,7 +80,17 @@ The production runtime weight is not fixed at `0.38`. The production audit obser
 
 The current production path has been verified with `181 / 181` campaign-qualified emissions, zero duplicate emissions, zero campaign mismatches, zero runtime-weight bound violations, zero production score-mutation failures, and no production interaction penalty.
 
-A provisional interaction study identified `INCREASING_DEMAND + UPTHRUST` as a materially weaker `BUYING_CLIMAX` combination. A counterfactual `0.20` penalty improved aggregate historical decision-value metrics but remained below the eligible-market baseline, so the penalty is **analysis-only and not configured in production**.
+The interaction study identified INCREASING_DEMAND + UPTHRUST
+as a materially weaker BUYING_CLIMAX combination.
+
+A dedicated UPTHRUST counterfactual study tested hypothetical
+0.02–0.10 deductions at the professional supply-score layer.
+The deductions moved net_strength toward zero rather than
+producing the intended weakening effect.
+
+Therefore the interaction remains analysis-only:
+no production interaction penalty and no global UPTHRUST
+weight change are configured.
 
 Some additional supply-descriptor blocks remain intentionally disabled until their semantics are frozen.
 
@@ -120,9 +130,10 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `DEMAND_DRYING_UP` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; contextual/exhaustion role only |
 | `ABSORPTION` | NO | **Audit-complete / provisional** | **0.38** | **Provisional conflict penalty `0.20`; rejection `NO`; no production path** |
 | `SELLING_CLIMAX` | YES | Production-integrated / audit-complete | `0.38` | No conflict penalty; STOPPING_VOLUME interaction is confirming |
-| `BUYING_CLIMAX` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.9–2.0 observed; empirical 0.38 is calibration-only; provisional 0.20 penalty for     `INCREASING_DEMAND + UPTHRUST` is not in production** |
+| `BUYING_CLIMAX` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.9–2.0 observed; empirical 0.38 is calibration-only; `INCREASING_DEMAND + UPTHRUST` remains diagnostic/study-only; no production interaction penalty is justified; no global UPTHRUST weight change is configured.|
 | `SUPPLY_COMING_IN` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.70–1.70 observed; empirical 0.38 is calibration-only; `INCREASING_SUPPLY` overlap is confirming and carries no production penalty** |
 | `NO_DEMAND` | YES | **Production-active / audit-complete** | `0.60` | No interaction penalty; rejection `NO`; dynamic Evidence.weight is separate from scoring-map weight |
+| `UPTHRUST` | YES | **Production-active / audit-complete** | `Registry 1.00 / supply scoring-map 0.90 / dynamic runtime` | Mandatory production semantics PASS. 289 production emissions from 1,319 cheap candidates. `BUYING_CLIMAX` overlaps all 289 events; `INCREASING_DEMAND` overlaps 224. Exact pure interaction = 212 events. Historical interaction degradation observed, but explicit penalty rejected because counterfactual supply deductions move net-strength in the wrong direction. |
 
 The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic. `HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` are intentionally excluded from the production path until their production detectors and scoring integration are separately justified.
 
@@ -200,11 +211,9 @@ The static registry value of `1.00` must not be confused with the runtime value.
 The empirical `0.38` value comes from counterfactual decision-value testing. It is **not** the current production weight.
 
 The interaction study found:
-- `INCREASING_DEMAND + UPTHRUST`: `119`
-- `UPTHRUST` only: `53`
-- other combinations: `9`
-
-A counterfactual `0.20` penalty improved the aggregate candidate metrics but did not overcome the eligible-market baseline. It therefore remains a provisional analysis policy rather than a production scoring rule.
+- INCREASING_DEMAND + UPTHRUST interaction remains diagnostic/study-only.
+- No production penalty is configured.
+- No global UPTHRUST weight change is configured.
 
 Frozen production state:
 
@@ -213,7 +222,6 @@ collector          = YES
 registry           = 1.00
 runtime weighting  = dynamic
 empirical ref      = 0.38
-interaction penalty= 0.20 provisional / analysis-only
 production change  = NONE
 status             = PRODUCTION-ACTIVE
 ```
@@ -579,6 +587,30 @@ documentation freeze
 
 A failed audit script is never treated as evidence about the event itself. The script must first reproduce the validated event population.
 
+### Interaction/Penalty Policy
+## UPTHRUST Interaction Penalty Decision
+
+The audit established a real historical degradation for the
+`UPTHRUST + BUYING_CLIMAX + INCREASING_DEMAND` population.
+
+This does not authorize a production penalty by itself.
+
+Counterfactual replay showed that subtracting a fixed amount from the supply
+score causes the professional `net_strength` to move toward zero. Under the
+current scoring architecture, that is the opposite of the intended effect of
+a penalty.
+
+Therefore the interaction remains observational/diagnostic evidence and is not
+converted into a production penalty.
+
+No change is made to:
+
+- `SUPPLY_EVIDENCE_WEIGHTS[UPTHRUST]`
+- global UPTHRUST scoring
+- qualification logic
+- actionability logic
+- production emission logic
+
 ### Evidence emission weight vs professional scoring weight
 
 These are separate concepts and must not be conflated.
@@ -708,7 +740,52 @@ NO_SUPPLY
     rejection = NO
     decision-value lift = +0.07 pp
     mean-return lift = -2.81 pp
-    status = PRODUCTION-ACTIVE / AUDIT-COMPLETE            
+    status = PRODUCTION-ACTIVE / AUDIT-COMPLETE
+UPTHRUST
+    production path = YES
+    role = ACTIVE SUPPLY TRAP
+    registry/reference weight = 1.00
+    professional supply-map weight = 0.90
+    runtime Evidence.weight = dynamic
+    observed runtime Evidence.weight = 0.80–2.00
+    observed mean runtime weight = 1.2194
+
+    candidate population = 1,319
+    production emissions = 289
+    normal detector rejections = 1,030
+    semantic failures = 0
+    duplicate emissions = 0
+
+    decision-value:
+        positive decisive rate = 59.03%
+        eligible market rate = 60.80%
+        lift = -1.77 pp
+
+        mean 8-bar return = +2.81%
+        eligible market mean = +3.83%
+        lift = -1.02 pp
+
+    dominant interaction:
+        UPTHRUST + BUYING_CLIMAX + INCREASING_DEMAND
+        events = 212
+        positive decisive rate = 56.87%
+        mean return = +2.27%
+
+    reference:
+        UPTHRUST + BUYING_CLIMAX
+        events = 65
+        positive decisive rate = 66.15%
+        mean return = +4.56%
+
+    interaction counterfactual:
+        tested penalties = 0.02, 0.04, 0.06, 0.08, 0.10
+        result = directionally incorrect for penalty purpose
+        production penalty = NONE
+
+    production decision:
+        no global UPTHRUST weight change
+        no interaction penalty
+        no rejection rule                
 ```
 
 `DEMAND_COMING_IN` and `INCREASING_DEMAND` are not promoted to fully production-approved scoring status by the completion of these audits. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are explicitly not promoted into scoring because their audited candidate populations showed negative incremental value versus the eligible-market baseline. `ABSORPTION` is also not promoted into production: its clean candidate population showed positive directional value, but its `INCREASING_SUPPLY_LIKE` conflict population materially degraded outcomes, and the event currently has no production collection or registry path. The next candidate event must continue through the same audit-first process.
