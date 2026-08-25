@@ -82,6 +82,21 @@ def _json_events(candidate) -> str:
     )
 
 
+def _json_current_events(evidence) -> str:
+    """Serialize all evidence emitted for the target bar by the production engine."""
+    return json.dumps(
+        [
+            {
+                "code": str(item.code),
+                "category": str(item.category),
+                "bar_index": item.bar_index,
+            }
+            for item in evidence.evidence
+        ],
+        separators=(",", ":"),
+    )
+
+
 def generate_symbol(symbol: str, *, refresh: bool = False) -> pd.DataFrame:
     daily = download_data(symbol, refresh=refresh)
     weekly = daily_to_weekly(daily)
@@ -128,7 +143,7 @@ def generate_symbol(symbol: str, *, refresh: bool = False) -> pd.DataFrame:
                 COL_DIRECTION: row[COL_DIRECTION],
                 "trend_direction": str(trend.structure.direction),
                 "trend_state": str(trend.structure.state),
-                "existing_events": _json_events(candidate),
+                "existing_events": _json_current_events(evidence),
             }
         )
 
