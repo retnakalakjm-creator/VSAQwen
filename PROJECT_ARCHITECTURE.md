@@ -134,6 +134,7 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `SUPPLY_COMING_IN` | YES | **Production-active / audit-complete** | **1.00 registry / dynamic runtime** | **Runtime 0.70–1.70 observed; empirical 0.38 is calibration-only; `INCREASING_SUPPLY` overlap is confirming and carries no production penalty** |
 | `NO_DEMAND` | YES | **Production-active / audit-complete** | `0.60` | No interaction penalty; rejection `NO`; dynamic Evidence.weight is separate from scoring-map weight |
 | `UPTHRUST` | YES | **Production-active / audit-complete** | `Registry 1.00 / supply scoring-map 0.90 / dynamic runtime` | Mandatory production semantics PASS. 289 production emissions from 1,319 cheap candidates. `BUYING_CLIMAX` overlaps all 289 events; `INCREASING_DEMAND` overlaps 224. Exact pure interaction = 212 events. Historical interaction degradation observed, but explicit penalty rejected because counterfactual supply deductions move net-strength in the wrong direction. |
+| `SUPPLY_DRYING_UP` | YES | **Production-active / audit-complete** | `Contextual supply exhaustion` | `1.00 registry / 0.60 professional supply-map / dynamic runtime Evidence.weight` | Production semantics: DOWN BAR + LOW VOLUME + NARROW SPREAD; confirmations non-mandatory. Audit: 547 cheap candidates → 225 production emissions; semantic failures 0; duplicate emissions 0. Decision value: 61.78% positive decisive rate vs 60.79% eligible market (+0.99 pp); mean 8-bar return +3.56% vs +3.83% market (-0.26 pp). Interactions: TEST 43, NO_SUPPLY 19, NO_SUPPLY + TEST 4, clean 159. No production interaction bonus/penalty, no rejection rule, no global weight promotion. Production readiness: PASS; runtime Evidence.weight observed 1.00–1.00, mean 1.00. |
 
 The word **provisional** is intentional. A production-connected event can be exercised through the live evidence path without being treated as fully production-approved scoring logic. `HIDDEN_DEMAND`, `DEMAND_DRYING_UP`, and `ABSORPTION` are intentionally excluded from the production path until their production detectors and scoring integration are separately justified.
 
@@ -225,7 +226,22 @@ empirical ref      = 0.38
 production change  = NONE
 status             = PRODUCTION-ACTIVE
 ```
+## 6C. SUPPLY_DRYING_UP Current Audit State
 
+`SUPPLY_DRYING_UP` is production-valid and audit-complete. Its production
+definition is `DOWN BAR + LOW VOLUME + NARROW SPREAD`; there are no mandatory
+confirmation requirements.
+
+The frozen audit population contains 225 production emissions from 547 cheap
+candidates. The event shows a modest +0.99 percentage-point positive-decisive
+rate lift versus the eligible market, but a -0.26 percentage-point mean-return
+lift. This supports its contextual supply-exhaustion role but does not justify
+promoting its professional scoring weight.
+
+Same-bar interaction analysis found `TEST` (43), `NO_SUPPLY` (19), and
+`NO_SUPPLY + TEST` (4). These remain diagnostic/study-only relationships;
+no interaction bonus, penalty, rejection rule, or qualification change is
+introduced.
 
 ## 7. DEMAND_COMING_IN Current Audit State
 
@@ -588,6 +604,20 @@ documentation freeze
 A failed audit script is never treated as evidence about the event itself. The script must first reproduce the validated event population.
 
 ### Interaction/Penalty Policy
+## SUPPLY_DRYING_UP Interaction Policy
+
+SUPPLY_DRYING_UP has demonstrated modest hit-rate selectivity versus the
+eligible market, but not superior mean-return magnitude.
+
+`SUPPLY_DRYING_UP + TEST` improves hit rate while reducing average return.
+`SUPPLY_DRYING_UP + NO_SUPPLY` has a slightly higher hit rate but materially
+weaker follow-through magnitude.
+
+These relationships remain diagnostic evidence. They do not authorize automatic
+interaction bonuses, penalties, or qualification changes.
+
+The 4-event `NO_SUPPLY + TEST` subgroup is too small for calibration.
+
 ## UPTHRUST Interaction Penalty Decision
 
 The audit established a real historical degradation for the
@@ -785,7 +815,61 @@ UPTHRUST
     production decision:
         no global UPTHRUST weight change
         no interaction penalty
-        no rejection rule                
+        no rejection rule
+
+SUPPLY_DRYING_UP
+    modest hit-rate selectivity
+    not a scoring-promotion candidate
+    production path = YES
+    production role = CONTEXTUAL SUPPLY EXHAUSTION
+
+    registry/reference weight = 1.00
+    professional SUPPLY_EVIDENCE_WEIGHTS weight = 0.60
+    runtime Evidence.weight = dynamic emission metadata
+    observed runtime weight = 1.00
+
+   
+
+    candidate population = 547
+    production emissions = 225
+    normal detector rejections = 322
+
+    semantic requirements:
+        DOWN BAR
+        LOW VOLUME
+        NARROW SPREAD
+
+    semantic failures = 0
+    duplicate emissions = 0
+
+    decision value:
+        positive decisive rate = 61.78%
+        eligible market rate = 60.79%
+        lift = +0.99 pp
+
+        mean 8-bar return = +3.56%
+        eligible market mean = +3.83%
+        lift = -0.26 pp
+
+    interactions:
+        clean = 159
+        TEST = 43
+        NO_SUPPLY = 19
+        NO_SUPPLY + TEST = 4
+
+    interaction policy:
+        diagnostic/study-only
+        no bonus
+        no penalty
+        no rejection rule
+
+    production readiness:
+        PASS
+        point-in-time = TRUE
+        target-bar only = TRUE
+        production context = TRUE
+        production emission authority = TRUE
+        production-path mutation = FALSE                        
 ```
 
 `DEMAND_COMING_IN` and `INCREASING_DEMAND` are not promoted to fully production-approved scoring status by the completion of these audits. `HIDDEN_DEMAND` and `DEMAND_DRYING_UP` are explicitly not promoted into scoring because their audited candidate populations showed negative incremental value versus the eligible-market baseline. `ABSORPTION` is also not promoted into production: its clean candidate population showed positive directional value, but its `INCREASING_SUPPLY_LIKE` conflict population materially degraded outcomes, and the event currently has no production collection or registry path. The next candidate event must continue through the same audit-first process.
