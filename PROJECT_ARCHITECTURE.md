@@ -125,7 +125,7 @@ Some additional supply-descriptor blocks remain intentionally disabled until the
 | `NO_SUPPLY` | YES | **Production-active / audit-complete / contextual-non-scoring** | `0.00 / no scoring-map entry` | `SUPPLY_DRYING_UP` overlap is contextual; `TEST` overlap is confirming/contextual; no penalty; rejection `NO` |
 | `SPRING` | YES | Production-integrated / provisional | `0.75` | Same-bar `UPTHRUST`/`BUYING_CLIMAX` reduces Spring quality; does not reject |
 | `DEMAND_COMING_IN` | YES | **Provisional / audit-complete** | **0.38** | No conflict penalty established; rejection `NO` |
-| `INCREASING_DEMAND` | YES | **Provisional / audit-complete** | **0.85** | **Provisional conflict penalty `0.10`; rejection `NO`** |
+| `INCREASING_DEMAND` | YES | **Provisional / audit-complete** | **0.85** | **Provisional conflict penalty `0.10` study-only / NOT ACTIVE in production.; rejection `NO`** |
 | `HIDDEN_DEMAND` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; not promoted into scoring |
 | `DEMAND_DRYING_UP` | NO | **Audit-complete / non-scoring** | **0.00** | No conflict penalty; rejection `NO`; contextual/exhaustion role only |
 | `ABSORPTION` | NO | **Audit-complete / provisional** | **0.38** | **Provisional conflict penalty `0.20`; rejection `NO`; no production path** |

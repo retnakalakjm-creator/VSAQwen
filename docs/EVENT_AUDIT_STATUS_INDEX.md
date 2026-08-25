@@ -33,8 +33,9 @@ Runtime `Evidence.weight` is **emission metadata** and must not be confused with
 | **HIDDEN_SUPPLY** | ✅ Active / audit-complete / non-scoring | Existing | Supporting supply; 139 audited events; not promoted as incremental scoring evidence. | **58.99%** | **+2.78%** |
 | **UPTHRUST** | ✅ Production-Active / audit-complete | `1.00` registry / `0.90` professional supply-map / dynamic runtime | Supply/distribution trap; 1,319 cheap candidates → 289 production emissions. Pure `INCREASING_DEMAND` interaction was weaker. Counterfactual penalty was rejected because it moved `net_strength` in the wrong direction. | **59.03%** | **+2.81%** |
 | **SUPPLY_DRYING_UP** | ✅ Production-Active / audit-complete | `1.00` registry / `0.60` professional supply-map / runtime `1.00` | Contextual supply exhaustion; 547 cheap candidates → 225 production emissions. Modest hit-rate selectivity but slightly negative mean-return lift vs market. | **61.78%** | **+3.56%** |
-| **INCREASING_DEMAND** | ⚠️ Production-Connected / provisional | `0.85` scoring-map / runtime `0.85` | Robust calibration: 902 events across 8 symbols; 26 beneficial vs 15 harmful decision changes; net benefit +11; leave-one-symbol-out minimum net benefit +6. Conflict subgroup: 41/902 (4.55%) with −8.22 pp hit-rate gap and −3.11 pp mean-return gap vs clean. Audited `0.10` conflict penalty remains study-only and is NOT active in production. | **59.44% clean** | **+3.83% clean** |
+| **INCREASING_DEMAND** | ⚠️ Production-Connected / provisional | `0.85` scoring-map / runtime `0.85` | Robust calibration: 902 events across 8 symbols; 26 beneficial vs 15 harmful decision changes; net benefit +11; leave-one-symbol-out minimum net benefit +6. Conflict subgroup: 41/902 (4.55%) with −8.22 pp hit-rate gap and −3.11 pp mean-return gap vs clean. Audited `0.10` conflict penalty remains **study-only and is NOT active in production**. | **59.44% clean** | **+3.83% clean** |
 | **DEMAND_COMING_IN** | ⚠️ Production-Connected / provisional | `0.38` audit/integration weight | Positive aggregate decision value (+5.52 pp hit-rate lift; +0.35 pp mean-return lift) but mixed temporal stability and a small/conflicted bias-changing subgroup. No production conflict penalty; no promotion. | **66.19%** | **+4.13%** |
+| **SPRING** | ⚠️ Production-Integrated / provisional | `0.75` | Frozen production replay: 13 events across 6/8 symbols; 6 positive, 4 negative, 3 flat 8-bar outcomes; sample too small for calibration or promotion. Required sequence remains structural support → controlled penetration → low-effort test → bullish confirmation. Same-bar `UPTHRUST`/`BUYING_CLIMAX` reduces quality to `0.50`; no rejection. | Not sufficient for confident calibration | Not sufficient for confident calibration |
 
 ## Frozen event decisions
 
@@ -118,7 +119,7 @@ Runtime `Evidence.weight` is **emission metadata** and must not be confused with
 - Keep the current `0.85` base scoring weight provisional.
 - Calibration evidence is robust: 26 beneficial vs 15 harmful decision changes; net benefit `+11`; leave-one-symbol-out minimum net benefit `+6`.
 - Conflict degradation is materially real: conflict rate `4.55%`, positive-rate gap `-8.22 pp`, mean-return gap `-3.11 pp` versus clean events.
-- Keep the audited `0.10` conflict penalty **study-only / NOT ACTIVE**.
+- The audited `0.10` conflict penalty remains **study-only / NOT ACTIVE**. It is not production scoring logic.
 - No rejection rule, qualification change, actionability change, or emission-semantic change.
 - Do not rerun the existing audits unless production semantics, scoring architecture, population contract, a new independent validation window, or the counterfactual framework materially changes.
 
@@ -131,6 +132,16 @@ Runtime `Evidence.weight` is **emission metadata** and must not be confused with
 - Keep conflict penalty at `0.00`.
 - No production promotion, rejection rule, qualification change, actionability change, or semantic change.
 - Do not rerun the existing audits from the same sample.
+
+### SPRING
+
+- Production-integrated but **provisional** at base weight `0.75`.
+- Frozen production replay contains `13` Spring events across `6 / 8` symbols: `6` positive, `4` negative, and `3` flat at the 8-bar horizon.
+- The sample is too small for confident calibration, so no weight promotion or tightening is justified.
+- Preserve the validated point-in-time sequence: structural support, controlled spread-normalized penetration, low-effort test, and bullish follow-through confirmation.
+- Same-bar `UPTHRUST` or `BUYING_CLIMAX` is a direct bearish contradiction to the bullish interpretation, but production handling is a quality reduction to `0.50`, not rejection.
+- No qualification change, actionability change, production conflict penalty, or detector tightening.
+- Do not rerun the existing Spring audit unless production semantics, scoring architecture, population contract, a materially larger independent validation population, or the conflict-quality mechanism changes.
 
 ## Audits completed so far
 
@@ -148,6 +159,7 @@ UPTHRUST              candidate / semantic / interaction / exact combinations / 
 SUPPLY_DRYING_UP      candidate / semantic / interaction / exact combinations / decision value / readiness
 INCREASING_DEMAND     candidate / semantic / interaction / conflict / calibration / leave-one-symbol-out / decision synthesis
 DEMAND_COMING_IN      candidate / semantic / interaction / decision-value / temporal / weighting / integration / regression / ranking-impact / final qualification / decision synthesis
+SPRING                candidate / semantic / production replay / conflict-quality / decision synthesis
 ```
 
 ## Pre-decision checklist

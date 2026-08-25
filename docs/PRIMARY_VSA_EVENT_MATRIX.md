@@ -628,7 +628,7 @@ The current `DEMAND_COMING_IN`, `INCREASING_DEMAND`, `HIDDEN_DEMAND`, `DEMAND_DR
 2. `SPRING` remains production-integrated but provisional at base weight `0.75`.
 3. `DEMAND_COMING_IN` is production-connected at base weight `0.38`, but remains provisional.
 4. `INCREASING_DEMAND` is production-connected at base weight `0.85`, but remains provisional.
-5. `INCREASING_DEMAND` has a provisional interaction penalty of `0.10`; no rejection rule is justified.
+5. `INCREASING_DEMAND` has a provisional interaction penalty of `0.10`; study-only / NOT ACTIVE in production.no rejection rule is justified.
 6. `HIDDEN_DEMAND` is audit-complete but remains non-scoring at `0.00`; its current candidate definition is not promoted into the production evidence path.
 7. `DEMAND_DRYING_UP` is audit-complete but remains contextual/non-scoring at `0.00`; no conflict penalty or rejection rule is justified.
 8. `ABSORPTION` is audit-complete and provisionally valued at `0.38` with a `0.20` conflict penalty, but remains unregistered and uncollected in production.
