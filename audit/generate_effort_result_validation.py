@@ -37,16 +37,14 @@ from trend import TrendAnalyzer
 DEFAULT_SYMBOLS = (
     "ASIANPAINT.NS",
     "BHARTIARTL.NS",
-    "DLF.NS",
+    "COALINDIA.NS",
     "ETERNAL.NS",
     "HDFCBANK.NS",
-    "HINDUNILVR.NS",
-    "LT.NS",
-    "M&M.NS",
+    "JUBLFOOD.NS",    
+    "GODREJPROP.NS",
     "NTPC.NS",
     "RELIANCE.NS",
-    "SBILIFE.NS",
-    "SIEMENS.NS",
+    "SBILIFE.NS",   
 )
 
 OUTPUT_COLUMNS = (

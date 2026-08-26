@@ -12,15 +12,8 @@ from pathlib import Path
 import pandas as pd
 
 REQUIRED_COLUMNS = {
-    "symbol",
-    "bar_index",
-    "volume_ratio",
-    "spread_ratio",
-    "close_ratio",
-    "direction",
-    "trend_direction",
-    "trend_state",
-    "existing_events",
+    "symbol", "bar_index", "volume_ratio", "spread_ratio", "close_ratio",
+    "direction", "trend_direction", "trend_state", "existing_events",
 }
 
 RELATION_BINS = (
@@ -35,12 +28,8 @@ RELATION_BINS = (
 )
 
 EVENT_CODES = (
-    "NO_DEMAND",
-    "NO_SUPPLY",
-    "STOPPING_VOLUME",
-    "BUYING_CLIMAX",
-    "SUPPLY_COMING_IN",
-    "UPTHRUST",
+    "NO_DEMAND", "NO_SUPPLY", "STOPPING_VOLUME", "BUYING_CLIMAX",
+    "SUPPLY_COMING_IN", "UPTHRUST",
 )
 
 
@@ -52,13 +41,27 @@ def _classify(effort: float, result: float) -> str:
 
 
 def _event_set(value: object) -> set[str]:
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value.strip():
         return set()
     try:
         items = json.loads(value)
     except (TypeError, json.JSONDecodeError):
         return set()
-    return {str(item.get("code")) for item in items if isinstance(item, dict)}
+    if isinstance(items, dict):
+        items = [items]
+    events: set[str] = set()
+    if not isinstance(items, list):
+        return events
+    for item in items:
+        if isinstance(item, str):
+            code = item.rsplit(".", 1)[-1]
+        elif isinstance(item, dict):
+            code = item.get("code")
+        else:
+            continue
+        if code:
+            events.add(str(code).rsplit(".", 1)[-1].upper())
+    return events
 
 
 def audit(path: Path) -> tuple[pd.DataFrame, dict[str, object]]:
@@ -96,16 +99,18 @@ def audit(path: Path) -> tuple[pd.DataFrame, dict[str, object]]:
                     counts[event] += 1
         for event, count in counts.items():
             if count:
-                interactions.append(
-                    {
-                        "relationship": relationship,
-                        "event": event,
-                        "bars": count,
-                        "relationship_bars": len(group),
-                        "percent_with_event": count / len(group) * 100.0,
-                    }
-                )
+                interactions.append({
+                    "relationship": relationship,
+                    "event": event,
+                    "bars": count,
+                    "relationship_bars": len(group),
+                    "percent_with_event": count / len(group) * 100.0,
+                })
 
+    event_counts = {
+        event: int(sum(event in events for events in valid["events"]))
+        for event in EVENT_CODES
+    }
     report = {
         "source": str(path),
         "rows": int(len(df)),
@@ -115,6 +120,7 @@ def audit(path: Path) -> tuple[pd.DataFrame, dict[str, object]]:
         "effort_median": float(valid["volume_ratio"].median()),
         "result_mean": float(valid["spread_ratio"].mean()),
         "result_median": float(valid["spread_ratio"].median()),
+        "event_counts": event_counts,
         "distribution": distribution.to_dict(orient="records"),
         "event_interactions": interactions,
     }
@@ -123,18 +129,9 @@ def audit(path: Path) -> tuple[pd.DataFrame, dict[str, object]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--input",
-        type=Path,
-        default=Path("historical_effort_result_validation.csv"),
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("effort_result_historical_audit.json"),
-    )
+    parser.add_argument("--input", type=Path, default=Path("historical_effort_result_validation.csv"))
+    parser.add_argument("--output", type=Path, default=Path("effort_result_historical_audit.json"))
     args = parser.parse_args()
-
     _, report = audit(args.input)
     args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"Audited {report['valid_rows']} valid rows across {report['symbols']} symbols")
