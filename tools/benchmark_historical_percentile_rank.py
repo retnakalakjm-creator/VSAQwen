@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
+from pathlib import Path
+
+# Allow direct execution from the repository root or from tools/.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import numpy as np
 import pandas as pd
@@ -42,9 +49,15 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=5)
     args = parser.parse_args()
 
+    if args.size <= 0:
+        parser.error("--size must be greater than zero")
+    if args.window <= 0:
+        parser.error("--window must be greater than zero")
+    if args.repeats <= 0:
+        parser.error("--repeats must be greater than zero")
+
     rng = np.random.default_rng(42)
     values = rng.normal(size=args.size)
-    # Include realistic missing values without making the test pathological.
     values[rng.random(args.size) < 0.01] = np.nan
     series = pd.Series(values)
 
