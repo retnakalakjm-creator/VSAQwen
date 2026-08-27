@@ -2,7 +2,21 @@
 
 ## Status
 
-Effort/Result analysis is **audit-complete but remains contextual and non-scoring**. The production engine invocation remains disabled.
+Effort/Result analysis is **audit-complete and implementation-audited, but remains contextual and non-scoring**. The production engine invocation remains disabled.
+
+## Implementation audit status
+
+The Phase 2 implementation audit is complete:
+
+- Point-in-time metric usage: **PASS**.
+- Production-path consistency: **PASS**.
+- Context/API correctness: **PASS**.
+- Duplicate emission: **PASS**.
+- Interaction mapping isolation: **PASS**.
+- Scoring-map isolation: **PASS**.
+- Focused Effort/Result detector coverage: **PASS**.
+
+No implementation change is required from this audit.
 
 ## Existing validated evidence
 
@@ -88,12 +102,12 @@ interaction policy        = NONE
 scoring contribution      = 0.00
 qualification change      = NO
 actionability change      = NO
-status                    = AUDIT-COMPLETE / CONTEXTUAL-ONLY
+status                    = AUDIT-COMPLETE / IMPLEMENTATION-AUDITED / CONTEXTUAL-ONLY
 ```
 
 ## Why no further audit is required now
 
-The current candidate distribution and decision-value audit provide enough evidence to make the present production-policy decision. Re-running the same audit without a semantic, scoring, population, or independent validation-window change would not add decision value.
+The current candidate distribution, decision-value audit, and implementation audit provide enough evidence to make the present production-policy decision. Re-running the same audit without a semantic, scoring, population, or independent validation-window change would not add decision value.
 
 Future review is justified only if:
 
