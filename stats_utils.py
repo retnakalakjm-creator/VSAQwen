@@ -24,7 +24,7 @@ def rolling_mean(
         )
         .mean()
     )
-    
+
 
 def rolling_std(
     series: pd.Series,
@@ -43,7 +43,7 @@ def rolling_std(
         )
         .std(ddof=0)
     )
-    
+
 
 def historical_percentile_rank(
     series: pd.Series,
@@ -53,21 +53,11 @@ def historical_percentile_rank(
     Rolling percentile rank using only historical data.
 
     Returns values between 0 and 100.
+
+    The rolling window contains ``window`` historical observations plus
+    the current observation. ``method='max'`` gives the same tie behavior
+    as counting historical values less than or equal to the current value.
     """
-
-    def percentile(values: pd.Series) -> float:
-
-        current = values.iloc[-1]
-
-        history = values.iloc[:-1]
-
-        if history.empty:
-            return 50.0
-
-        return (
-            (history <= current).mean()
-            * 100.0
-        )
 
     return (
         series
@@ -75,9 +65,9 @@ def historical_percentile_rank(
             window=window + 1,
             min_periods=window + 1,
         )
-        .apply(
-            percentile,
-            raw=False,
+        .rank(
+            method="max",
+            pct=True,
         )
         .fillna(50.0)
-    ) 
+    )
