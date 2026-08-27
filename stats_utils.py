@@ -54,20 +54,24 @@ def historical_percentile_rank(
 
     Returns values between 0 and 100.
 
-    The rolling window contains ``window`` historical observations plus
-    the current observation. ``method='max'`` gives the same tie behavior
-    as counting historical values less than or equal to the current value.
+    The percentile is the percentage of the preceding ``window``
+    observations that are less than or equal to the current value.
+    The current observation is therefore excluded from the denominator.
     """
 
-    return (
-        series
+    historical = series.shift(1)
+    rank = (
+        historical
         .rolling(
-            window=window + 1,
-            min_periods=window + 1,
+            window=window,
+            min_periods=window,
         )
-        .rank(
-            method="max",
-            pct=True,
-        )
+        .rank(method="max")
+    )
+
+    return (
+        rank
+        .div(window)
+        .mul(100.0)
         .fillna(50.0)
     )
