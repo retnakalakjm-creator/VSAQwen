@@ -4,444 +4,71 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from collections.abc import Mapping, ValuesView
 
-from models import (
-    EvidenceCode,
-    EvidenceCategory,
-    EvidenceDirection,
-)
+from models import EvidenceCode, EvidenceCategory, EvidenceDirection
 
 @dataclass(slots=True, frozen=True)
 class EvidenceProfile:
-    """
-    Immutable metadata describing an Evidence type.
-    """
-
     code: EvidenceCode
-
     category: EvidenceCategory
-
     direction: EvidenceDirection
-
     strength: float
-
     weight: float
-
     priority: int
-
     observation: str
-
     description: str
-
 
 @dataclass(slots=True, frozen=True)
 class EvidenceRegistry:
-    """
-    Immutable registry of Evidence profiles.
-    """
-
-    profiles: Mapping[
-        EvidenceCode,
-        EvidenceProfile,
-    ]
-
-    def __getitem__(
-        self,
-        code: EvidenceCode,
-    ) -> EvidenceProfile:
-
+    profiles: Mapping[EvidenceCode, EvidenceProfile]
+    def __getitem__(self, code: EvidenceCode) -> EvidenceProfile:
         return self.profiles[code]
-
-    def __contains__(
-        self,
-        code: EvidenceCode,
-    ) -> bool:
-
+    def __contains__(self, code: EvidenceCode) -> bool:
         return code in self.profiles
-
-    def values(
-        self,
-    ) -> ValuesView[EvidenceProfile]:
-
+    def values(self) -> ValuesView[EvidenceProfile]:
         return self.profiles.values()
-
-    def get(
-        self,
-        code: EvidenceCode,
-    ) -> EvidenceProfile | None:
-
+    def get(self, code: EvidenceCode) -> EvidenceProfile | None:
         return self.profiles.get(code)
-   
-    def __len__(
-        self,
-    ) -> int:
+    def __len__(self) -> int:
         return len(self.profiles)
-    
 
-# ----------------------------------------------------------
-# Supply Profiles
-# ----------------------------------------------------------
-BUYING_CLIMAX = EvidenceProfile(
-    code=EvidenceCode.BUYING_CLIMAX,
-    category=EvidenceCategory.SUPPLY,
-    direction=EvidenceDirection.BEARISH,
-    strength=0.95,
-    weight=1.00,
-    priority=100,
-    observation="Buying Climax",
-    description="Professional distribution after an extended advance.",
-)
-
-SUPPLY_COMING_IN = EvidenceProfile(
-    code=EvidenceCode.SUPPLY_COMING_IN,
-    category=EvidenceCategory.SUPPLY,
-    direction=EvidenceDirection.BEARISH,
-    strength=0.80,
-    weight=1.00,
-    priority=80,
-    observation="Supply Coming In",
-    description=(
-        "Professional selling pressure entering the market."
-    ),
-)
-
-HIDDEN_SUPPLY = EvidenceProfile(
-
-    code=EvidenceCode.HIDDEN_SUPPLY,
-
-    category=EvidenceCategory.SUPPLY,
-
-    direction=EvidenceDirection.BEARISH,
-
-    strength=0.70,
-
-    weight=0.75,
-
-    priority=60,
-
-    observation="Hidden Supply",
-
-    description=(
-        "Selling pressure hidden inside the current bar."
-    ),
-)
-
-INCREASING_SUPPLY = EvidenceProfile(
-
-    code=EvidenceCode.INCREASING_SUPPLY,
-    category=EvidenceCategory.SUPPLY,
-    direction=EvidenceDirection.BEARISH,
-    strength=0.80,
-    weight=0.85,
-    priority=75,
-    observation="Increasing Supply",
-    description=(
-        "Selling pressure is increasing across recent bars."
-    ),
-)
-
-SUPPLY_DRYING_UP = EvidenceProfile(
-
-    code=EvidenceCode.SUPPLY_DRYING_UP,
-
-    category=EvidenceCategory.SUPPLY,
-
-    direction=EvidenceDirection.BULLISH,
-
-    strength=0.85,
-
-    weight=0.90,
-
-    priority=90,
-
-    observation="Supply Drying Up",
-
-    description=(
-        "Selling pressure has diminished significantly."
-    ),
-)
-
-SUPPLY_HIGH_VOLUME = EvidenceProfile(
-
-    code=EvidenceCode.SUPPLY_HIGH_VOLUME,
-    category=EvidenceCategory.SUPPLY,
-    direction=EvidenceDirection.BEARISH,
-    strength=0.70,
-    weight=0.70,
-    priority=50,
-    observation="High Volume Supply",
-    description=(
-        "Supply is entering the market on elevated volume."
-    ),
-)
-
-SUPPLY_WIDE_SPREAD = EvidenceProfile(
-
-    code=EvidenceCode.SUPPLY_WIDE_SPREAD,
-    category=EvidenceCategory.SUPPLY,
-    direction=EvidenceDirection.BEARISH,
-    strength=0.70,
-    weight=0.70,
-    priority=45,
-    observation="Wide Spread Supply",
-    description=(
-        "Wide spread reflects aggressive professional selling."
-    ),
-)
-
-SUPPLY_ABSORPTION = EvidenceProfile(
-
-    code=EvidenceCode.SUPPLY_ABSORPTION,
-    category=EvidenceCategory.SUPPLY,
-    direction=EvidenceDirection.BULLISH,
-    strength=0.90,
-    weight=0.95,
-    priority=95,
-    observation="Supply Absorption",
-    description=(
-        "Professional money is absorbing available supply."
-    ),
-)
-
-UPTHRUST = EvidenceProfile(
-    code=EvidenceCode.UPTHRUST,
-    category=EvidenceCategory.SUPPLY,
-    direction=EvidenceDirection.BEARISH,
-    strength=0.82,
-    weight=1.0,
-    priority=80,
-    observation="Upthrust",
-    description="An upward price move that fails and closes weak, indicating supply.",
-)
-
-NO_DEMAND = EvidenceProfile(
-    code=EvidenceCode.NO_DEMAND,
-    category=EvidenceCategory.SUPPLY,
-    direction=EvidenceDirection.BEARISH,
-    strength=0.73,
-    weight=1.0,
-    priority=60,
-    observation="No Demand",
-    description="An advance showing insufficient buying interest.",
-)
-
-SUPPLY_PROFILES: tuple[EvidenceProfile, ...] = (
-
-    BUYING_CLIMAX,
-
-    SUPPLY_COMING_IN,
-
-    HIDDEN_SUPPLY,
-
-    INCREASING_SUPPLY,
-
-    SUPPLY_DRYING_UP,
-
-    SUPPLY_HIGH_VOLUME,
-
-    SUPPLY_WIDE_SPREAD,
-
-    SUPPLY_ABSORPTION,
-
-    UPTHRUST,
-
-    NO_DEMAND,
-)
-
-# ----------------------------------------------------------
-# Demand Profiles 
-# ----------------------------------------------------------
-
-STOPPING_VOLUME = EvidenceProfile(
-    code=EvidenceCode.STOPPING_VOLUME,
-    category=EvidenceCategory.DEMAND,
-    direction=EvidenceDirection.BULLISH,
-    strength=0.90,
-    weight=1.00,
-    priority=95,
-    observation="Stopping Volume",
-    description=(
-        "Heavy selling effort after a decline with evidence of "
-        "professional demand capable of absorbing supply."
-    ),
-)
-
-DEMAND_COMING_IN = EvidenceProfile(
-    code=EvidenceCode.DEMAND_COMING_IN,
-    category=EvidenceCategory.DEMAND,
-    direction=EvidenceDirection.BULLISH,
-    strength=0.90,
-    weight=1.00,
-    priority=85,
-    observation="Demand Coming In",
-    description=(
-        "Bullish effort/result evidence suggesting demand is entering the market."
-    ),
-)
-
-INCREASING_DEMAND = EvidenceProfile(
-    code=EvidenceCode.INCREASING_DEMAND,
-    category=EvidenceCategory.DEMAND,
-    direction=EvidenceDirection.BULLISH,
-    strength=0.90,
-    weight=0.85,
-    priority=85,
-    observation="Increasing Demand",
-    description=(
-        "Bullish effort/result evidence showing increasing demand pressure. "
-        "Weight provisionally calibrated to 0.85 from point-in-time outcome "
-        "attribution and leave-one-symbol-out robustness across 902 events "
-        "and 8 symbols."
-    ),
-)
-
-SELLING_CLIMAX = EvidenceProfile(
-    code=EvidenceCode.SELLING_CLIMAX,
-    category=EvidenceCategory.DEMAND,
-    direction=EvidenceDirection.BULLISH,
-    strength=0.95,
-    weight=0.38,
-    priority=100,
-    observation="Selling Climax",
-    description=(
-        "Climactic selling that may indicate exhaustion and professional "
-        "absorption. Provisional production weight 0.38 after point-in-time "
-        "outcome and decision-value audits across 153 events and 8 symbols."
-    ),
-)
-
-NO_SUPPLY = EvidenceProfile(
-    code=EvidenceCode.NO_SUPPLY,
-    category=EvidenceCategory.DEMAND,
-    direction=EvidenceDirection.BULLISH,
-    strength=0.80,
-    weight=1.0,
-    priority=70,
-    observation="No Supply",
-    description="A decline occurring with insufficient selling pressure.",
-)
-
-TEST = EvidenceProfile(
-    code=EvidenceCode.TEST,
-    category=EvidenceCategory.DEMAND,
-    direction=EvidenceDirection.BULLISH,    
-    strength=0.85,
-    weight=1.0,
-    priority=80,
-    observation="Test",
-    description="A low-volume test of available supply.",
-)
-
-SHAKEOUT = EvidenceProfile(
-    code=EvidenceCode.SHAKEOUT,
-    category=EvidenceCategory.DEMAND,
-    direction=EvidenceDirection.BULLISH,
-    strength=0.90,
-    weight=1.0,
-    priority=90,
-    observation="Shakeout",
-    description="A sharp downward move that is rejected and shows absorption of selling.",
-)
-
-DEMAND_PROFILES: tuple[EvidenceProfile, ...] = (
-
-    STOPPING_VOLUME,
-
-    DEMAND_COMING_IN,
-
-    INCREASING_DEMAND,
-
-    SELLING_CLIMAX,
-
-    NO_SUPPLY,
-
-    TEST,
-
-    SHAKEOUT,    
-)
-
-# ----------------------------------------------------------
-# Effort Profiles
-# ----------------------------------------------------------
-
-# ----------------------------------------------------------
-# Trend Profiles
-# ----------------------------------------------------------
-
-# ----------------------------------------------------------
-# Phase Profiles
-# ----------------------------------------------------------
-
-# ----------------------------------------------------------
-# ALL Profiles
-# ----------------------------------------------------------
-ALL_PROFILES = SUPPLY_PROFILES + DEMAND_PROFILES
-
-#Later Purpose
-""" ALL_PROFILES = (
-
-    SUPPLY_PROFILES
-
-    + DEMAND_PROFILES
-
-    + EFFORT_PROFILES
-
-    + TREND_PROFILES
-
-    + PHASE_PROFILES
-) """
-
-
-def _validate_profiles(
-    profiles: tuple[
-        EvidenceProfile,
-        ...
-    ],
-) -> None:
-    """
-    Validate the Evidence profile registry.
-    """
-
+BUYING_CLIMAX = EvidenceProfile(EvidenceCode.BUYING_CLIMAX, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.95, 1.00, 100, "Buying Climax", "Professional distribution after an extended advance.")
+SUPPLY_COMING_IN = EvidenceProfile(EvidenceCode.SUPPLY_COMING_IN, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.80, 1.00, 80, "Supply Coming In", "Professional selling pressure entering the market.")
+HIDDEN_SUPPLY = EvidenceProfile(EvidenceCode.HIDDEN_SUPPLY, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.70, 0.75, 60, "Hidden Supply", "Selling pressure hidden inside the current bar.")
+INCREASING_SUPPLY = EvidenceProfile(EvidenceCode.INCREASING_SUPPLY, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.80, 0.85, 75, "Increasing Supply", "Selling pressure is increasing across recent bars.")
+SUPPLY_DRYING_UP = EvidenceProfile(EvidenceCode.SUPPLY_DRYING_UP, EvidenceCategory.SUPPLY, EvidenceDirection.BULLISH, 0.85, 0.90, 90, "Supply Drying Up", "Selling pressure has diminished significantly.")
+SUPPLY_HIGH_VOLUME = EvidenceProfile(EvidenceCode.SUPPLY_HIGH_VOLUME, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.70, 0.70, 50, "High Volume Supply", "Supply is entering the market on elevated volume.")
+SUPPLY_WIDE_SPREAD = EvidenceProfile(EvidenceCode.SUPPLY_WIDE_SPREAD, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.70, 0.70, 45, "Wide Spread Supply", "Wide spread reflects aggressive professional selling.")
+SUPPLY_ABSORPTION = EvidenceProfile(EvidenceCode.SUPPLY_ABSORPTION, EvidenceCategory.SUPPLY, EvidenceDirection.BULLISH, 0.90, 0.95, 95, "Supply Absorption", "Professional money is absorbing available supply.")
+UPTHRUST = EvidenceProfile(EvidenceCode.UPTHRUST, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.82, 1.0, 80, "Upthrust", "An upward price move that fails and closes weak, indicating supply.")
+NO_DEMAND = EvidenceProfile(EvidenceCode.NO_DEMAND, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.73, 1.0, 60, "No Demand", "An advance showing insufficient buying interest.")
+SUPPLY_PROFILES = (BUYING_CLIMAX, SUPPLY_COMING_IN, HIDDEN_SUPPLY, INCREASING_SUPPLY, SUPPLY_DRYING_UP, SUPPLY_HIGH_VOLUME, SUPPLY_WIDE_SPREAD, SUPPLY_ABSORPTION, UPTHRUST, NO_DEMAND)
+
+STOPPING_VOLUME = EvidenceProfile(EvidenceCode.STOPPING_VOLUME, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 1.00, 95, "Stopping Volume", "Heavy selling effort after a decline with evidence of professional demand capable of absorbing supply.")
+DEMAND_COMING_IN = EvidenceProfile(EvidenceCode.DEMAND_COMING_IN, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 1.00, 85, "Demand Coming In", "Bullish effort/result evidence suggesting demand is entering the market.")
+INCREASING_DEMAND = EvidenceProfile(EvidenceCode.INCREASING_DEMAND, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 0.85, 85, "Increasing Demand", "Bullish effort/result evidence showing increasing demand pressure.")
+SELLING_CLIMAX = EvidenceProfile(EvidenceCode.SELLING_CLIMAX, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.95, 0.38, 100, "Selling Climax", "Climactic selling that may indicate exhaustion and professional absorption.")
+NO_SUPPLY = EvidenceProfile(EvidenceCode.NO_SUPPLY, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.80, 1.0, 70, "No Supply", "A decline occurring with insufficient selling pressure.")
+TEST = EvidenceProfile(EvidenceCode.TEST, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.85, 1.0, 80, "Test", "A low-volume test of available supply.")
+SHAKEOUT = EvidenceProfile(EvidenceCode.SHAKEOUT, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 1.0, 90, "Shakeout", "A sharp downward move that is rejected and shows absorption of selling.")
+DEMAND_PROFILES = (STOPPING_VOLUME, DEMAND_COMING_IN, INCREASING_DEMAND, SELLING_CLIMAX, NO_SUPPLY, TEST, SHAKEOUT)
+
+# Effort/Result profiles are contextual only. Weight remains zero until a separate
+# production decision establishes an evidence contribution.
+EFFORT_GT_RESULT = EvidenceProfile(EvidenceCode.EFFORT_GT_RESULT, EvidenceCategory.EFFORT, EvidenceDirection.NEUTRAL, 0.50, 0.0, 40, "Effort exceeds result", "Elevated effort produced comparatively limited result; interpret with directional and event context.")
+RESULT_GT_EFFORT = EvidenceProfile(EvidenceCode.RESULT_GT_EFFORT, EvidenceCategory.EFFORT, EvidenceDirection.NEUTRAL, 0.50, 0.0, 40, "Result exceeds effort", "Price result is comparatively strong for the observed effort; interpret with directional and event context.")
+ABSORPTION = EvidenceProfile(EvidenceCode.ABSORPTION, EvidenceCategory.EFFORT, EvidenceDirection.NEUTRAL, 0.50, 0.0, 45, "Absorption candidate", "High effort with limited result may indicate absorption; directional/contextual evidence is required.")
+EFFORT_PROFILES = (EFFORT_GT_RESULT, RESULT_GT_EFFORT, ABSORPTION)
+
+ALL_PROFILES = SUPPLY_PROFILES + DEMAND_PROFILES + EFFORT_PROFILES
+
+def _validate_profiles(profiles: tuple[EvidenceProfile, ...]) -> None:
     seen: set[EvidenceCode] = set()
-
     for profile in profiles:
-
         if profile.code in seen:
-
-            raise ValueError(
-                f"Duplicate EvidenceCode: {profile.code}"
-            )
-
+            raise ValueError(f"Duplicate EvidenceCode: {profile.code}")
         seen.add(profile.code)
 
+_validate_profiles(ALL_PROFILES)
+EVIDENCE_REGISTRY = EvidenceRegistry(MappingProxyType({profile.code: profile for profile in ALL_PROFILES}))
 
-_validate_profiles(
-    ALL_PROFILES
-)
-
-
-EVIDENCE_REGISTRY = EvidenceRegistry(
-
-    profiles=MappingProxyType({
-
-        profile.code: profile
-
-        for profile in ALL_PROFILES
-
-    })
-)
-
-
-__all__ = [
-
-    "EvidenceProfile",
-
-    "EvidenceRegistry",
-
-    "SUPPLY_PROFILES",
-
-    "DEMAND_PROFILES",
-
-    "ALL_PROFILES",
-
-    "EVIDENCE_REGISTRY",
-]
+__all__ = ["EvidenceProfile", "EvidenceRegistry", "SUPPLY_PROFILES", "DEMAND_PROFILES", "EFFORT_PROFILES", "ALL_PROFILES", "EVIDENCE_REGISTRY"]
