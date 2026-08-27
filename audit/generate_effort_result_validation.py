@@ -34,9 +34,7 @@ from metrics_engine import MetricsEngine
 from scanner import ScannerEngine
 from trend import TrendAnalyzer
 
-DEFAULT_SYMBOLS = (
-    "ASIANPAINT.NS",
-    "BHARTIARTL.NS",
+DEFAULT_SYMBOLS = (   
     "COALINDIA.NS",
     "ETERNAL.NS",
     "HDFCBANK.NS",
