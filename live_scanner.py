@@ -1,7 +1,7 @@
 """Live observation scanner built on the existing production pipeline.
 
-V1 deliberately stops at decision output. It does not connect to a broker,
-place orders, or alter production evidence/scoring policy.
+The live loop is stateful: unchanged source data is not re-scanned. This is
+an optimization boundary only; the underlying decision engine is unchanged.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,6 +19,14 @@ from scanner import ScannerEngine
 
 DEFAULT_SYMBOLS = ("SRF.NS",)
 DEFAULT_INTERVAL_SECONDS = 900
+
+
+@dataclass(slots=True)
+class _LiveSymbolState:
+    """Cached live state for one symbol within a scanner process."""
+
+    latest_daily_key: Any = None
+    observation: dict[str, Any] | None = None
 
 
 def _candidate_payload(symbol: str, candidate: Any) -> dict[str, Any]:
@@ -42,9 +51,13 @@ def _candidate_payload(symbol: str, candidate: Any) -> dict[str, Any]:
     }
 
 
-def scan_symbol(symbol: str) -> dict[str, Any]:
-    """Evaluate one symbol through the existing production scanner path."""
-    daily = download_data(symbol, refresh=True)
+def _latest_daily_key(daily: Any) -> Any:
+    if daily.empty:
+        return None
+    return daily.index[-1]
+
+
+def _scan_from_daily(symbol: str, daily: Any) -> dict[str, Any]:
     weekly = daily_to_weekly(daily)
     metrics = MetricsEngine().calculate(weekly)
     candidates = ScannerEngine().scan_actionable(metrics)
@@ -80,8 +93,13 @@ def scan_symbol(symbol: str) -> dict[str, Any]:
     }
 
 
+def scan_symbol(symbol: str) -> dict[str, Any]:
+    """Evaluate one symbol through the existing production scanner path."""
+    daily = download_data(symbol, refresh=False)
+    return _scan_from_daily(symbol, daily)
+
+
 def _observation_signature(observation: dict[str, Any]) -> tuple[Any, ...]:
-    """Identify a changed latest observation without using wall-clock time."""
     return (
         observation["week"],
         observation["actionable"],
@@ -124,15 +142,21 @@ def run_once(symbols: tuple[str, ...], as_json: bool) -> list[dict[str, Any]]:
 
 
 def run_live(symbols: tuple[str, ...], interval_seconds: int, as_json: bool) -> None:
-    """Poll refreshed market data and report changed observations."""
-    previous: dict[str, tuple[Any, ...]] = {}
+    """Poll source data and rescan only when a new source bar appears."""
+    states = {symbol: _LiveSymbolState() for symbol in symbols}
+
     while True:
         for symbol in symbols:
-            observation = scan_symbol(symbol)
-            signature = _observation_signature(observation)
-            if previous.get(symbol) != signature:
+            daily = download_data(symbol, refresh=False)
+            state = states[symbol]
+            daily_key = _latest_daily_key(daily)
+
+            if state.observation is None or state.latest_daily_key != daily_key:
+                observation = _scan_from_daily(symbol, daily)
+                state.latest_daily_key = daily_key
+                state.observation = observation
                 _print_observation(observation, as_json)
-                previous[symbol] = signature
+
         time.sleep(interval_seconds)
 
 
