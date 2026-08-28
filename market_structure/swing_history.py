@@ -170,6 +170,8 @@ class SwingHistoryAnalyzer:
 
         adjusted: list[float] = []
 
+        avg_spreads = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
+
         for previous, current in zip(
             swings[:-1],
             swings[1:],
@@ -178,10 +180,8 @@ class SwingHistoryAnalyzer:
             amplitude = abs(
                 current.price - previous.price
             )
-
-            avg_spread = metrics.iloc[
-                current.metrics_index
-            ][COL_AVG_SPREAD]
+            
+            avg_spread = avg_spreads[current.metrics_index]
 
             if pd.isna(avg_spread):
                 continue
@@ -217,6 +217,7 @@ class SwingHistoryAnalyzer:
         )
 
         adjusted: list[float] = []
+        avg_spreads = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
 
         for previous, current in zip(
             swings[:-1],
@@ -230,9 +231,7 @@ class SwingHistoryAnalyzer:
                 current.price - previous.price
             )
 
-            avg_spread = metrics.iloc[
-                current.metrics_index
-            ][COL_AVG_SPREAD]
+            avg_spread = avg_spreads[current.metrics_index]
 
             if pd.isna(avg_spread):
                 continue
@@ -270,6 +269,7 @@ class SwingHistoryAnalyzer:
 
         swings = self.swings[start:self.current_index]
         adjusted: list[float] = []
+        avg_spreads = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
 
         for previous, current in zip(
             swings[:-1],
@@ -280,11 +280,9 @@ class SwingHistoryAnalyzer:
 
             amplitude = abs(
                 current.price - previous.price
-            )
+            ) 
 
-            avg_spread = metrics.iloc[
-                current.metrics_index
-            ][COL_AVG_SPREAD]
+            avg_spread = avg_spreads[current.metrics_index]
 
             if pd.isna(avg_spread) or avg_spread <= 0:
                 continue
@@ -318,7 +316,7 @@ class SwingHistoryAnalyzer:
 
         swings = self.swings[start:self.current_index]
         adjusted: list[float] = []
-
+        avg_spreads = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
         for previous, current in zip(
             swings[:-1],
             swings[1:],
@@ -327,10 +325,7 @@ class SwingHistoryAnalyzer:
                 current.price - previous.price
             )
 
-            avg_spread = metrics.iloc[
-                current.metrics_index
-            ][COL_AVG_SPREAD]
-
+            avg_spread = avg_spreads[current.metrics_index]
             if pd.isna(avg_spread) or avg_spread <= 0:
                 continue
 
@@ -427,6 +422,7 @@ class SwingHistoryAnalyzer:
             raise ValueError(
                 "lookback must be greater than zero"
             )
+        values_column = metrics[column].to_numpy(copy=False)
 
         swings = (
             self.swings
@@ -437,11 +433,8 @@ class SwingHistoryAnalyzer:
         values: list[float] = []
 
         for swing in swings:
-
-            value = metrics.iloc[
-                swing.metrics_index
-            ][column]
-
+            
+            value = values_column[swing.metrics_index]
             if pd.isna(value):
                 continue
 
@@ -467,6 +460,7 @@ class SwingHistoryAnalyzer:
             raise ValueError(
                 "lookback must be greater than zero"
             )
+        values_column = metrics[column].to_numpy(copy=False)
 
         start = max(
             0,
@@ -477,9 +471,8 @@ class SwingHistoryAnalyzer:
         values: list[float] = []
 
         for swing in swings:
-            value = metrics.iloc[
-                swing.metrics_index
-            ][column]
+                        
+            value = values_column[swing.metrics_index]
 
             if pd.isna(value):
                 continue
@@ -653,14 +646,14 @@ class SwingHistoryAnalyzer:
         metrics: pd.DataFrame,
         lookback: int,
     ) -> SwingHistorySnapshot:
-        
+        avg_spreads = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
         current = self.current()
         current_amplitude = self._current_amplitude()
         
-        avg_spread = float(
-            metrics.iloc[current.metrics_index][COL_AVG_SPREAD]
-        )
-
+        # avg_spread = float(
+        #     metrics.iloc[current.metrics_index][COL_AVG_SPREAD]
+        # )
+        avg_spread = float(avg_spreads[current.metrics_index])
         current_spread_adjusted_amplitude = (
             current_amplitude / avg_spread
             if avg_spread > 0

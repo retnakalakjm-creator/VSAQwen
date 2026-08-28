@@ -30,8 +30,24 @@ class ProfessionalScorer:
             structure_lookback=config.STRUCTURE_LOOKBACK,
         )
         self._smart_money = SmartMoneyAnalyzer()
+        self._metric_array_cache = None
+
         
-        
+    def _metric_arrays(self, metrics: pd.DataFrame):
+        cached = self._metric_array_cache
+
+        if cached is None or cached[0] is not metrics:
+            cached = (
+                metrics,
+                metrics[COL_VOLUME].to_numpy(copy=False),
+                metrics[COL_SPREAD].to_numpy(copy=False),
+                metrics[COL_AVG_VOLUME].to_numpy(copy=False),
+                metrics[COL_AVG_SPREAD].to_numpy(copy=False),
+            )
+            self._metric_array_cache = cached
+
+        return cached[1], cached[2], cached[3], cached[4]
+    
     def _build_context(
             self,
             history: SwingHistoryAnalyzer,
@@ -93,14 +109,19 @@ class ProfessionalScorer:
         swing: Swing,
     ) -> SwingMetricSnapshot:
 
-        row = metrics.iloc[swing.metrics_index]
+        volume, spread, avg_volume, avg_spread = (
+            self._metric_arrays(metrics)
+        )
+
+        i = swing.metrics_index
 
         return SwingMetricSnapshot(
-            volume=float(row[COL_VOLUME]),
-            spread=float(row[COL_SPREAD]),
-            avg_volume=float(row[COL_AVG_VOLUME]),
-            avg_spread=float(row[COL_AVG_SPREAD]),
+            volume=float(volume[i]),
+            spread=float(spread[i]),
+            avg_volume=float(avg_volume[i]),
+            avg_spread=float(avg_spread[i]),
         )
+
     
         
     def _smart_money_snapshot(
@@ -113,20 +134,27 @@ class ProfessionalScorer:
         end = swing.metrics_index + 1
         start = max(0, end - lookback)
 
-        rows = metrics.iloc[start:end]
+        open_values = metrics[COL_OPEN].to_numpy(copy=False)
+        high_values = metrics[COL_HIGH].to_numpy(copy=False)
+        low_values = metrics[COL_LOW].to_numpy(copy=False)
+        close_values = metrics[COL_CLOSE].to_numpy(copy=False)
+        spread_values = metrics[COL_SPREAD].to_numpy(copy=False)
+        avg_spread_values = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
+        volume_values = metrics[COL_VOLUME].to_numpy(copy=False)
+        avg_volume_values = metrics[COL_AVG_VOLUME].to_numpy(copy=False)
 
         bars = tuple(
             SmartMoneyBar(
-                open=float(row[COL_OPEN]),
-                high=float(row[COL_HIGH]),
-                low=float(row[COL_LOW]),
-                close=float(row[COL_CLOSE]),
-                spread=float(row[COL_SPREAD]),
-                avg_spread=float(row[COL_AVG_SPREAD]),
-                volume=float(row[COL_VOLUME]),
-                avg_volume=float(row[COL_AVG_VOLUME]),
+                open=float(open_values[index]),
+                high=float(high_values[index]),
+                low=float(low_values[index]),
+                close=float(close_values[index]),
+                spread=float(spread_values[index]),
+                avg_spread=float(avg_spread_values[index]),
+                volume=float(volume_values[index]),
+                avg_volume=float(avg_volume_values[index]),
             )
-            for _, row in rows.iterrows()
+            for index in range(start, end)
         )
 
         return SmartMoneySnapshot(
