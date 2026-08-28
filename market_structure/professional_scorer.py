@@ -96,35 +96,35 @@ class ProfessionalScorer:
         start = max(0, history.current_index - lookback + 1)
         previous_swings = history.swings[start:history.current_index]
 
-        amplitudes = tuple(
-            abs(current_swing.price - previous_swing.price)
-            for previous_swing, current_swing in zip(
-                previous_swings[:-1],
-                previous_swings[1:],
-            )
-        )
-
-        durations = tuple(
-            abs(current_swing.bar_index - previous_swing.bar_index)
-            for previous_swing, current_swing in zip(
-                previous_swings[:-1],
-                previous_swings[1:],
-            )
-        )
-
+        amplitudes_list: list[float] = []
+        durations_list: list[float] = []
         spread_adjusted_amplitudes: list[float] = []
+
         for previous_swing, current_swing in zip(
             previous_swings[:-1],
             previous_swings[1:],
         ):
+            amplitudes_list.append(
+                abs(current_swing.price - previous_swing.price)
+            )
+
+            durations_list.append(
+                abs(current_swing.bar_index - previous_swing.bar_index)
+            )
+
             if current_swing.type != current.type:
                 continue
+
             value = avg_spread_values[current_swing.metrics_index]
             if not self._valid_float(value) or value <= 0:
                 continue
+
             spread_adjusted_amplitudes.append(
                 abs(current_swing.price - previous_swing.price) / value
             )
+
+        amplitudes = tuple(amplitudes_list)
+        durations = tuple(durations_list)
 
         volumes: list[float] = []
         spreads: list[float] = []
