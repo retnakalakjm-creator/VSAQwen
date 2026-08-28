@@ -29,23 +29,38 @@ class ProfessionalScorer:
         )
         self._smart_money = SmartMoneyAnalyzer()
         self._metric_array_cache = None
+        self._metric_valid_cache = None
 
     def _metric_arrays(self, metrics: pd.DataFrame):
         cached = self._metric_array_cache
 
         if cached is None or cached[0] is not metrics:
+            open_values = metrics[COL_OPEN].to_numpy(copy=False)
+            high_values = metrics[COL_HIGH].to_numpy(copy=False)
+            low_values = metrics[COL_LOW].to_numpy(copy=False)
+            close_values = metrics[COL_CLOSE].to_numpy(copy=False)
+            volume_values = metrics[COL_VOLUME].to_numpy(copy=False)
+            spread_values = metrics[COL_SPREAD].to_numpy(copy=False)
+            avg_volume_values = metrics[COL_AVG_VOLUME].to_numpy(copy=False)
+            avg_spread_values = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
+
             cached = (
                 metrics,
-                metrics[COL_OPEN].to_numpy(copy=False),
-                metrics[COL_HIGH].to_numpy(copy=False),
-                metrics[COL_LOW].to_numpy(copy=False),
-                metrics[COL_CLOSE].to_numpy(copy=False),
-                metrics[COL_VOLUME].to_numpy(copy=False),
-                metrics[COL_SPREAD].to_numpy(copy=False),
-                metrics[COL_AVG_VOLUME].to_numpy(copy=False),
-                metrics[COL_AVG_SPREAD].to_numpy(copy=False),
+                open_values,
+                high_values,
+                low_values,
+                close_values,
+                volume_values,
+                spread_values,
+                avg_volume_values,
+                avg_spread_values,
             )
             self._metric_array_cache = cached
+            self._metric_valid_cache = (
+                pd.notna(volume_values),
+                pd.notna(spread_values),
+                pd.notna(avg_spread_values),
+            )
 
         return cached[1:]
 
@@ -70,6 +85,8 @@ class ProfessionalScorer:
             avg_spread_values,
         ) = arrays
 
+        volume_valid, spread_valid, avg_spread_valid = self._metric_valid_cache
+
         current = history.current()
         previous = history.previous()
 
@@ -88,7 +105,7 @@ class ProfessionalScorer:
         current_spread_adjusted_amplitude = (
             current_amplitude / avg_spread
             if current_amplitude is not None
-            and self._valid_float(avg_spread)
+            and avg_spread_valid[current.metrics_index]
             and avg_spread > 0
             else None
         )
@@ -115,8 +132,9 @@ class ProfessionalScorer:
             if current_swing.type != current.type:
                 continue
 
-            value = avg_spread_values[current_swing.metrics_index]
-            if not self._valid_float(value) or value <= 0:
+            metrics_index = current_swing.metrics_index
+            value = avg_spread_values[metrics_index]
+            if not avg_spread_valid[metrics_index] or value <= 0:
                 continue
 
             spread_adjusted_amplitudes.append(
@@ -129,12 +147,14 @@ class ProfessionalScorer:
         volumes: list[float] = []
         spreads: list[float] = []
         for swing in previous_swings:
-            volume = volume_values[swing.metrics_index]
-            if self._valid_float(volume):
+            metrics_index = swing.metrics_index
+
+            volume = volume_values[metrics_index]
+            if volume_valid[metrics_index]:
                 volumes.append(float(volume))
 
-            spread = spread_values[swing.metrics_index]
-            if self._valid_float(spread):
+            spread = spread_values[metrics_index]
+            if spread_valid[metrics_index]:
                 spreads.append(float(spread))
 
         return SwingHistorySnapshot(
