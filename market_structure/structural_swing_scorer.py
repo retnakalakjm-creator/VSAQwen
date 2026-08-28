@@ -78,17 +78,12 @@ class StructuralSwingScorer:
             return 0.0
 
         # Remove invalid historical values
-        clean_sample = [
-            x for x in sample
-            if x is not None
-        ]
-
-        if not clean_sample:
+        if not sample:
             return 0.0
 
         return percentile_rank(
             value,
-            clean_sample,
+            sample,
         )
             
     # ------------------------------------------
