@@ -39,6 +39,10 @@ class ProfessionalScorer:
         if cached is None or cached[0] is not metrics:
             cached = (
                 metrics,
+                metrics[COL_OPEN].to_numpy(copy=False),
+                metrics[COL_HIGH].to_numpy(copy=False),
+                metrics[COL_LOW].to_numpy(copy=False),
+                metrics[COL_CLOSE].to_numpy(copy=False),
                 metrics[COL_VOLUME].to_numpy(copy=False),
                 metrics[COL_SPREAD].to_numpy(copy=False),
                 metrics[COL_AVG_VOLUME].to_numpy(copy=False),
@@ -46,7 +50,7 @@ class ProfessionalScorer:
             )
             self._metric_array_cache = cached
 
-        return cached[1], cached[2], cached[3], cached[4]
+        return cached[1:]
     
     def _build_context(
             self,
@@ -109,17 +113,24 @@ class ProfessionalScorer:
         swing: Swing,
     ) -> SwingMetricSnapshot:
 
-        volume, spread, avg_volume, avg_spread = (
-            self._metric_arrays(metrics)
-        )
+        (
+            open_values,
+            high_values,
+            low_values,
+            close_values,
+            volume_values,
+            spread_values,
+            avg_volume_values,
+            avg_spread_values,
+        ) = self._metric_arrays(metrics)
 
         i = swing.metrics_index
 
         return SwingMetricSnapshot(
-            volume=float(volume[i]),
-            spread=float(spread[i]),
-            avg_volume=float(avg_volume[i]),
-            avg_spread=float(avg_spread[i]),
+            volume=float(volume_values[i]),
+            spread=float(spread_values[i]),
+            avg_volume=float(avg_volume_values[i]),
+            avg_spread=float(avg_spread_values[i]),
         )
 
     
@@ -134,14 +145,24 @@ class ProfessionalScorer:
         end = swing.metrics_index + 1
         start = max(0, end - lookback)
 
-        open_values = metrics[COL_OPEN].to_numpy(copy=False)
-        high_values = metrics[COL_HIGH].to_numpy(copy=False)
-        low_values = metrics[COL_LOW].to_numpy(copy=False)
-        close_values = metrics[COL_CLOSE].to_numpy(copy=False)
-        spread_values = metrics[COL_SPREAD].to_numpy(copy=False)
-        avg_spread_values = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
-        volume_values = metrics[COL_VOLUME].to_numpy(copy=False)
-        avg_volume_values = metrics[COL_AVG_VOLUME].to_numpy(copy=False)
+        # open_values = metrics[COL_OPEN].to_numpy(copy=False)
+        # high_values = metrics[COL_HIGH].to_numpy(copy=False)
+        # low_values = metrics[COL_LOW].to_numpy(copy=False)
+        # close_values = metrics[COL_CLOSE].to_numpy(copy=False)
+        # spread_values = metrics[COL_SPREAD].to_numpy(copy=False)
+        # avg_spread_values = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
+        # volume_values = metrics[COL_VOLUME].to_numpy(copy=False)
+        # avg_volume_values = metrics[COL_AVG_VOLUME].to_numpy(copy=False)
+        (
+            open_values,
+            high_values,
+            low_values,
+            close_values,
+            volume_values,
+            spread_values,
+            avg_volume_values,
+            avg_spread_values,
+        ) = self._metric_arrays(metrics)
 
         bars = tuple(
             SmartMoneyBar(
