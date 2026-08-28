@@ -1,6 +1,6 @@
 """Production-path audit for DEMAND_COMING_IN.
 
-Analysis-only. Verifies collection, registry, dynamic weighting, scoring, and
+Analysis-only. Verifies collection, registry, weighting, scoring, and
 final aggregation touchpoints without modifying production behavior.
 """
 from __future__ import annotations
@@ -23,10 +23,11 @@ from engine.columns import (
 from evidence.demand import collect_demand
 from evidence.engine import EvidenceEngine
 from evidence.evidence_registry import EVIDENCE_LIBRARY
+from evidence.helpers import add_evidence
 from evidence.scoring import _score_bias
 from evidence.weight import WeightCalculator
 from metrics_engine import MetricsEngine
-from models import EvidenceCode, SpreadClass, VolumeClass
+from models import BackgroundContext, EvidenceCode, SpreadClass, VolumeClass
 from trend import TrendAnalyzer
 
 SYMBOL = "HDFCBANK.NS"
@@ -35,7 +36,7 @@ TARGET = EvidenceCode.DEMAND_COMING_IN
 
 def main() -> None:
     engine_source = inspect.getsource(EvidenceEngine.collect)
-    weight_source = inspect.getsource(WeightCalculator.calculate)
+    helper_source = inspect.getsource(add_evidence)
     registry_definition = EVIDENCE_LIBRARY.get(TARGET)
 
     metrics = MetricsEngine().calculate(
@@ -44,6 +45,7 @@ def main() -> None:
 
     production_hits = 0
     candidate_bars = 0
+    target_weights: list[float] = []
 
     for index in range(20, len(metrics)):
         row = metrics.iloc[index]
@@ -65,9 +67,15 @@ def main() -> None:
             structural_swings=tuple(replay_trend.structure.structural_swings),
             validation_metrics=replay,
         )
-        production_hits += sum(item.code == TARGET for item in result.evidence)
+        hits = [item for item in result.evidence if item.code == TARGET]
+        production_hits += len(hits)
+        target_weights.extend(item.weight for item in hits)
 
     collector_target_present = production_hits > 0
+    helper_target_case = "EvidenceCode.DEMAND_COMING_IN" in helper_source
+    observed_weight_ok = bool(target_weights) and all(
+        abs(weight - 0.38) < 1e-12 for weight in target_weights
+    )
 
     print("DEMAND COMING IN PRODUCTION PATH AUDIT")
     print({
@@ -76,20 +84,22 @@ def main() -> None:
         "actual_production_hits": production_hits,
         "collector_contains_target": collector_target_present,
         "engine_collect_calls_demand": "self._collect_demand()" in engine_source,
-        "weight_calculator_has_target_case": "EvidenceCode.DEMAND_COMING_IN" in weight_source,
+        "weight_calculator_has_target_case": "EvidenceCode.DEMAND_COMING_IN" in inspect.getsource(WeightCalculator.calculate),
+        "helper_weight_path_has_target_case": helper_target_case,
+        "observed_production_weight_038": observed_weight_ok,
+        "observed_target_weights": sorted(set(target_weights)),
         "registry_present": registry_definition is not None,
         "registry_weight": None if registry_definition is None else registry_definition.weight,
         "registry_strength": None if registry_definition is None else registry_definition.strength,
         "synthetic_scoring_weight_038": 0.38 * 0.90,
-        "current_default_weight_if_emitted": 1.00,
         "production_path_status": (
-            "TARGET_COLLECTED"
-            if production_hits > 0
-            else "NOT_READY_TARGET_NOT_COLLECTED"
+            "TARGET_COLLECTED_AND_WEIGHTED_038"
+            if production_hits > 0 and helper_target_case and observed_weight_ok
+            else "NOT_READY"
         ),
         "notes": [
-            "This audit does not modify collector, registry, weight, scoring, or aggregation logic.",
-            "Weight 0.38 remains provisional and is not registered by this audit.",
+            "DEMAND_COMING_IN uses the audited 0.38 helper-level weight path; WeightCalculator is intentionally unchanged.",
+            "Registry weight 1.0 remains the profile default and is not the emitted Evidence.weight.",
         ],
     })
 

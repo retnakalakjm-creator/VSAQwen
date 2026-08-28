@@ -16,7 +16,12 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from data import daily_to_weekly, download_data
-from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
+from engine.columns import (
+    COL_CLOSE,
+    COL_DIRECTION,
+    COL_SPREAD_CLASS,
+    COL_VOLUME_CLASS,
+)
 from evidence.engine import EvidenceEngine
 from metrics_engine import MetricsEngine
 from models import Direction, EvidenceCode, SpreadClass, VolumeClass
@@ -37,7 +42,7 @@ FORWARD_BARS = 8
 
 
 def cheap_candidate(metrics: pd.DataFrame, index: int) -> bool:
-    """Broad supply-side gate; production emission is authoritative."""
+    """Broad demand-side absence gate; production emission is authoritative."""
     row = metrics.iloc[index]
     return (
         Direction(int(row[COL_DIRECTION])) == Direction.DOWN
@@ -102,12 +107,14 @@ def main() -> None:
 
                 if emitted.code is not TARGET_CODE or emitted.bar_index != index:
                     semantic_failures += 1
+                    continue
 
-                close = float(metrics.iloc[index]["Close"])
+                close = float(metrics.iloc[index][COL_CLOSE])
                 future_index = index + FORWARD_BARS
                 if future_index < len(metrics):
-                    future_close = float(metrics.iloc[future_index]["Close"])
+                    future_close = float(metrics.iloc[future_index][COL_CLOSE])
                     outcomes.append((future_close / close) - 1.0)
+
         except Exception as exc:
             failures.append({"symbol": symbol, "error": str(exc)})
 
@@ -126,6 +133,11 @@ def main() -> None:
         failures_out.append({
             "scope": "semantics",
             "error": f"production emission provenance failures: {semantic_failures}",
+        })
+    if failures:
+        failures_out.append({
+            "scope": "symbol_failures",
+            "error": f"{len(failures)} symbol(s) failed; audit population is incomplete",
         })
 
     print("NO_SUPPLY CANDIDATE AUDIT")

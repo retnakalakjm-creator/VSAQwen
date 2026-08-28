@@ -1,9 +1,9 @@
 """Candidate audit for SUPPLY_COMING_IN.
 
-Analysis-only. Mirrors the real production collector at each point in time:
-cheap semantic prefilter -> point-in-time TrendAnalyzer/EvidenceEngine context
--> campaign gate -> real engine.collect() -> exact target-bar emission.
-No production mutation.
+Analysis-only. Replays the real production collector point-in-time and
+separates campaign qualification from full detector qualification. A
+campaign-qualified bar that fails the remaining SUPPLY_COMING_IN requirements
+is a normal detector rejection, not an audit failure.
 """
 from __future__ import annotations
 
@@ -53,6 +53,8 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
     bars_scanned = max(0, len(metrics) - 1 - FORWARD_BARS)
     cheap_candidates = 0
     campaign_qualified = 0
+    production_events = 0
+    normal_rejections = 0
     candidate_returns: list[float] = []
     semantic_failures = 0
     heavy_context_rebuilds = 0
@@ -92,6 +94,12 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
             and getattr(item, "bar_index", None) == index
         ]
 
+        if not target_items:
+            # Normal detector rejection: the campaign gate passed, but one or
+            # more remaining SUPPLY_COMING_IN requirements did not.
+            normal_rejections += 1
+            continue
+
         if len(target_items) != 1:
             semantic_failures += 1
             failures.append(
@@ -99,6 +107,7 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
             )
             continue
 
+        production_events += 1
         candidate_returns.append(
             float(closes[index + FORWARD_BARS] / closes[index] - 1.0)
         )
@@ -107,6 +116,8 @@ def _audit_symbol(symbol: str) -> dict[str, object]:
         "bars_scanned": bars_scanned,
         "cheap_candidates": cheap_candidates,
         "campaign_qualified": campaign_qualified,
+        "production_events": production_events,
+        "normal_rejections": normal_rejections,
         "candidate_returns": candidate_returns,
         "semantic_failures": semantic_failures,
         "heavy_context_rebuilds": heavy_context_rebuilds,
@@ -119,6 +130,8 @@ def main() -> None:
     bars_scanned = 0
     cheap_candidates = 0
     campaign_qualified = 0
+    production_events = 0
+    normal_rejections = 0
     all_returns: list[float] = []
     semantic_failures = 0
     heavy_context_rebuilds = 0
@@ -131,6 +144,8 @@ def main() -> None:
             bars_scanned += int(result["bars_scanned"])
             cheap_candidates += int(result["cheap_candidates"])
             campaign_qualified += int(result["campaign_qualified"])
+            production_events += int(result["production_events"])
+            normal_rejections += int(result["normal_rejections"])
             all_returns.extend(result["candidate_returns"])
             semantic_failures += int(result["semantic_failures"])
             heavy_context_rebuilds += int(result["heavy_context_rebuilds"])
@@ -153,7 +168,8 @@ def main() -> None:
         "bars_scanned": bars_scanned,
         "cheap_candidates": cheap_candidates,
         "campaign_qualified_events": campaign_qualified,
-        "candidate_events": len(all_returns),
+        "candidate_events": production_events,
+        "normal_detector_rejections": normal_rejections,
         "positive": positive,
         "negative": negative,
         "flat": flat,
