@@ -69,24 +69,25 @@ class SmartMoneyAnalyzer:
 
         return self._build_score(stopping, climactic)
 
-    @profile
     @staticmethod
     def _build_score(
         stopping: ScoreBreakdown,
         climactic: ScoreBreakdown,
     ) -> SmartMoneyScore:
-        components = (
-            component(
-                stopping.overall,
-                config.SMART_MONEY_STOPPING_WEIGHT,
-            ),
-            component(
-                climactic.overall,
-                config.SMART_MONEY_CLIMACTIC_WEIGHT,
-            ),
-        )
+        stopping_weight = config.SMART_MONEY_STOPPING_WEIGHT
+        climactic_weight = config.SMART_MONEY_CLIMACTIC_WEIGHT
+        total_weight = stopping_weight + climactic_weight
 
-        overall = combine_scores(components)
+        if total_weight <= 0:
+            overall = 0.0
+        else:
+            overall = min(
+                (
+                    stopping.overall * stopping_weight
+                    + climactic.overall * climactic_weight
+                ) / total_weight,
+                1.0,
+            )
 
         return SmartMoneyScore(
             stopping_volume=stopping.overall,
@@ -111,19 +112,30 @@ class SmartMoneyAnalyzer:
             bar.volume_ratio,
             config.STOPPING_VOLUME_BANDS,
         )
+
         close = band_score(
             bar.close_position,
             config.STOPPING_CLOSE_POSITION_BANDS,
         )
+
         tail = band_score(
             bar.lower_tail_ratio,
             config.STOPPING_LOWER_TAIL_BANDS,
         )
 
         components = (
-            component(volume, config.SMART_MONEY_STOPPING_VOLUME_WEIGHT),
-            component(close, config.SMART_MONEY_STOPPING_CLOSE_WEIGHT),
-            component(tail, config.SMART_MONEY_STOPPING_TAIL_WEIGHT),
+            component(
+                volume,
+                config.SMART_MONEY_STOPPING_VOLUME_WEIGHT,
+            ),
+            component(
+                close,
+                config.SMART_MONEY_STOPPING_CLOSE_WEIGHT,
+            ),
+            component(
+                tail,
+                config.SMART_MONEY_STOPPING_TAIL_WEIGHT,
+            ),
         )
 
         overall = combine_scores(components)
@@ -164,14 +176,31 @@ class SmartMoneyAnalyzer:
         close = band_score(close_position, config.STOPPING_CLOSE_POSITION_BANDS)
         tail = band_score(lower_tail_ratio, config.STOPPING_LOWER_TAIL_BANDS)
 
+        volume_weight = config.SMART_MONEY_STOPPING_VOLUME_WEIGHT
+        close_weight = config.SMART_MONEY_STOPPING_CLOSE_WEIGHT
+        tail_weight = config.SMART_MONEY_STOPPING_TAIL_WEIGHT
+        total_weight = volume_weight + close_weight + tail_weight
+
         components = (
-            component(volume, config.SMART_MONEY_STOPPING_VOLUME_WEIGHT),
-            component(close, config.SMART_MONEY_STOPPING_CLOSE_WEIGHT),
-            component(tail, config.SMART_MONEY_STOPPING_TAIL_WEIGHT),
+            component(volume, volume_weight),
+            component(close, close_weight),
+            component(tail, tail_weight),
         )
 
+        if total_weight <= 0:
+            overall = 0.0
+        else:
+            overall = min(
+                (
+                    volume * volume_weight
+                    + close * close_weight
+                    + tail * tail_weight
+                ) / total_weight,
+                1.0,
+            )
+
         return ScoreBreakdown(
-            overall=combine_scores(components),
+            overall=overall,
             components=components,
         )
 
@@ -190,19 +219,30 @@ class SmartMoneyAnalyzer:
             bar.volume_ratio,
             config.CLIMACTIC_VOLUME_BANDS,
         )
+
         spread = band_score(
             bar.spread_ratio,
             config.CLIMACTIC_SPREAD_BANDS,
         )
+
         close_score = band_score(
             bar.extreme_close_position,
             config.CLIMACTIC_CLOSE_POSITION_BANDS,
         )
 
         components = (
-            component(volume, config.SMART_MONEY_CLIMACTIC_VOLUME_WEIGHT),
-            component(spread, config.SMART_MONEY_CLIMACTIC_SPREAD_WEIGHT),
-            component(close_score, config.SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT),
+            component(
+                volume,
+                config.SMART_MONEY_CLIMACTIC_VOLUME_WEIGHT,
+            ),
+            component(
+                spread,
+                config.SMART_MONEY_CLIMACTIC_SPREAD_WEIGHT,
+            ),
+            component(
+                close_score,
+                config.SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT,
+            ),
         )
 
         overall = combine_scores(components)
@@ -247,13 +287,30 @@ class SmartMoneyAnalyzer:
             config.CLIMACTIC_CLOSE_POSITION_BANDS,
         )
 
+        volume_weight = config.SMART_MONEY_CLIMACTIC_VOLUME_WEIGHT
+        spread_weight = config.SMART_MONEY_CLIMACTIC_SPREAD_WEIGHT
+        close_weight = config.SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT
+        total_weight = volume_weight + spread_weight + close_weight
+
         components = (
-            component(volume, config.SMART_MONEY_CLIMACTIC_VOLUME_WEIGHT),
-            component(spread_score, config.SMART_MONEY_CLIMACTIC_SPREAD_WEIGHT),
-            component(close_score, config.SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT),
+            component(volume, volume_weight),
+            component(spread_score, spread_weight),
+            component(close_score, close_weight),
         )
 
+        if total_weight <= 0:
+            overall = 0.0
+        else:
+            overall = min(
+                (
+                    volume * volume_weight
+                    + spread_score * spread_weight
+                    + close_score * close_weight
+                ) / total_weight,
+                1.0,
+            )
+
         return ScoreBreakdown(
-            overall=combine_scores(components),
+            overall=overall,
             components=components,
         )
