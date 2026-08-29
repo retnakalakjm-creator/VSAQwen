@@ -14,6 +14,7 @@ from benchmark_multi_symbol import prepare, scan_sequential
 from market_structure.professional_scorer import ProfessionalScorer
 from market_structure.structure_filter import StructureFilter
 from market_structure.structural_swing_scorer import StructuralSwingScorer
+from utils.ranking import percentile_rank_sorted
 from utils.scoring import combine_scores, component, band_score
 
 
@@ -28,10 +29,18 @@ def _line_profile(datasets) -> None:
     profiler.add_function(ProfessionalScorer._metric_snapshot)
     profiler.add_function(ProfessionalScorer._smart_money_snapshot)
     profiler.add_function(ProfessionalScorer.prepare_history_snapshots)
+    profiler.add_function(StructuralSwingScorer.score)
+    profiler.add_function(StructuralSwingScorer._percentile_score)
+    profiler.add_function(StructuralSwingScorer._evaluate_amplitude)
+    profiler.add_function(StructuralSwingScorer._evaluate_structural_size)
+    profiler.add_function(StructuralSwingScorer._evaluate_duration)
+    profiler.add_function(StructuralSwingScorer._evaluate_volume)
+    profiler.add_function(StructuralSwingScorer._evaluate_spread)
     profiler.add_function(StructuralSwingScorer._combine_scores)
     profiler.add_function(combine_scores)
     profiler.add_function(component)
     profiler.add_function(band_score)
+    profiler.add_function(percentile_rank_sorted)
 
     profiler.enable()
     try:
