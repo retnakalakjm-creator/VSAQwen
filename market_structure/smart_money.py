@@ -36,12 +36,15 @@ class SmartMoneyAnalyzer:
         avg_spread: float,
         volume_value: float,
         avg_volume: float,
+        include_components: bool = False,
     ) -> SmartMoneyScore:
         """
         Score the latest Smart Money bar directly from scalar metrics.
 
         This avoids constructing SmartMoneyBar/SmartMoneySnapshot objects
-        during the normal professional-scoring hot path.
+        during the normal professional-scoring hot path. Component details
+        are omitted by default for normal scanning and can be requested
+        explicitly when detailed diagnostics are needed.
         """
         if bar_count < 2:
             stopping = ScoreBreakdown.empty()
@@ -53,6 +56,7 @@ class SmartMoneyAnalyzer:
                 spread=spread_value,
                 volume_value=volume_value,
                 avg_volume=avg_volume,
+                include_components=include_components,
             )
 
         if bar_count == 0:
@@ -65,6 +69,7 @@ class SmartMoneyAnalyzer:
                 avg_spread=avg_spread,
                 volume_value=volume_value,
                 avg_volume=avg_volume,
+                include_components=include_components,
             )
 
         return self._build_score(stopping, climactic)
@@ -155,6 +160,7 @@ class SmartMoneyAnalyzer:
         spread: float,
         volume_value: float,
         avg_volume: float,
+        include_components: bool = False,
     ) -> ScoreBreakdown:
         volume_ratio = (
             volume_value / avg_volume
@@ -181,12 +187,6 @@ class SmartMoneyAnalyzer:
         tail_weight = config.SMART_MONEY_STOPPING_TAIL_WEIGHT
         total_weight = volume_weight + close_weight + tail_weight
 
-        components = (
-            component(volume, volume_weight),
-            component(close, close_weight),
-            component(tail, tail_weight),
-        )
-
         if total_weight <= 0:
             overall = 0.0
         else:
@@ -198,6 +198,15 @@ class SmartMoneyAnalyzer:
                 ) / total_weight,
                 1.0,
             )
+
+        if include_components:
+            components = (
+                component(volume, volume_weight),
+                component(close, close_weight),
+                component(tail, tail_weight),
+            )
+        else:
+            components = ()
 
         return ScoreBreakdown(
             overall=overall,
@@ -262,6 +271,7 @@ class SmartMoneyAnalyzer:
         avg_spread: float,
         volume_value: float,
         avg_volume: float,
+        include_components: bool = False,
     ) -> ScoreBreakdown:
         volume_ratio = (
             volume_value / avg_volume
@@ -292,12 +302,6 @@ class SmartMoneyAnalyzer:
         close_weight = config.SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT
         total_weight = volume_weight + spread_weight + close_weight
 
-        components = (
-            component(volume, volume_weight),
-            component(spread_score, spread_weight),
-            component(close_score, close_weight),
-        )
-
         if total_weight <= 0:
             overall = 0.0
         else:
@@ -309,6 +313,15 @@ class SmartMoneyAnalyzer:
                 ) / total_weight,
                 1.0,
             )
+
+        if include_components:
+            components = (
+                component(volume, volume_weight),
+                component(spread_score, spread_weight),
+                component(close_score, close_weight),
+            )
+        else:
+            components = ()
 
         return ScoreBreakdown(
             overall=overall,
