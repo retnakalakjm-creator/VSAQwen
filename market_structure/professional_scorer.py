@@ -69,6 +69,7 @@ class ProfessionalScorer:
     def _valid_float(value) -> bool:
         return not pd.isna(value)
 
+    @profile
     def prepare_history_snapshots(
         self,
         swings: list[Swing] | tuple[Swing, ...],
@@ -101,11 +102,22 @@ class ProfessionalScorer:
         pair_durations: list[int | None] = [None] * len(swings)
         spread_adjusted_high: list[float | None] = [None] * len(swings)
         spread_adjusted_low: list[float | None] = [None] * len(swings)
-        swing_volumes: list[float | None] = [None] * len(swings)
-        swing_spreads: list[float | None] = [None] * len(swings)
+
+        cumulative_volumes: list[float] = []
+        cumulative_spreads: list[float] = []
+        cumulative_high_adjusted: list[float] = []
+        cumulative_low_adjusted: list[float] = []
+        volume_counts = [0] * (len(swings) + 1)
+        spread_counts = [0] * (len(swings) + 1)
+        high_adjusted_counts = [0] * (len(swings) + 1)
+        low_adjusted_counts = [0] * (len(swings) + 1)
 
         for index, current in enumerate(swings):
             if index == 0:
+                volume_counts[index + 1] = volume_counts[index]
+                spread_counts[index + 1] = spread_counts[index]
+                high_adjusted_counts[index + 1] = high_adjusted_counts[index]
+                low_adjusted_counts[index + 1] = low_adjusted_counts[index]
                 continue
 
             previous = swings[index - 1]
@@ -116,55 +128,60 @@ class ProfessionalScorer:
 
             metrics_index = current.metrics_index
             avg_spread = avg_spread_values[metrics_index]
+            high_adjusted_count = high_adjusted_counts[index]
+            low_adjusted_count = low_adjusted_counts[index]
             if avg_spread_valid[metrics_index] and avg_spread > 0:
                 adjusted = pair_amplitude / avg_spread
                 if current.type.value == "high":
                     spread_adjusted_high[index] = adjusted
+                    cumulative_high_adjusted.append(adjusted)
+                    high_adjusted_count += 1
                 else:
                     spread_adjusted_low[index] = adjusted
+                    cumulative_low_adjusted.append(adjusted)
+                    low_adjusted_count += 1
 
+            volume_count = volume_counts[index]
+            spread_count = spread_counts[index]
             if volume_valid[metrics_index]:
-                swing_volumes[index] = float(volume_values[metrics_index])
+                cumulative_volumes.append(float(volume_values[metrics_index]))
+                volume_count += 1
             if spread_valid[metrics_index]:
-                swing_spreads[index] = float(spread_values[metrics_index])
+                cumulative_spreads.append(float(spread_values[metrics_index]))
+                spread_count += 1
+
+            volume_counts[index + 1] = volume_count
+            spread_counts[index + 1] = spread_count
+            high_adjusted_counts[index + 1] = high_adjusted_count
+            low_adjusted_counts[index + 1] = low_adjusted_count
 
             start = max(0, index - lookback + 1)
             history_end = index
+            pair_start = max(1, start)
 
-            current_adjusted_history = (
-                spread_adjusted_high
-                if current.type.value == "high"
-                else spread_adjusted_low
-            )
-            amplitudes = tuple(
-                value
-                for value in pair_amplitudes[start:history_end]
-                if value is not None
-            )
+            amplitudes = tuple(pair_amplitudes[pair_start:history_end])
+            durations = tuple(pair_durations[pair_start:history_end])
 
+            if current.type.value == "high":
+                adjusted_values = cumulative_high_adjusted
+                adjusted_start = high_adjusted_counts[pair_start]
+                adjusted_end = high_adjusted_counts[history_end]
+            else:
+                adjusted_values = cumulative_low_adjusted
+                adjusted_start = low_adjusted_counts[pair_start]
+                adjusted_end = low_adjusted_counts[history_end]
             spread_adjusted_amplitudes = tuple(
-                value
-                for value in current_adjusted_history[start:history_end]
-                if value is not None
+                adjusted_values[adjusted_start:adjusted_end]
             )
 
-            durations = tuple(
-                value
-                for value in pair_durations[start:history_end]
-                if value is not None
-            )
+            volume_start = volume_counts[start]
+            volume_end = volume_counts[index]
+            volumes = tuple(cumulative_volumes[volume_start:volume_end])
 
-            volumes = tuple(
-                value
-                for value in swing_volumes[start:index]
-                if value is not None
-            )
+            spread_start = spread_counts[start]
+            spread_end = spread_counts[index]
+            spreads = tuple(cumulative_spreads[spread_start:spread_end])
 
-            spreads = tuple(
-                value
-                for value in swing_spreads[start:index]
-                if value is not None
-            )
             snapshots[index] = SwingHistorySnapshot(
                 current_amplitude=pair_amplitude,
                 current_duration=pair_duration,
@@ -338,12 +355,30 @@ class ProfessionalScorer:
 
         evaluation = self._structure.score(ctx)
 
-        snapshot = self._smart_money_snapshot(
-            arrays,
-            current,
-        )
+        arrays_for_smart_money = arrays
+        (
+            open_values,
+            _high_values,
+            low_values,
+            close_values,
+            volume_values,
+            spread_values,
+            avg_volume_values,
+            avg_spread_values,
+        ) = arrays_for_smart_money
 
-        smart_money = self._smart_money.score(snapshot)
+        i = current.metrics_index
+
+        smart_money = self._smart_money.score_values(
+            bar_count=2 if i > 0 else 1,
+            open_value=float(open_values[i]),
+            low_value=float(low_values[i]),
+            close_value=float(close_values[i]),
+            spread_value=float(spread_values[i]),
+            avg_spread=float(avg_spread_values[i]),
+            volume_value=float(volume_values[i]),
+            avg_volume=float(avg_volume_values[i]),
+        )
 
         professional_score = SwingProfessionalScore.create(
             evaluation.score,

@@ -173,6 +173,7 @@ class StructuralSwingScorer:
     # Final aggregation
     # ------------------------------------------
 
+    @profile
     def _combine_scores(
         self,
         *,

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from collections.abc import Sequence
 
+from line_profiler import profile
+
 
 @dataclass(slots=True, frozen=True)
 class ScoreBand:
@@ -20,7 +22,7 @@ def band_score(
     Return the first matching score.
 
     Bands must be ordered from highest threshold
-    to lowest threshold.
+to lowest threshold.
     """
 
     for band in bands:
@@ -42,6 +44,7 @@ class ScoreComponent:
     weight: float
 
 
+@profile
 def combine_scores(
     components: Sequence[ScoreComponent],
 ) -> float:

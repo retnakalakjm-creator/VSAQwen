@@ -13,6 +13,8 @@ if str(ROOT) not in sys.path:
 from benchmark_multi_symbol import prepare, scan_sequential
 from market_structure.professional_scorer import ProfessionalScorer
 from market_structure.structure_filter import StructureFilter
+from market_structure.structural_swing_scorer import StructuralSwingScorer
+from utils.scoring import combine_scores, component, band_score
 
 
 def _line_profile(datasets) -> None:
@@ -22,15 +24,15 @@ def _line_profile(datasets) -> None:
     profiler.add_function(StructureFilter.filter)
     profiler.add_function(ProfessionalScorer.score)
     profiler.add_function(ProfessionalScorer._build_context)
-    profiler.add_function(ProfessionalScorer._history_snapshot)
     profiler.add_function(ProfessionalScorer._metric_arrays)
     profiler.add_function(ProfessionalScorer._metric_snapshot)
     profiler.add_function(ProfessionalScorer._smart_money_snapshot)
     profiler.add_function(ProfessionalScorer.prepare_history_snapshots)
+    profiler.add_function(StructuralSwingScorer._combine_scores)
+    profiler.add_function(combine_scores)
+    profiler.add_function(component)
+    profiler.add_function(band_score)
 
-    # Enable tracing around the real scanner path. This preserves the real
-    # swing construction and call context while collecting line timings for
-    # the registered target functions.
     profiler.enable()
     try:
         scan_sequential(datasets)
