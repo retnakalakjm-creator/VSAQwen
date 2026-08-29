@@ -14,6 +14,7 @@ class ScoreBand:
     score: float
 
 
+@profile
 def band_score(
     value: float,
     bands: Sequence[ScoreBand],
@@ -21,8 +22,7 @@ def band_score(
     """
     Return the first matching score.
 
-    Bands must be ordered from highest threshold
-to lowest threshold.
+    Bands must be ordered from highest threshold\nto lowest threshold.
     """
 
     for band in bands:
