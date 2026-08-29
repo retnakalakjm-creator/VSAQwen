@@ -9,7 +9,7 @@ from models import StructuralSwingScore, Swing, SwingType
 from models import StructuralSwing
 from models import SwingGrade
 from .professional_scorer import ProfessionalScorer
-from .swing_history import SwingHistoryAnalyzer
+from .prepared_scoring import score_prepared
 from debug.professional_report import print_professional_score
 from line_profiler import profile
 
@@ -47,22 +47,17 @@ class StructureFilter:
                 previous = current
                 continue
 
-            history = SwingHistoryAnalyzer(
-                swings=swing_tuple,
-                current_index=index,
-            )
-
-            evaluation = scorer.score(
-                history,
-                metrics,
-                arrays=arrays,
-                history_snapshot=history_snapshots[index],
+            evaluation = score_prepared(
+                scorer,
+                current,
+                arrays,
+                history_snapshots[index],
             )
 
             # testing
             # if evaluation.professional.overall >= 0.70:
             #     print_professional_score(
-            #         history.current(),
+            #         current,
             #         evaluation
             #     )
             # testing
