@@ -2,8 +2,8 @@ from __future__ import annotations
 import math
 
 import pandas as pd
-
 import config
+
 from engine.columns import COL_AVG_SPREAD, COL_AVG_VOLUME, COL_VOLUME
 from models import StructuralSwingScore, Swing, SwingType
 from models import StructuralSwing
@@ -11,6 +11,7 @@ from models import SwingGrade
 from .professional_scorer import ProfessionalScorer
 from .swing_history import SwingHistoryAnalyzer
 from debug.professional_report import print_professional_score
+from line_profiler import profile
 
 class StructureFilter:
     """
@@ -18,6 +19,7 @@ class StructureFilter:
     structurally significant swings.
     """
 
+    @profile
     def filter(
         self,
         swings: list[Swing],
@@ -27,6 +29,14 @@ class StructureFilter:
         self._metrics = metrics
         structural: list[StructuralSwing] = []
         previous: Swing | None = None
+        scorer = ProfessionalScorer()
+        swing_tuple = tuple(swings)
+        arrays = scorer._metric_arrays(metrics)
+        history_snapshots = scorer.prepare_history_snapshots(
+            swing_tuple,
+            arrays,
+            config.STRUCTURE_LOOKBACK,
+        )
 
         for index, current in enumerate(swings):
 
@@ -38,13 +48,15 @@ class StructureFilter:
                 continue
 
             history = SwingHistoryAnalyzer(
-                swings=tuple(swings),
+                swings=swing_tuple,
                 current_index=index,
             )
 
-            evaluation = ProfessionalScorer().score(
+            evaluation = scorer.score(
                 history,
                 metrics,
+                arrays=arrays,
+                history_snapshot=history_snapshots[index],
             )
 
             # testing

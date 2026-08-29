@@ -41,6 +41,7 @@ class ScoreComponent:
 
     weight: float
 
+
 def combine_scores(
     components: Sequence[ScoreComponent],
 ) -> float:
@@ -52,23 +53,21 @@ def combine_scores(
     if not components:
         return 0.0
 
-    total_weight = sum(
-        component.weight
-        for component in components
-    )
+    total_weight = 0.0
+    weighted_sum = 0.0
+
+    for component in components:
+        total_weight += component.weight
+        weighted_sum += component.value * component.weight
 
     if total_weight <= 0:
         return 0.0
-
-    weighted_sum = sum(
-        component.value * component.weight
-        for component in components
-    )
 
     return min(
         weighted_sum / total_weight,
         1.0,
     )
+
 
 def component(
     value: float,
@@ -81,4 +80,4 @@ def component(
     return ScoreComponent(
         value=value,
         weight=weight,
-    )  
+    )

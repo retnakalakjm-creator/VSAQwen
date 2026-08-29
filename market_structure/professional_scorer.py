@@ -19,6 +19,7 @@ from models import (
 )
 from .structural_swing_scorer import StructuralSwingScorer
 from .smart_money import SmartMoneyAnalyzer
+from line_profiler import profile
 
 
 class ProfessionalScorer:
@@ -67,6 +68,127 @@ class ProfessionalScorer:
     @staticmethod
     def _valid_float(value) -> bool:
         return not pd.isna(value)
+
+    def prepare_history_snapshots(
+        self,
+        swings: list[Swing] | tuple[Swing, ...],
+        arrays,
+        lookback: int,
+    ) -> tuple[SwingHistorySnapshot | None, ...]:
+        """
+        Prepare structural history snapshots once for a swing sequence.
+
+        The resulting snapshots preserve the same historical window and
+        validity rules as _history_snapshot(), but avoid rebuilding the
+        swing-derived history independently for every score call.
+        """
+        (
+            _open_values,
+            _high_values,
+            _low_values,
+            _close_values,
+            volume_values,
+            spread_values,
+            _avg_volume_values,
+            avg_spread_values,
+        ) = arrays
+
+        volume_valid, spread_valid, avg_spread_valid = self._metric_valid_cache
+        swings = tuple(swings)
+        snapshots: list[SwingHistorySnapshot | None] = [None] * len(swings)
+
+        pair_amplitudes: list[float | None] = [None] * len(swings)
+        pair_durations: list[int | None] = [None] * len(swings)
+        spread_adjusted_high: list[float | None] = [None] * len(swings)
+        spread_adjusted_low: list[float | None] = [None] * len(swings)
+        swing_volumes: list[float | None] = [None] * len(swings)
+        swing_spreads: list[float | None] = [None] * len(swings)
+
+        for index, current in enumerate(swings):
+            if index == 0:
+                continue
+
+            previous = swings[index - 1]
+            pair_amplitude = abs(current.price - previous.price)
+            pair_duration = abs(current.bar_index - previous.bar_index)
+            pair_amplitudes[index] = pair_amplitude
+            pair_durations[index] = pair_duration
+
+            metrics_index = current.metrics_index
+            avg_spread = avg_spread_values[metrics_index]
+            if avg_spread_valid[metrics_index] and avg_spread > 0:
+                adjusted = pair_amplitude / avg_spread
+                if current.type.value == "high":
+                    spread_adjusted_high[index] = adjusted
+                else:
+                    spread_adjusted_low[index] = adjusted
+
+            if volume_valid[metrics_index]:
+                swing_volumes[index] = float(volume_values[metrics_index])
+            if spread_valid[metrics_index]:
+                swing_spreads[index] = float(spread_values[metrics_index])
+
+            start = max(0, index - lookback + 1)
+            history_end = index
+
+            current_adjusted_history = (
+                spread_adjusted_high
+                if current.type.value == "high"
+                else spread_adjusted_low
+            )
+            amplitudes = tuple(
+                value
+                for value in pair_amplitudes[start:history_end]
+                if value is not None
+            )
+
+            spread_adjusted_amplitudes = tuple(
+                value
+                for value in current_adjusted_history[start:history_end]
+                if value is not None
+            )
+
+            durations = tuple(
+                value
+                for value in pair_durations[start:history_end]
+                if value is not None
+            )
+
+            volumes = tuple(
+                value
+                for value in swing_volumes[start:index]
+                if value is not None
+            )
+
+            spreads = tuple(
+                value
+                for value in swing_spreads[start:index]
+                if value is not None
+            )
+            snapshots[index] = SwingHistorySnapshot(
+                current_amplitude=pair_amplitude,
+                current_duration=pair_duration,
+                current_spread_adjusted_amplitude=(
+                    pair_amplitude / avg_spread
+                    if avg_spread_valid[metrics_index] and avg_spread > 0
+                    else None
+                ),
+                amplitudes=amplitudes,
+                spread_adjusted_amplitudes=spread_adjusted_amplitudes,
+                durations=durations,
+                volumes=volumes,
+                spreads=spreads,
+
+                sorted_amplitudes=tuple(sorted(amplitudes)),
+                sorted_spread_adjusted_amplitudes=tuple(
+                    sorted(spread_adjusted_amplitudes)
+                ),
+                sorted_durations=tuple(sorted(durations)),
+                sorted_volumes=tuple(sorted(volumes)),
+                sorted_spreads=tuple(sorted(spreads)),
+            )
+
+        return tuple(snapshots)
 
     def _history_snapshot(
         self,
@@ -174,36 +296,45 @@ class ProfessionalScorer:
         metrics: pd.DataFrame,
         current: Swing,
         arrays=None,
+        history_snapshot: SwingHistorySnapshot | None = None,
     ) -> SwingContext:
         if arrays is None:
             arrays = self._metric_arrays(metrics)
 
-        return SwingContext(
-            swing=current,
-            history=self._history_snapshot(
+        if history_snapshot is None:
+            history_snapshot = self._history_snapshot(
                 history,
                 arrays,
                 config.STRUCTURE_LOOKBACK,
-            ),
+            )
+
+        return SwingContext(
+            swing=current,
+            history=history_snapshot,
             metrics=self._metric_snapshot(
                 arrays,
                 current,
             ),
         )
-
+    
+    @profile
     def score(
         self,
         history: SwingHistoryAnalyzer,
         metrics: pd.DataFrame,
+        arrays = None,
+        history_snapshot: SwingHistorySnapshot | None = None,        
     ) -> SwingProfessionalEvaluation:
         current = history.current()
-        arrays = self._metric_arrays(metrics)
+        if arrays is None:
+            arrays = self._metric_arrays(metrics)
 
         ctx = self._build_context(
             history,
             metrics,
             current,
             arrays,
+            history_snapshot,
         )
 
         evaluation = self._structure.score(ctx)
@@ -262,7 +393,7 @@ class ProfessionalScorer:
         lookback: int = 3,
     ) -> SmartMoneySnapshot:
         end = swing.metrics_index + 1
-        start = max(0, end - lookback)
+        start = max(0, end - 2)
 
         arrays = (
             self._metric_arrays(source)

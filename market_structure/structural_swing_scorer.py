@@ -7,13 +7,10 @@ from models import (
     SwingContext,
     SwingHistorySnapshot,
 )
-from utils.ranking import percentile_rank
+from utils.ranking import percentile_rank, percentile_rank_sorted
 from collections.abc import Sequence
 
-from utils.scoring import ScoreComponent, combine_scores, component
-
-
-
+from line_profiler import profile
 
 class StructuralSwingScorer:
     """
@@ -28,6 +25,7 @@ class StructuralSwingScorer:
 
         self._structure_lookback = structure_lookback
 
+    @profile
     def score(
         self,
         ctx: SwingContext,
@@ -43,26 +41,22 @@ class StructuralSwingScorer:
 
         spread = self._evaluate_spread(ctx)
 
-        
-
         return self._combine_scores(
             snapshot=ctx.history,
             price=price,
             structural_size=structural_size,
             duration=duration,
             volume=volume,
-            spread=spread,            
+            spread=spread,
         )
-    
-    
+
     # ------------------------------------------
     # Internal helpers
     # ------------------------------------------
-
     def _percentile_score(
         self,
         value: float | None,
-        sample: Sequence[float | None],
+        sample: Sequence[float],
     ) -> float:
         """
         Convert a value into a normalized percentile score
@@ -81,11 +75,8 @@ class StructuralSwingScorer:
         if not sample:
             return 0.0
 
-        return percentile_rank(
-            value,
-            sample,
-        )
-            
+        return percentile_rank_sorted(value, sample)
+
     # ------------------------------------------
     # Individual scoring components
     # ------------------------------------------
@@ -106,7 +97,7 @@ class StructuralSwingScorer:
             amplitude,
             sample,
         )
-    
+
     def _evaluate_structural_size(
         self,
         ctx: SwingContext,
@@ -115,7 +106,7 @@ class StructuralSwingScorer:
         Score swing amplitude relative to the
         average spread at the current swing.
         """
-            
+
         value = ctx.history.current_spread_adjusted_amplitude
 
         sample = ctx.history.spread_adjusted_amplitudes
@@ -124,7 +115,7 @@ class StructuralSwingScorer:
             value,
             sample,
         )
-    
+
     def _evaluate_duration(
         self,
         ctx: SwingContext,
@@ -141,7 +132,7 @@ class StructuralSwingScorer:
             duration,
             sample,
         )
-    
+
     def _evaluate_volume(
         self,
         ctx: SwingContext,
@@ -192,33 +183,34 @@ class StructuralSwingScorer:
         volume: float,
         spread: float,
     ) -> StructuralSwingEvaluation:
-        
-        components = (
-            component(
-                price,
-                config.STRUCTURE_PRICE_WEIGHT,
-            ),
-            component(
-                structural_size,
-                config.STRUCTURE_STRUCTURAL_SIZE_WEIGHT,
-            ),
-            component(
-                duration,
-                config.STRUCTURE_DURATION_WEIGHT,
-            ),
-            component(
-                volume,
-                config.STRUCTURE_VOLUME_WEIGHT,
-            ),
-            component(
-                spread,
-                config.STRUCTURE_SPREAD_WEIGHT,
-            ),
+
+        price_weight = config.STRUCTURE_PRICE_WEIGHT
+        structural_size_weight = config.STRUCTURE_STRUCTURAL_SIZE_WEIGHT
+        duration_weight = config.STRUCTURE_DURATION_WEIGHT
+        volume_weight = config.STRUCTURE_VOLUME_WEIGHT
+        spread_weight = config.STRUCTURE_SPREAD_WEIGHT
+
+        total_weight = (
+            price_weight
+            + structural_size_weight
+            + duration_weight
+            + volume_weight
+            + spread_weight
         )
 
-        overall = combine_scores(
-            components,
-        )
+        if total_weight <= 0:
+            overall = 0.0
+        else:
+            overall = min(
+                (
+                    price * price_weight
+                    + structural_size * structural_size_weight
+                    + duration * duration_weight
+                    + volume * volume_weight
+                    + spread * spread_weight
+                ) / total_weight,
+                1.0,
+            )
 
         return StructuralSwingEvaluation(
             score=StructuralSwingScore(

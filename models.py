@@ -605,6 +605,16 @@ class SwingHistorySnapshot:
     volumes: tuple[float, ...]
 
     spreads: tuple[float, ...]
+    
+    sorted_amplitudes: tuple[float, ...]
+    
+    sorted_spread_adjusted_amplitudes: tuple[float, ...]
+    
+    sorted_durations: tuple[int, ...]
+    
+    sorted_volumes: tuple[float, ...]
+    
+    sorted_spreads: tuple[float, ...]
 
 
 @dataclass(slots=True, frozen=True)

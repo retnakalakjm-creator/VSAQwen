@@ -470,8 +470,7 @@ class SwingHistoryAnalyzer:
         swings = self.swings[start:self.current_index]
         values: list[float] = []
 
-        for swing in swings:
-                        
+        for swing in swings:            
             value = values_column[swing.metrics_index]
 
             if pd.isna(value):
@@ -646,53 +645,88 @@ class SwingHistoryAnalyzer:
         metrics: pd.DataFrame,
         lookback: int,
     ) -> SwingHistorySnapshot:
-        avg_spreads = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
+        """
+        Build the complete historical scoring snapshot in one pass.
+
+        The snapshot contains the same values as the individual
+        historical helper methods, but avoids repeatedly slicing the
+        swing history and extracting the same metric columns.
+        """
+
+        if lookback <= 0:
+            raise ValueError("lookback must be greater than zero")
+
         current = self.current()
-        current_amplitude = self._current_amplitude()
-        
-        # avg_spread = float(
-        #     metrics.iloc[current.metrics_index][COL_AVG_SPREAD]
-        # )
-        avg_spread = float(avg_spreads[current.metrics_index])
-        current_spread_adjusted_amplitude = (
-            current_amplitude / avg_spread
-            if avg_spread > 0
+        previous = self.previous()
+
+        current_amplitude = (
+            abs(current.price - previous.price)
+            if previous is not None
             else None
         )
-        
-        spread_adjusted_amplitudes = (
-            self._previous_spread_adjusted_amplitudes_by_type(
-                metrics,
-                current.type,
-                lookback,
-            )
+        current_duration = (
+            abs(current.bar_index - previous.bar_index)
+            if previous is not None
+            else None
         )
-        
+
+        avg_spreads = metrics[COL_AVG_SPREAD].to_numpy(copy=False)
+        volumes_column = metrics[COL_VOLUME].to_numpy(copy=False)
+        spreads_column = metrics[COL_SPREAD].to_numpy(copy=False)
+
+        avg_spread = avg_spreads[current.metrics_index]
+        current_spread_adjusted_amplitude = (
+            current_amplitude / avg_spread
+            if current_amplitude is not None
+            and not pd.isna(avg_spread)
+            and avg_spread > 0
+            else None
+        )
+
+        start = max(0, self.current_index - lookback + 1)
+        previous_swings = self.swings[start:self.current_index]
+
+        amplitudes: list[float] = []
+        durations: list[int] = []
+        spread_adjusted_amplitudes: list[float] = []
+        volumes: list[float] = []
+        spreads: list[float] = []
+
+        previous_swing = None
+        for swing in previous_swings:
+            metrics_index = swing.metrics_index
+
+            volume = volumes_column[metrics_index]
+            if not pd.isna(volume):
+                volumes.append(float(volume))
+
+            spread = spreads_column[metrics_index]
+            if not pd.isna(spread):
+                spreads.append(float(spread))
+
+            if previous_swing is not None:
+                amplitude = abs(swing.price - previous_swing.price)
+                amplitudes.append(amplitude)
+                durations.append(
+                    abs(swing.bar_index - previous_swing.bar_index)
+                )
+
+                if swing.type == current.type:
+                    avg_spread = avg_spreads[metrics_index]
+                    if not pd.isna(avg_spread) and avg_spread > 0:
+                        spread_adjusted_amplitudes.append(
+                            amplitude / avg_spread
+                        )
+
+            previous_swing = swing
+
         return SwingHistorySnapshot(
             current_amplitude=current_amplitude,
-            current_duration=self._current_duration(),
+            current_duration=current_duration,
             current_spread_adjusted_amplitude=current_spread_adjusted_amplitude,
-            amplitudes=tuple(
-                self._previous_amplitudes(lookback)
-            ),
-            spread_adjusted_amplitudes=tuple(
-                spread_adjusted_amplitudes
-            ),
-            durations=tuple(
-                self._previous_durations(lookback)
-            ),
-            volumes=tuple(
-                self._previous_metric_values(
-                    metrics,
-                    COL_VOLUME,
-                    lookback,
-                )
-            ),
-            spreads=tuple(
-                self._previous_metric_values(
-                    metrics,
-                    COL_SPREAD,
-                    lookback,
-                )
-            ),
+            amplitudes=tuple(amplitudes),
+            spread_adjusted_amplitudes=tuple(spread_adjusted_amplitudes),
+            durations=tuple(durations),
+            volumes=tuple(volumes),
+            spreads=tuple(spreads),
         )
