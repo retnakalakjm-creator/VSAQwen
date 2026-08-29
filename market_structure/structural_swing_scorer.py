@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import config
 
 from models import (
@@ -31,23 +32,55 @@ class StructuralSwingScorer:
         ctx: SwingContext,
     ) -> StructuralSwingEvaluation:
 
-        price  = self._evaluate_amplitude(ctx)
+        history = ctx.history
 
-        structural_size = self._evaluate_structural_size(ctx)
+        amplitude = history.current_amplitude
+        amplitude_sample = history.sorted_amplitudes
+        price = (
+            percentile_rank_sorted(amplitude, amplitude_sample)
+            if amplitude_sample
+            else 0.0
+        )
 
-        duration = self._evaluate_duration(ctx)
+        structural_size_value = history.current_spread_adjusted_amplitude
+        structural_size_sample = history.sorted_spread_adjusted_amplitudes
+        structural_size = (
+            percentile_rank_sorted(structural_size_value, structural_size_sample)
+            if structural_size_value is not None and structural_size_sample
+            else 0.0
+        )
 
-        volume = self._evaluate_volume(ctx)
+        duration = history.current_duration
+        duration_sample = history.sorted_durations
+        duration_score = (
+            percentile_rank_sorted(duration, duration_sample)
+            if duration_sample
+            else 0.0
+        )
 
-        spread = self._evaluate_spread(ctx)
+        volume = ctx.metrics.volume
+        volume_sample = history.sorted_volumes
+        volume_score = (
+            percentile_rank_sorted(volume, volume_sample)
+            if volume_sample
+            else 0.0
+        )
+
+        spread = ctx.metrics.spread
+        spread_sample = history.sorted_spreads
+        spread_score = (
+            percentile_rank_sorted(spread, spread_sample)
+            if spread_sample
+            else 0.0
+        )
 
         return self._combine_scores(
-            snapshot=ctx.history,
+            snapshot=history,
             price=price,
             structural_size=structural_size,
-            duration=duration,
-            volume=volume,
-            spread=spread,
+            duration=duration_score,
+            volume=volume_score,
+            spread=spread_score,
         )
 
     # ------------------------------------------
