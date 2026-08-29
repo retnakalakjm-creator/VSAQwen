@@ -1,0 +1,360 @@
+Timer unit: 1e-07 s
+
+Total time: 0.213314 s
+File: C:\Users\User\ProVSA\market_structure\professional_scorer.py
+Function: ProfessionalScorer._smart_money_snapshot at line 388
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   388                                               @profile
+   389                                               def _smart_money_snapshot(
+   390                                                   self,
+   391                                                   source,
+   392                                                   swing: Swing,
+   393                                                   lookback: int = 3,
+   394                                               ) -> SmartMoneySnapshot:
+   395      7024      34913.0      5.0      1.6          end = swing.metrics_index + 1
+   396      7024      46308.0      6.6      2.2          start = max(0, end - 2)
+   397                                           
+   398      7024      25385.0      3.6      1.2          arrays = (
+   399                                                       self._metric_arrays(source)
+   400      7024      37252.0      5.3      1.7              if isinstance(source, pd.DataFrame)
+   401      7024      23284.0      3.3      1.1              else source
+   402                                                   )
+   403      7024      31177.0      4.4      1.5          (
+   404      7024      25823.0      3.7      1.2              open_values,
+   405      7024      22920.0      3.3      1.1              high_values,
+   406      7024      22965.0      3.3      1.1              low_values,
+   407      7024      21662.0      3.1      1.0              close_values,
+   408      7024      22628.0      3.2      1.1              volume_values,
+   409      7024      21372.0      3.0      1.0              spread_values,
+   410      7024      20674.0      2.9      1.0              avg_volume_values,
+   411      7024      21238.0      3.0      1.0              avg_spread_values,
+   412      7024      21788.0      3.1      1.0          ) = arrays
+   413                                           
+   414     14048    1546086.0    110.1     72.5          bars = tuple(
+   415                                                       SmartMoneyBar(
+   416                                                           open=float(open_values[index]),
+   417                                                           high=float(high_values[index]),
+   418                                                           low=float(low_values[index]),
+   419                                                           close=float(close_values[index]),
+   420                                                           spread=float(spread_values[index]),
+   421                                                           avg_spread=float(avg_spread_values[index]),
+   422                                                           volume=float(volume_values[index]),
+   423                                                           avg_volume=float(avg_volume_values[index]),
+   424                                                       )
+   425      7024      52478.0      7.5      2.5              for index in range(start, end)
+   426                                                   )
+   427                                           
+   428      7024     135189.0     19.2      6.3          return SmartMoneySnapshot(bars=bars)
+
+Total time: 0.2841 s
+File: C:\Users\User\ProVSA\market_structure\smart_money.py
+Function: SmartMoneyAnalyzer._evaluate_stopping_volume at line 54
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    54                                               @profile
+    55                                               def _evaluate_stopping_volume(
+    56                                                   self,
+    57                                                   bars: tuple[SmartMoneyBar, ...],
+    58                                               ) -> ScoreBreakdown:
+    59                                           
+    60      7024      39381.0      5.6      1.4          if len(bars) < 2:
+    61                                                       return ScoreBreakdown.empty()
+    62                                           
+    63      7024      29209.0      4.2      1.0          bar = bars[-1]
+    64                                           
+    65     14048     206616.0     14.7      7.3          volume = band_score(
+    66      7024     120710.0     17.2      4.2              bar.volume_ratio,
+    67      7024      25142.0      3.6      0.9              config.STOPPING_VOLUME_BANDS,
+    68                                                   )
+    69                                           
+    70     14048     186655.0     13.3      6.6          close = band_score(
+    71      7024     157404.0     22.4      5.5              bar.close_position,
+    72      7024      22992.0      3.3      0.8              config.STOPPING_CLOSE_POSITION_BANDS,
+    73                                                   )
+    74                                           
+    75     14048     166568.0     11.9      5.9          tail = band_score(
+    76      7024     216235.0     30.8      7.6              bar.lower_tail_ratio,
+    77      7024      24996.0      3.6      0.9              config.STOPPING_LOWER_TAIL_BANDS,
+    78                                                   )
+    79                                           
+    80      7024      24532.0      3.5      0.9          components = (
+    81     14048     270502.0     19.3      9.5              component(
+    82      7024      19975.0      2.8      0.7                  volume,
+    83      7024      21482.0      3.1      0.8                  config.SMART_MONEY_STOPPING_VOLUME_WEIGHT,
+    84                                                       ),
+    85     14048     247243.0     17.6      8.7              component(
+    86      7024      19899.0      2.8      0.7                  close,
+    87      7024      22408.0      3.2      0.8                  config.SMART_MONEY_STOPPING_CLOSE_WEIGHT,
+    88                                                       ),
+    89     14048     244716.0     17.4      8.6              component(
+    90      7024      22714.0      3.2      0.8                  tail,
+    91      7024      22921.0      3.3      0.8                  config.SMART_MONEY_STOPPING_TAIL_WEIGHT,
+    92                                                       ),
+    93                                                   )
+    94                                           
+    95     14048     474799.0     33.8     16.7          overall = combine_scores(
+    96      7024      20680.0      2.9      0.7              components,
+    97                                                   )
+    98                                           
+    99     14048     188630.0     13.4      6.6          return ScoreBreakdown(
+   100      7024      23159.0      3.3      0.8              overall=overall,
+   101      7024      21430.0      3.1      0.8              components=components,
+   102                                                   )
+
+Total time: 0.30242 s
+File: C:\Users\User\ProVSA\market_structure\smart_money.py
+Function: SmartMoneyAnalyzer._evaluate_climactic_volume at line 104
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   104                                               @profile
+   105                                               def _evaluate_climactic_volume(
+   106                                                   self,
+   107                                                   bars: tuple[SmartMoneyBar, ...],
+   108                                               ) -> ScoreBreakdown:
+   109                                           
+   110      7024      35795.0      5.1      1.2          if len(bars) == 0:
+   111                                                       return ScoreBreakdown.empty()
+   112                                           
+   113      7024      27365.0      3.9      0.9          bar = bars[-1]
+   114                                           
+   115     14048     236627.0     16.8      7.8          volume = band_score(
+   116      7024     108170.0     15.4      3.6              bar.volume_ratio,
+   117      7024      25183.0      3.6      0.8              config.CLIMACTIC_VOLUME_BANDS,
+   118                                                   )
+   119                                           
+   120     14048     224954.0     16.0      7.4          spread = band_score(
+   121      7024     105380.0     15.0      3.5              bar.spread_ratio,
+   122      7024      24290.0      3.5      0.8              config.CLIMACTIC_SPREAD_BANDS,
+   123                                                   )
+   124                                           
+   125     14048     218491.0     15.6      7.2          close_score = band_score(
+   126      7024     390710.0     55.6     12.9              bar.extreme_close_position,
+   127      7024      25155.0      3.6      0.8              config.CLIMACTIC_CLOSE_POSITION_BANDS,
+   128                                                   )
+   129                                           
+   130      7024      22972.0      3.3      0.8          components = (
+   131     14048     258282.0     18.4      8.5              component(
+   132      7024      23653.0      3.4      0.8                  volume,
+   133      7024      22488.0      3.2      0.7                  config.SMART_MONEY_CLIMACTIC_VOLUME_WEIGHT,
+   134                                                       ),
+   135     14048     249303.0     17.7      8.2              component(
+   136      7024      20706.0      2.9      0.7                  spread,
+   137      7024      22813.0      3.2      0.8                  config.SMART_MONEY_CLIMACTIC_SPREAD_WEIGHT,
+   138                                                       ),
+   139     14048     241030.0     17.2      8.0              component(
+   140      7024      21745.0      3.1      0.7                  close_score,
+   141      7024      22242.0      3.2      0.7                  config.SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT,
+   142                                                       ),
+   143                                                   )
+   144                                           
+   145     14048     459147.0     32.7     15.2          overall = combine_scores(
+   146      7024      19732.0      2.8      0.7              components,
+   147                                                   )
+   148                                           
+   149     14048     176703.0     12.6      5.8          return ScoreBreakdown(
+   150      7024      20985.0      3.0      0.7              overall=overall,
+   151      7024      20276.0      2.9      0.7              components=components,
+   152                                                   )
+
+Total time: 0.32165 s
+File: C:\Users\User\ProVSA\market_structure\structural_swing_scorer.py
+Function: StructuralSwingScorer.score at line 28
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    28                                               @profile
+    29                                               def score(
+    30                                                   self,
+    31                                                   ctx: SwingContext,
+    32                                               ) -> StructuralSwingEvaluation:
+    33                                           
+    34      7024     397922.0     56.7     12.4          price  = self._evaluate_amplitude(ctx)
+    35                                           
+    36      7024     353086.0     50.3     11.0          structural_size = self._evaluate_structural_size(ctx)
+    37                                           
+    38      7024     349386.0     49.7     10.9          duration = self._evaluate_duration(ctx)
+    39                                           
+    40      7024     341132.0     48.6     10.6          volume = self._evaluate_volume(ctx)
+    41                                           
+    42      7024     335339.0     47.7     10.4          spread = self._evaluate_spread(ctx)
+    43                                           
+    44     14048    1315767.0     93.7     40.9          return self._combine_scores(
+    45      7024      23035.0      3.3      0.7              snapshot=ctx.history,
+    46      7024      23795.0      3.4      0.7              price=price,
+    47      7024      19963.0      2.8      0.6              structural_size=structural_size,
+    48      7024      19130.0      2.7      0.6              duration=duration,
+    49      7024      19934.0      2.8      0.6              volume=volume,
+    50      7024      18010.0      2.6      0.6              spread=spread,
+    51                                                   )
+
+Total time: 0.843988 s
+File: C:\Users\User\ProVSA\market_structure\smart_money.py
+Function: SmartMoneyAnalyzer.score at line 15
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    15                                               @profile
+    16                                               def score(
+    17                                                   self,
+    18                                                   snapshot: SmartMoneySnapshot,
+    19                                               ) -> SmartMoneyScore:
+    20                                           
+    21      7024      28212.0      4.0      0.3          bars = snapshot.bars
+    22                                           
+    23     14048    3352698.0    238.7     39.7          stopping = self._evaluate_stopping_volume(
+    24      7024      21249.0      3.0      0.3              bars,
+    25                                                   )
+    26                                           
+    27     14048    3561964.0    253.6     42.2          climactic = self._evaluate_climactic_volume(
+    28      7024      22189.0      3.2      0.3              bars,
+    29                                                   )
+    30                                           
+    31      7024      22828.0      3.2      0.3          components = (
+    32     14048     251101.0     17.9      3.0              component(
+    33      7024      23661.0      3.4      0.3                  stopping.overall,
+    34      7024      25389.0      3.6      0.3                  config.SMART_MONEY_STOPPING_WEIGHT,
+    35                                                       ),
+    36     14048     253085.0     18.0      3.0              component(
+    37      7024      22259.0      3.2      0.3                  climactic.overall,
+    38      7024      21073.0      3.0      0.2                  config.SMART_MONEY_CLIMACTIC_WEIGHT,
+    39                                                       ),
+    40                                                   )
+    41                                           
+    42     14048     410285.0     29.2      4.9          overall = combine_scores(
+    43      7024      19779.0      2.8      0.2              components,
+    44                                                   )
+    45                                           
+    46     14048     295727.0     21.1      3.5          return SmartMoneyScore(
+    47      7024      22049.0      3.1      0.3              stopping_volume=stopping.overall,
+    48      7024      20352.0      2.9      0.2              stopping_breakdown=stopping,
+    49      7024      22521.0      3.2      0.3              climactic_volume=climactic.overall,
+    50      7024      21985.0      3.1      0.3              climactic_breakdown=climactic,
+    51      7024      21478.0      3.1      0.3              overall=overall,
+    52                                                   )
+
+Total time: 1.91119 s
+File: C:\Users\User\ProVSA\market_structure\professional_scorer.py
+Function: ProfessionalScorer.score at line 319
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   319                                               @profile
+   320                                               def score(
+   321                                                   self,
+   322                                                   history: SwingHistoryAnalyzer,
+   323                                                   metrics: pd.DataFrame,
+   324                                                   arrays=None,
+   325                                                   history_snapshot: SwingHistorySnapshot | None = None,
+   326                                               ) -> SwingProfessionalEvaluation:
+   327      7024      88619.0     12.6      0.5          current = history.current()
+   328      7024      25531.0      3.6      0.1          if arrays is None:
+   329                                                       arrays = self._metric_arrays(metrics)
+   330                                           
+   331     14048    1525628.0    108.6      8.0          ctx = self._build_context(
+   332      7024      22288.0      3.2      0.1              history,
+   333      7024      23351.0      3.3      0.1              metrics,
+   334      7024      23192.0      3.3      0.1              current,
+   335      7024      23408.0      3.3      0.1              arrays,
+   336      7024      20645.0      2.9      0.1              history_snapshot,
+   337                                                   )
+   338                                           
+   339      7024    3631231.0    517.0     19.0          evaluation = self._structure.score(ctx)
+   340                                           
+   341     14048    2720625.0    193.7     14.2          snapshot = self._smart_money_snapshot(
+   342      7024      24014.0      3.4      0.1              arrays,
+   343      7024      23472.0      3.3      0.1              current,
+   344                                                   )
+   345                                           
+   346      7024    8918081.0   1269.7     46.7          smart_money = self._smart_money.score(snapshot)
+   347                                           
+   348     14048    1704077.0    121.3      8.9          professional_score = SwingProfessionalScore.create(
+   349      7024      26651.0      3.8      0.1              evaluation.score,
+   350      7024      22967.0      3.3      0.1              smart_money,
+   351                                                   )
+   352     14048     220583.0     15.7      1.2          return SwingProfessionalEvaluation(
+   353      7024      23106.0      3.3      0.1              structure=evaluation,
+   354      7024      24006.0      3.4      0.1              smart_money=smart_money,
+   355      7024      20455.0      2.9      0.1              professional=professional_score,
+   356                                                   )
+
+Total time: 3.08548 s
+File: C:\Users\User\ProVSA\market_structure\structure_filter.py
+Function: StructureFilter.filter at line 22
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    22                                               @profile
+    23                                               def filter(
+    24                                                   self,
+    25                                                   swings: list[Swing],
+    26                                                   metrics: pd.DataFrame,
+    27                                               ) -> list[StructuralSwing]:
+    28                                           
+    29        62        447.0      7.2      0.0          self._metrics = metrics
+    30        62        314.0      5.1      0.0          structural: list[StructuralSwing] = []
+    31        62        284.0      4.6      0.0          previous: Swing | None = None
+    32        62       4860.0     78.4      0.0          scorer = ProfessionalScorer()
+    33        62        584.0      9.4      0.0          swing_tuple = tuple(swings)
+    34        62     314399.0   5071.0      1.0          arrays = scorer._metric_arrays(metrics)
+    35       124    9942082.0  80178.1     32.2          history_snapshots = scorer.prepare_history_snapshots(
+    36        62        446.0      7.2      0.0              swing_tuple,
+    37        62        239.0      3.9      0.0              arrays,
+    38        62        392.0      6.3      0.0              config.STRUCTURE_LOOKBACK,
+    39                                                   )
+    40                                           
+    41      7148      32420.0      4.5      0.1          for index, current in enumerate(swings):
+    42                                           
+    43                                                       # A first confirmed swing has no previous swing, so its
+    44                                                       # amplitude-based professional metrics are undefined.
+    45                                                       # It cannot be structurally scored yet.
+    46      7086      22629.0      3.2      0.1              if index == 0:
+    47        62        228.0      3.7      0.0                  previous = current
+    48        62        187.0      3.0      0.0                  continue
+    49                                           
+    50     14048     169253.0     12.0      0.5              history = SwingHistoryAnalyzer(
+    51      7024      22659.0      3.2      0.1                  swings=swing_tuple,
+    52      7024      22634.0      3.2      0.1                  current_index=index,
+    53                                                       )
+    54                                           
+    55     14048   19676393.0   1400.7     63.8              evaluation = scorer.score(
+    56      7024      20697.0      2.9      0.1                  history,
+    57      7024      21202.0      3.0      0.1                  metrics,
+    58      7024      20389.0      2.9      0.1                  arrays=arrays,
+    59      7024      25588.0      3.6      0.1                  history_snapshot=history_snapshots[index],
+    60                                                       )
+    61                                           
+    62                                                       # testing
+    63                                                       # if evaluation.professional.overall >= 0.70:
+    64                                                       #     print_professional_score(
+    65                                                       #         history.current(),
+    66                                                       #         evaluation
+    67                                                       #     )
+    68                                                       # testing
+    69                                           
+    70      7024      89499.0     12.7      0.3              grade = self._grade_swing(evaluation.professional.overall)
+    71                                           
+    72     14048     259974.0     18.5      0.8              structural_swing = StructuralSwing(
+    73      7024      22803.0      3.2      0.1                  swing=current,
+    74      7024      20034.0      2.9      0.1                  evaluation=evaluation,
+    75      7024      20642.0      2.9      0.1                  grade=grade,
+    76                                                       )
+    77                                           
+    78      7024      86327.0     12.3      0.3              if self._is_structural(evaluation.professional.overall):
+    79      5714      23904.0      4.2      0.1                  structural.append(
+    80      2857       8762.0      3.1      0.0                      structural_swing,
+    81                                                           )
+    82      7024      23569.0      3.4      0.1              previous = current
+    83                                           
+    84        62        941.0     15.2      0.0          return structural
+
+  0.21 seconds - C:\Users\User\ProVSA\market_structure\professional_scorer.py:388 - ProfessionalScorer._smart_money_snapshot
+  0.28 seconds - C:\Users\User\ProVSA\market_structure\smart_money.py:54 - SmartMoneyAnalyzer._evaluate_stopping_volume
+  0.30 seconds - C:\Users\User\ProVSA\market_structure\smart_money.py:104 - SmartMoneyAnalyzer._evaluate_climactic_volume
+  0.32 seconds - C:\Users\User\ProVSA\market_structure\structural_swing_scorer.py:28 - StructuralSwingScorer.score
+  0.84 seconds - C:\Users\User\ProVSA\market_structure\smart_money.py:15 - SmartMoneyAnalyzer.score
+  1.91 seconds - C:\Users\User\ProVSA\market_structure\professional_scorer.py:319 - ProfessionalScorer.score
+  3.09 seconds - C:\Users\User\ProVSA\market_structure\structure_filter.py:22 - StructureFilter.filter
