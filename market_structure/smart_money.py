@@ -12,6 +12,7 @@ class SmartMoneyAnalyzer:
     Analyze smart-money activity inside the current swing.
     """
 
+    @profile
     def score(
         self,
         snapshot: SmartMoneySnapshot,

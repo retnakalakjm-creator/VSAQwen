@@ -178,7 +178,6 @@ class ProfessionalScorer:
                 durations=durations,
                 volumes=volumes,
                 spreads=spreads,
-
                 sorted_amplitudes=tuple(sorted(amplitudes)),
                 sorted_spread_adjusted_amplitudes=tuple(
                     sorted(spread_adjusted_amplitudes)
@@ -316,14 +315,14 @@ class ProfessionalScorer:
                 current,
             ),
         )
-    
+
     @profile
     def score(
         self,
         history: SwingHistoryAnalyzer,
         metrics: pd.DataFrame,
-        arrays = None,
-        history_snapshot: SwingHistorySnapshot | None = None,        
+        arrays=None,
+        history_snapshot: SwingHistorySnapshot | None = None,
     ) -> SwingProfessionalEvaluation:
         current = history.current()
         if arrays is None:
@@ -386,6 +385,7 @@ class ProfessionalScorer:
             avg_spread=float(avg_spread_values[i]),
         )
 
+    @profile
     def _smart_money_snapshot(
         self,
         source,
