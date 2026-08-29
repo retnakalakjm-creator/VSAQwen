@@ -22,8 +22,26 @@ def band_score(
     """
     Return the first matching score.
 
-    Bands must be ordered from highest threshold\nto lowest threshold.
+    Bands must be ordered from highest threshold
+    to lowest threshold.
     """
+
+    band_count = len(bands)
+
+    if band_count == 3:
+        first = bands[0]
+        if value >= first.threshold:
+            return first.score
+
+        second = bands[1]
+        if value >= second.threshold:
+            return second.score
+
+        third = bands[2]
+        if value >= third.threshold:
+            return third.score
+
+        return 0.0
 
     for band in bands:
 

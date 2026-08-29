@@ -49,30 +49,168 @@ class SmartMoneyAnalyzer:
         if bar_count < 2:
             stopping = ScoreBreakdown.empty()
         else:
-            stopping = self._evaluate_stopping_values(
-                open_value=open_value,
-                low=low_value,
-                close_value=close_value,
-                spread=spread_value,
-                volume_value=volume_value,
-                avg_volume=avg_volume,
-                include_components=include_components,
+            volume_ratio = (
+                volume_value / avg_volume
+                if avg_volume > 0
+                else 0.0
+            )
+            close_position = (
+                (close_value - low_value) / spread_value
+                if spread_value > 0
+                else 0.5
+            )
+            lower_tail_ratio = (
+                (min(open_value, close_value) - low_value) / spread_value
+                if spread_value > 0
+                else 0.0
+            )
+
+            volume = self._stopping_volume_band(volume_ratio)
+            close = self._stopping_close_band(close_position)
+            tail = self._stopping_tail_band(lower_tail_ratio)
+
+            stopping_weight = config.SMART_MONEY_STOPPING_WEIGHT
+            volume_weight = config.SMART_MONEY_STOPPING_VOLUME_WEIGHT
+            close_weight = config.SMART_MONEY_STOPPING_CLOSE_WEIGHT
+            tail_weight = config.SMART_MONEY_STOPPING_TAIL_WEIGHT
+            stopping_total_weight = volume_weight + close_weight + tail_weight
+
+            if stopping_total_weight <= 0:
+                stopping_overall = 0.0
+            else:
+                stopping_overall = min(
+                    (
+                        volume * volume_weight
+                        + close * close_weight
+                        + tail * tail_weight
+                    ) / stopping_total_weight,
+                    1.0,
+                )
+
+            if include_components:
+                stopping_components = (
+                    component(volume, volume_weight),
+                    component(close, close_weight),
+                    component(tail, tail_weight),
+                )
+            else:
+                stopping_components = ()
+
+            stopping = ScoreBreakdown(
+                overall=stopping_overall,
+                components=stopping_components,
             )
 
         if bar_count == 0:
             climactic = ScoreBreakdown.empty()
         else:
-            climactic = self._evaluate_climactic_values(
-                low=low_value,
-                close_value=close_value,
-                spread=spread_value,
-                avg_spread=avg_spread,
-                volume_value=volume_value,
-                avg_volume=avg_volume,
-                include_components=include_components,
+            volume_ratio = (
+                volume_value / avg_volume
+                if avg_volume > 0
+                else 0.0
+            )
+            spread_ratio = (
+                spread_value / avg_spread
+                if avg_spread > 0
+                else 0.0
+            )
+            close_position = (
+                (close_value - low_value) / spread_value
+                if spread_value > 0
+                else 0.5
+            )
+            extreme_close_position = max(close_position, 1.0 - close_position)
+
+            volume = self._climactic_volume_band(volume_ratio)
+            spread_score = self._climactic_spread_band(spread_ratio)
+            close_score = self._climactic_close_band(extreme_close_position)
+
+            volume_weight = config.SMART_MONEY_CLIMACTIC_VOLUME_WEIGHT
+            spread_weight = config.SMART_MONEY_CLIMACTIC_SPREAD_WEIGHT
+            close_weight = config.SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT
+            climactic_total_weight = volume_weight + spread_weight + close_weight
+
+            if climactic_total_weight <= 0:
+                climactic_overall = 0.0
+            else:
+                climactic_overall = min(
+                    (
+                        volume * volume_weight
+                        + spread_score * spread_weight
+                        + close_score * close_weight
+                    ) / climactic_total_weight,
+                    1.0,
+                )
+
+            if include_components:
+                climactic_components = (
+                    component(volume, volume_weight),
+                    component(spread_score, spread_weight),
+                    component(close_score, close_weight),
+                )
+            else:
+                climactic_components = ()
+
+            climactic = ScoreBreakdown(
+                overall=climactic_overall,
+                components=climactic_components,
             )
 
         return self._build_score(stopping, climactic)
+
+    @staticmethod
+    def _stopping_volume_band(value: float) -> float:
+        if value >= 2.00:
+            return 0.40
+        if value >= 1.50:
+            return 0.20
+        return 0.0
+
+    @staticmethod
+    def _stopping_close_band(value: float) -> float:
+        if value >= 0.70:
+            return 0.30
+        if value >= 0.60:
+            return 0.15
+        return 0.0
+
+    @staticmethod
+    def _stopping_tail_band(value: float) -> float:
+        if value >= 0.35:
+            return 0.30
+        if value >= 0.25:
+            return 0.15
+        return 0.0
+
+    @staticmethod
+    def _climactic_volume_band(value: float) -> float:
+        if value >= 2.50:
+            return 1.00
+        if value >= 2.00:
+            return 0.70
+        if value >= 1.50:
+            return 0.40
+        return 0.0
+
+    @staticmethod
+    def _climactic_spread_band(value: float) -> float:
+        if value >= 2.00:
+            return 1.00
+        if value >= 1.50:
+            return 0.70
+        if value >= 1.20:
+            return 0.40
+        return 0.0
+
+    @staticmethod
+    def _climactic_close_band(value: float) -> float:
+        if value >= 0.90:
+            return 1.00
+        if value >= 0.80:
+            return 0.70
+        if value >= 0.70:
+            return 0.40
+        return 0.0
 
     @staticmethod
     def _build_score(
@@ -161,17 +299,21 @@ class SmartMoneyAnalyzer:
         volume_value: float,
         avg_volume: float,
         include_components: bool = False,
+        volume_ratio: float | None = None,
+        close_position: float | None = None,
     ) -> ScoreBreakdown:
-        volume_ratio = (
-            volume_value / avg_volume
-            if avg_volume > 0
-            else 0.0
-        )
-        close_position = (
-            (close_value - low) / spread
-            if spread > 0
-            else 0.5
-        )
+        if volume_ratio is None:
+            volume_ratio = (
+                volume_value / avg_volume
+                if avg_volume > 0
+                else 0.0
+            )
+        if close_position is None:
+            close_position = (
+                (close_value - low) / spread
+                if spread > 0
+                else 0.5
+            )
         lower_tail_ratio = (
             (min(open_value, close_value) - low) / spread
             if spread > 0
@@ -272,22 +414,26 @@ class SmartMoneyAnalyzer:
         volume_value: float,
         avg_volume: float,
         include_components: bool = False,
+        volume_ratio: float | None = None,
+        close_position: float | None = None,
     ) -> ScoreBreakdown:
-        volume_ratio = (
-            volume_value / avg_volume
-            if avg_volume > 0
-            else 0.0
-        )
+        if volume_ratio is None:
+            volume_ratio = (
+                volume_value / avg_volume
+                if avg_volume > 0
+                else 0.0
+            )
         spread_ratio = (
             spread / avg_spread
             if avg_spread > 0
             else 0.0
         )
-        close_position = (
-            (close_value - low) / spread
-            if spread > 0
-            else 0.5
-        )
+        if close_position is None:
+            close_position = (
+                (close_value - low) / spread
+                if spread > 0
+                else 0.5
+            )
         extreme_close_position = max(close_position, 1.0 - close_position)
 
         volume = band_score(volume_ratio, config.CLIMACTIC_VOLUME_BANDS)
