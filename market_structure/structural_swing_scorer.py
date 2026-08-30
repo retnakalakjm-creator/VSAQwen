@@ -27,6 +27,18 @@ class StructuralSwingScorer:
     ) -> None:
 
         self._structure_lookback = structure_lookback
+        self._price_weight = config.STRUCTURE_PRICE_WEIGHT
+        self._structural_size_weight = config.STRUCTURE_STRUCTURAL_SIZE_WEIGHT
+        self._duration_weight = config.STRUCTURE_DURATION_WEIGHT
+        self._volume_weight = config.STRUCTURE_VOLUME_WEIGHT
+        self._spread_weight = config.STRUCTURE_SPREAD_WEIGHT
+        self._total_weight = (
+            self._price_weight
+            + self._structural_size_weight
+            + self._duration_weight
+            + self._volume_weight
+            + self._spread_weight
+        )
 
     @profile
     def score(
@@ -35,11 +47,12 @@ class StructuralSwingScorer:
     ) -> StructuralSwingEvaluation:
 
         history = ctx.history
+        rank_sorted = percentile_rank_sorted
 
         amplitude = history.current_amplitude
         amplitude_sample = history.sorted_amplitudes
         price = (
-            percentile_rank_sorted(amplitude, amplitude_sample)
+            rank_sorted(amplitude, amplitude_sample)
             if amplitude_sample
             else 0.0
         )
@@ -47,7 +60,7 @@ class StructuralSwingScorer:
         structural_size_value = history.current_spread_adjusted_amplitude
         structural_size_sample = history.sorted_spread_adjusted_amplitudes
         structural_size = (
-            percentile_rank_sorted(structural_size_value, structural_size_sample)
+            rank_sorted(structural_size_value, structural_size_sample)
             if structural_size_value is not None and structural_size_sample
             else 0.0
         )
@@ -55,7 +68,7 @@ class StructuralSwingScorer:
         duration = history.current_duration
         duration_sample = history.sorted_durations
         duration_score = (
-            percentile_rank_sorted(duration, duration_sample)
+            rank_sorted(duration, duration_sample)
             if duration_sample
             else 0.0
         )
@@ -63,7 +76,7 @@ class StructuralSwingScorer:
         volume = ctx.metrics.volume
         volume_sample = history.sorted_volumes
         volume_score = (
-            percentile_rank_sorted(volume, volume_sample)
+            rank_sorted(volume, volume_sample)
             if volume_sample
             else 0.0
         )
@@ -71,7 +84,7 @@ class StructuralSwingScorer:
         spread = ctx.metrics.spread
         spread_sample = history.sorted_spreads
         spread_score = (
-            percentile_rank_sorted(spread, spread_sample)
+            rank_sorted(spread, spread_sample)
             if spread_sample
             else 0.0
         )
@@ -83,6 +96,77 @@ class StructuralSwingScorer:
             duration=duration_score,
             volume=volume_score,
             spread=spread_score,
+        )
+
+    def _prepared_values(
+        self,
+        *,
+        snapshot: SwingHistorySnapshot,
+        volume: float,
+        spread: float,
+    ) -> tuple[float, float, float, float, float, float]:
+        rank_sorted = percentile_rank_sorted
+
+        amplitude = snapshot.current_amplitude
+        amplitude_sample = snapshot.sorted_amplitudes
+        price = (
+            rank_sorted(amplitude, amplitude_sample)
+            if amplitude_sample
+            else 0.0
+        )
+
+        structural_size_value = snapshot.current_spread_adjusted_amplitude
+        structural_size_sample = snapshot.sorted_spread_adjusted_amplitudes
+        structural_size = (
+            rank_sorted(structural_size_value, structural_size_sample)
+            if structural_size_value is not None and structural_size_sample
+            else 0.0
+        )
+
+        duration = snapshot.current_duration
+        duration_sample = snapshot.sorted_durations
+        duration_score = (
+            rank_sorted(duration, duration_sample)
+            if duration_sample
+            else 0.0
+        )
+
+        volume_sample = snapshot.sorted_volumes
+        volume_score = (
+            rank_sorted(volume, volume_sample)
+            if volume_sample
+            else 0.0
+        )
+
+        spread_sample = snapshot.sorted_spreads
+        spread_score = (
+            rank_sorted(spread, spread_sample)
+            if spread_sample
+            else 0.0
+        )
+
+        total_weight = self._total_weight
+        if total_weight <= 0:
+            overall = 0.0
+        else:
+            overall = min(
+                (
+                    price * self._price_weight
+                    + structural_size * self._structural_size_weight
+                    + duration_score * self._duration_weight
+                    + volume_score * self._volume_weight
+                    + spread_score * self._spread_weight
+                ) / total_weight,
+                1.0,
+            )
+
+        return (
+            price,
+            structural_size,
+            duration_score,
+            volume_score,
+            spread_score,
+            overall,
         )
 
     @profile
@@ -98,51 +182,29 @@ class StructuralSwingScorer:
         current scalar metrics, avoiding SwingContext construction.
         """
 
-        amplitude = snapshot.current_amplitude
-        amplitude_sample = snapshot.sorted_amplitudes
-        price = (
-            percentile_rank_sorted(amplitude, amplitude_sample)
-            if amplitude_sample
-            else 0.0
-        )
-
-        structural_size_value = snapshot.current_spread_adjusted_amplitude
-        structural_size_sample = snapshot.sorted_spread_adjusted_amplitudes
-        structural_size = (
-            percentile_rank_sorted(structural_size_value, structural_size_sample)
-            if structural_size_value is not None and structural_size_sample
-            else 0.0
-        )
-
-        duration = snapshot.current_duration
-        duration_sample = snapshot.sorted_durations
-        duration_score = (
-            percentile_rank_sorted(duration, duration_sample)
-            if duration_sample
-            else 0.0
-        )
-
-        volume_sample = snapshot.sorted_volumes
-        volume_score = (
-            percentile_rank_sorted(volume, volume_sample)
-            if volume_sample
-            else 0.0
-        )
-
-        spread_sample = snapshot.sorted_spreads
-        spread_score = (
-            percentile_rank_sorted(spread, spread_sample)
-            if spread_sample
-            else 0.0
-        )
-
-        return self._combine_scores(
+        (
+            price,
+            structural_size,
+            duration_score,
+            volume_score,
+            spread_score,
+            overall,
+        ) = self._prepared_values(
             snapshot=snapshot,
-            price=price,
-            structural_size=structural_size,
-            duration=duration_score,
-            volume=volume_score,
-            spread=spread_score,
+            volume=volume,
+            spread=spread,
+        )
+
+        return StructuralSwingEvaluation(
+            score=StructuralSwingScore(
+                price=price,
+                structural_size=structural_size,
+                duration=duration_score,
+                volume=volume_score,
+                spread=spread_score,
+                overall=overall,
+            ),
+            snapshot=snapshot,
         )
 
     # ------------------------------------------
@@ -280,32 +342,18 @@ class StructuralSwingScorer:
         spread: float,
     ) -> StructuralSwingEvaluation:
 
-        # Prepared batch path: this aggregation operates directly on the
-        # reusable snapshot and scalar scores produced above.
-        price_weight = config.STRUCTURE_PRICE_WEIGHT
-        structural_size_weight = config.STRUCTURE_STRUCTURAL_SIZE_WEIGHT
-        duration_weight = config.STRUCTURE_DURATION_WEIGHT
-        volume_weight = config.STRUCTURE_VOLUME_WEIGHT
-        spread_weight = config.STRUCTURE_SPREAD_WEIGHT
-
-        total_weight = (
-            price_weight
-            + structural_size_weight
-            + duration_weight
-            + volume_weight
-            + spread_weight
-        )
+        total_weight = self._total_weight
 
         if total_weight <= 0:
             overall = 0.0
         else:
             overall = min(
                 (
-                    price * price_weight
-                    + structural_size * structural_size_weight
-                    + duration * duration_weight
-                    + volume * volume_weight
-                    + spread * spread_weight
+                    price * self._price_weight
+                    + structural_size * self._structural_size_weight
+                    + duration * self._duration_weight
+                    + volume * self._volume_weight
+                    + spread * self._spread_weight
                 ) / total_weight,
                 1.0,
             )

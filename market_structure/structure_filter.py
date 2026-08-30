@@ -8,6 +8,7 @@ from engine.columns import COL_AVG_SPREAD, COL_AVG_VOLUME, COL_VOLUME
 from models import StructuralSwingScore, Swing, SwingType
 from models import StructuralSwing
 from models import SwingGrade
+from models import StructuralSwingEvaluation, SwingProfessionalEvaluation, SwingProfessionalScore
 from .professional_scorer import ProfessionalScorer
 from .prepared_scoring import score_prepared
 from debug.professional_report import print_professional_score
@@ -59,43 +60,81 @@ class StructureFilter:
             indices=[swing.metrics_index for swing in swing_tuple],
         )
 
-        for index, current in enumerate(swings):
+        total_weight = scorer._professional_total_weight
+        structure_weight = scorer._professional_structure_weight
+        smart_money_weight = scorer._professional_smart_money_weight
 
-            # A first confirmed swing has no previous swing, so its
-            # amplitude-based professional metrics are undefined.
-            # It cannot be structurally scored yet.
+        for index, current in enumerate(swings):
             if index == 0:
                 previous = current
                 continue
 
-            evaluation = score_prepared(
-                scorer,
-                current,
-                arrays,
-                history_snapshots[index],
-                smart_money=smart_money_scores[index],
+            snapshot = history_snapshots[index]
+            if snapshot is None:
+                previous = current
+                continue
+
+            (
+                price,
+                structural_size,
+                duration_score,
+                volume_score,
+                spread_score,
+                structure_overall,
+            ) = scorer._structure._prepared_values(
+                snapshot=snapshot,
+                volume=float(volume_values[current.metrics_index]),
+                spread=float(spread_values[current.metrics_index]),
             )
 
-            # testing
-            # if evaluation.professional.overall >= 0.70:
-            #     print_professional_score(
-            #         current,
-            #         evaluation
-            #     )
-            # testing
-
-            grade = self._grade_swing(evaluation.professional.overall)
-
-            structural_swing = StructuralSwing(
-                swing=current,
-                evaluation=evaluation,
-                grade=grade,
-            )
-
-            if self._is_structural(evaluation.professional.overall):
-                structural.append(
-                    structural_swing,
+            smart_money = smart_money_scores[index]
+            smart_money_score = smart_money.overall
+            if total_weight <= 0:
+                professional_overall = 0.0
+            else:
+                professional_overall = min(
+                    (
+                        structure_overall * structure_weight
+                        + smart_money_score * smart_money_weight
+                    ) / total_weight,
+                    1.0,
                 )
+
+            if not self._is_structural(professional_overall):
+                previous = current
+                continue
+
+            structure_score = StructuralSwingScore(
+                price=price,
+                structural_size=structural_size,
+                duration=duration_score,
+                volume=volume_score,
+                spread=spread_score,
+                overall=structure_overall,
+            )
+            structure_evaluation = StructuralSwingEvaluation(
+                score=structure_score,
+                snapshot=snapshot,
+            )
+            professional_score = SwingProfessionalScore(
+                structure=structure_score,
+                smart_money=smart_money,
+                overall=professional_overall,
+            )
+            evaluation = SwingProfessionalEvaluation(
+                structure=structure_evaluation,
+                smart_money=smart_money,
+                professional=professional_score,
+            )
+
+            grade = self._grade_swing(professional_overall)
+            structural.append(
+                StructuralSwing(
+                    swing=current,
+                    evaluation=evaluation,
+                    grade=grade,
+                )
+            )
             previous = current
 
         return structural

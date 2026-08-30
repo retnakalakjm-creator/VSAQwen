@@ -30,6 +30,12 @@ class ProfessionalScorer:
             structure_lookback=config.STRUCTURE_LOOKBACK,
         )
         self._smart_money = SmartMoneyAnalyzer()
+        self._professional_structure_weight = config.PROFESSIONAL_STRUCTURE_WEIGHT
+        self._professional_smart_money_weight = config.PROFESSIONAL_SMART_MONEY_WEIGHT
+        self._professional_total_weight = (
+            self._professional_structure_weight
+            + self._professional_smart_money_weight
+        )
         self._metric_array_cache = None
         self._metric_valid_cache = None
 
@@ -77,13 +83,6 @@ class ProfessionalScorer:
         arrays,
         lookback: int,
     ) -> tuple[SwingHistorySnapshot | None, ...]:
-        """
-        Prepare structural history snapshots once for a swing sequence.
-
-        The resulting snapshots preserve the same historical window and
-        validity rules as _history_snapshot(), but avoid rebuilding the
-        swing-derived history independently for every score call.
-        """
         (
             _open_values,
             _high_values,
@@ -380,17 +379,15 @@ class ProfessionalScorer:
 
         structure_score = evaluation.score.overall
         smart_money_score = smart_money.overall
-        structure_weight = config.PROFESSIONAL_STRUCTURE_WEIGHT
-        smart_money_weight = config.PROFESSIONAL_SMART_MONEY_WEIGHT
-        total_weight = structure_weight + smart_money_weight
+        total_weight = self._professional_total_weight
 
         if total_weight <= 0:
             professional_overall = 0.0
         else:
             professional_overall = min(
                 (
-                    structure_score * structure_weight
-                    + smart_money_score * smart_money_weight
+                    structure_score * self._professional_structure_weight
+                    + smart_money_score * self._professional_smart_money_weight
                 ) / total_weight,
                 1.0,
             )
