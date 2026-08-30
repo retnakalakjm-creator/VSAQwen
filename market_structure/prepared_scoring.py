@@ -4,9 +4,8 @@ import config
 
 from models import (
     Swing,
-    SwingContext,
     SwingHistorySnapshot,
-    SwingMetricSnapshot,
+    SmartMoneyScore,
     SwingProfessionalEvaluation,
     SwingProfessionalScore,
 )
@@ -20,6 +19,7 @@ def score_prepared(
     current: Swing,
     arrays,
     history_snapshot: SwingHistorySnapshot,
+    smart_money: SmartMoneyScore | None = None,
 ) -> SwingProfessionalEvaluation:
     (
         open_values,
@@ -34,29 +34,23 @@ def score_prepared(
 
     i = current.metrics_index
 
-    ctx = SwingContext(
-        swing=current,
-        history=history_snapshot,
-        metrics=SwingMetricSnapshot(
-            volume=float(volume_values[i]),
-            spread=float(spread_values[i]),
-            avg_volume=float(avg_volume_values[i]),
+    evaluation = scorer._structure.score_prepared(
+        snapshot=history_snapshot,
+        volume=float(volume_values[i]),
+        spread=float(spread_values[i]),
+    )
+
+    if smart_money is None:
+        smart_money = scorer._smart_money.score_values(
+            bar_count=2 if i > 0 else 1,
+            open_value=float(open_values[i]),
+            low_value=float(low_values[i]),
+            close_value=float(close_values[i]),
+            spread_value=float(spread_values[i]),
             avg_spread=float(avg_spread_values[i]),
-        ),
-    )
-
-    evaluation = scorer._structure.score(ctx)
-
-    smart_money = scorer._smart_money.score_values(
-        bar_count=2 if i > 0 else 1,
-        open_value=float(open_values[i]),
-        low_value=float(low_values[i]),
-        close_value=float(close_values[i]),
-        spread_value=float(spread_values[i]),
-        avg_spread=float(avg_spread_values[i]),
-        volume_value=float(volume_values[i]),
-        avg_volume=float(avg_volume_values[i]),
-    )
+            volume_value=float(volume_values[i]),
+            avg_volume=float(avg_volume_values[i]),
+        )
 
     structure_score = evaluation.score.overall
     smart_money_score = smart_money.overall

@@ -446,7 +446,7 @@ class ProfessionalScorer:
         lookback: int = 3,
     ) -> SmartMoneySnapshot:
         end = swing.metrics_index + 1
-        start = max(0, end - 2)
+        start = max(0, end - lookback)
 
         arrays = (
             self._metric_arrays(source)

@@ -38,6 +38,27 @@ class StructureFilter:
             config.STRUCTURE_LOOKBACK,
         )
 
+        (
+            open_values,
+            _high_values,
+            low_values,
+            close_values,
+            volume_values,
+            spread_values,
+            avg_volume_values,
+            avg_spread_values,
+        ) = arrays
+        smart_money_scores = scorer._smart_money.score_values_batch(
+            open_values=open_values,
+            low_values=low_values,
+            close_values=close_values,
+            spread_values=spread_values,
+            avg_spread_values=avg_spread_values,
+            volume_values=volume_values,
+            avg_volume_values=avg_volume_values,
+            indices=[swing.metrics_index for swing in swing_tuple],
+        )
+
         for index, current in enumerate(swings):
 
             # A first confirmed swing has no previous swing, so its
@@ -52,6 +73,7 @@ class StructureFilter:
                 current,
                 arrays,
                 history_snapshots[index],
+                smart_money=smart_money_scores[index],
             )
 
             # testing

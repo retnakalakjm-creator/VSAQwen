@@ -80,3 +80,54 @@ def test_smart_money_snapshot_uses_requested_lookback() -> None:
     assert len(snapshot.bars) == 3
     assert [bar.close for bar in snapshot.bars] == [11.5, 12.5, 13.5]
     assert [bar.volume for bar in snapshot.bars] == [110.0, 120.0, 130.0]
+
+
+def test_smart_money_batch_matches_scalar_scoring() -> None:
+    scorer = ProfessionalScorer()
+    metrics = _metrics()
+    arrays = scorer._metric_arrays(metrics)
+    (
+        open_values,
+        _high_values,
+        low_values,
+        close_values,
+        volume_values,
+        spread_values,
+        avg_volume_values,
+        avg_spread_values,
+    ) = arrays
+
+    indices = [0, 1, 2, 3]
+    batch_scores = scorer._smart_money.score_values_batch(
+        open_values=open_values,
+        low_values=low_values,
+        close_values=close_values,
+        spread_values=spread_values,
+        avg_spread_values=avg_spread_values,
+        volume_values=volume_values,
+        avg_volume_values=avg_volume_values,
+        indices=indices,
+        include_components=True,
+    )
+
+    scalar_scores = tuple(
+        scorer._smart_money.score_values(
+            bar_count=2 if index > 0 else 1,
+            open_value=float(open_values[index]),
+            low_value=float(low_values[index]),
+            close_value=float(close_values[index]),
+            spread_value=float(spread_values[index]),
+            avg_spread=float(avg_spread_values[index]),
+            volume_value=float(volume_values[index]),
+            avg_volume=float(avg_volume_values[index]),
+            include_components=True,
+        )
+        for index in indices
+    )
+
+    for batch, scalar in zip(batch_scores, scalar_scores):
+        assert batch.stopping_volume == scalar.stopping_volume
+        assert batch.stopping_breakdown == scalar.stopping_breakdown
+        assert batch.climactic_volume == scalar.climactic_volume
+        assert batch.climactic_breakdown == scalar.climactic_breakdown
+        assert batch.overall == scalar.overall

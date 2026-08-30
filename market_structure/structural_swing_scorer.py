@@ -13,11 +13,13 @@ from collections.abc import Sequence
 
 from line_profiler import profile
 
+
 class StructuralSwingScorer:
     """
     Measure the structural significance of the current
     swing amplitude relative to recent confirmed swings.
     """
+
     def __init__(
         self,
         *,
@@ -76,6 +78,66 @@ class StructuralSwingScorer:
 
         return self._combine_scores(
             snapshot=history,
+            price=price,
+            structural_size=structural_size,
+            duration=duration_score,
+            volume=volume_score,
+            spread=spread_score,
+        )
+
+    @profile
+    def score_prepared(
+        self,
+        *,
+        snapshot: SwingHistorySnapshot,
+        volume: float,
+        spread: float,
+    ) -> StructuralSwingEvaluation:
+        """
+        Score a prepared swing directly from its history snapshot and
+        current scalar metrics, avoiding SwingContext construction.
+        """
+
+        amplitude = snapshot.current_amplitude
+        amplitude_sample = snapshot.sorted_amplitudes
+        price = (
+            percentile_rank_sorted(amplitude, amplitude_sample)
+            if amplitude_sample
+            else 0.0
+        )
+
+        structural_size_value = snapshot.current_spread_adjusted_amplitude
+        structural_size_sample = snapshot.sorted_spread_adjusted_amplitudes
+        structural_size = (
+            percentile_rank_sorted(structural_size_value, structural_size_sample)
+            if structural_size_value is not None and structural_size_sample
+            else 0.0
+        )
+
+        duration = snapshot.current_duration
+        duration_sample = snapshot.sorted_durations
+        duration_score = (
+            percentile_rank_sorted(duration, duration_sample)
+            if duration_sample
+            else 0.0
+        )
+
+        volume_sample = snapshot.sorted_volumes
+        volume_score = (
+            percentile_rank_sorted(volume, volume_sample)
+            if volume_sample
+            else 0.0
+        )
+
+        spread_sample = snapshot.sorted_spreads
+        spread_score = (
+            percentile_rank_sorted(spread, spread_sample)
+            if spread_sample
+            else 0.0
+        )
+
+        return self._combine_scores(
+            snapshot=snapshot,
             price=price,
             structural_size=structural_size,
             duration=duration_score,
@@ -218,6 +280,8 @@ class StructuralSwingScorer:
         spread: float,
     ) -> StructuralSwingEvaluation:
 
+        # Prepared batch path: this aggregation operates directly on the
+        # reusable snapshot and scalar scores produced above.
         price_weight = config.STRUCTURE_PRICE_WEIGHT
         structural_size_weight = config.STRUCTURE_STRUCTURAL_SIZE_WEIGHT
         duration_weight = config.STRUCTURE_DURATION_WEIGHT
