@@ -16,6 +16,7 @@ from models import (
     SwingMetricSnapshot,
     SwingProfessionalEvaluation,
     SwingProfessionalScore,
+    SwingType,
 )
 from .structural_swing_scorer import StructuralSwingScorer
 from .smart_money import SmartMoneyAnalyzer
@@ -100,8 +101,6 @@ class ProfessionalScorer:
 
         pair_amplitudes: list[float | None] = [None] * len(swings)
         pair_durations: list[int | None] = [None] * len(swings)
-        spread_adjusted_high: list[float | None] = [None] * len(swings)
-        spread_adjusted_low: list[float | None] = [None] * len(swings)
 
         cumulative_volumes: list[float] = []
         cumulative_spreads: list[float] = []
@@ -128,16 +127,15 @@ class ProfessionalScorer:
 
             metrics_index = current.metrics_index
             avg_spread = avg_spread_values[metrics_index]
+            is_high = current.type is SwingType.HIGH
             high_adjusted_count = high_adjusted_counts[index]
             low_adjusted_count = low_adjusted_counts[index]
             if avg_spread_valid[metrics_index] and avg_spread > 0:
                 adjusted = pair_amplitude / avg_spread
-                if current.type.value == "high":
-                    spread_adjusted_high[index] = adjusted
+                if is_high:
                     cumulative_high_adjusted.append(adjusted)
                     high_adjusted_count += 1
                 else:
-                    spread_adjusted_low[index] = adjusted
                     cumulative_low_adjusted.append(adjusted)
                     low_adjusted_count += 1
 
@@ -162,7 +160,7 @@ class ProfessionalScorer:
             amplitudes = tuple(pair_amplitudes[pair_start:history_end])
             durations = tuple(pair_durations[pair_start:history_end])
 
-            if current.type.value == "high":
+            if is_high:
                 adjusted_values = cumulative_high_adjusted
                 adjusted_start = high_adjusted_counts[pair_start]
                 adjusted_end = high_adjusted_counts[history_end]
