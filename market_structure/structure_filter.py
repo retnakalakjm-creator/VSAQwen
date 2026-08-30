@@ -9,6 +9,8 @@ from models import StructuralSwingScore, Swing, SwingType
 from models import StructuralSwing
 from models import SwingGrade
 from models import StructuralSwingEvaluation, SwingProfessionalEvaluation, SwingProfessionalScore
+from models import ScoreBreakdown, SmartMoneyScore
+from utils.scoring import component
 from .professional_scorer import ProfessionalScorer
 from .prepared_scoring import score_prepared
 from debug.professional_report import print_professional_score
@@ -29,9 +31,9 @@ class StructureFilter:
 
         self._metrics = metrics
         structural: list[StructuralSwing] = []
-        previous: Swing | None = None
         scorer = ProfessionalScorer()
         swing_tuple = tuple(swings)
+        metric_indices = tuple(swing.metrics_index for swing in swing_tuple)
         arrays = scorer._metric_arrays(metrics)
         history_snapshots = scorer.prepare_history_snapshots(
             swing_tuple,
@@ -49,7 +51,17 @@ class StructureFilter:
             avg_volume_values,
             avg_spread_values,
         ) = arrays
-        smart_money_scores = scorer._smart_money.score_values_batch(
+        (
+            stopping_volume,
+            stopping_close,
+            stopping_tail,
+            stopping_overall,
+            climactic_volume,
+            climactic_spread,
+            climactic_close,
+            climactic_overall,
+            smart_money_overall,
+        ) = scorer._smart_money.score_values_batch_raw(
             open_values=open_values,
             low_values=low_values,
             close_values=close_values,
@@ -57,23 +69,24 @@ class StructureFilter:
             avg_spread_values=avg_spread_values,
             volume_values=volume_values,
             avg_volume_values=avg_volume_values,
-            indices=[swing.metrics_index for swing in swing_tuple],
+            indices=metric_indices,
         )
 
         total_weight = scorer._professional_total_weight
         structure_weight = scorer._professional_structure_weight
         smart_money_weight = scorer._professional_smart_money_weight
+        prepared_values = scorer._structure._prepared_values
+        is_structural = self._is_structural
 
-        for index, current in enumerate(swings):
+        for index, current in enumerate(swing_tuple):
             if index == 0:
-                previous = current
                 continue
 
             snapshot = history_snapshots[index]
             if snapshot is None:
-                previous = current
                 continue
 
+            metric_index = metric_indices[index]
             (
                 price,
                 structural_size,
@@ -81,14 +94,13 @@ class StructureFilter:
                 volume_score,
                 spread_score,
                 structure_overall,
-            ) = scorer._structure._prepared_values(
+            ) = prepared_values(
                 snapshot=snapshot,
-                volume=float(volume_values[current.metrics_index]),
-                spread=float(spread_values[current.metrics_index]),
+                volume=float(volume_values[metric_index]),
+                spread=float(spread_values[metric_index]),
             )
 
-            smart_money = smart_money_scores[index]
-            smart_money_score = smart_money.overall
+            smart_money_score = float(smart_money_overall[index])
             if total_weight <= 0:
                 professional_overall = 0.0
             else:
@@ -100,9 +112,50 @@ class StructureFilter:
                     1.0,
                 )
 
-            if not self._is_structural(professional_overall):
-                previous = current
+            if not is_structural(professional_overall):
                 continue
+
+            stopping = ScoreBreakdown(
+                overall=float(stopping_overall[index]),
+                components=(
+                    component(
+                        float(stopping_volume[index]),
+                        config.SMART_MONEY_STOPPING_VOLUME_WEIGHT,
+                    ),
+                    component(
+                        float(stopping_close[index]),
+                        config.SMART_MONEY_STOPPING_CLOSE_WEIGHT,
+                    ),
+                    component(
+                        float(stopping_tail[index]),
+                        config.SMART_MONEY_STOPPING_TAIL_WEIGHT,
+                    ),
+                ),
+            )
+            climactic = ScoreBreakdown(
+                overall=float(climactic_overall[index]),
+                components=(
+                    component(
+                        float(climactic_volume[index]),
+                        config.SMART_MONEY_CLIMACTIC_VOLUME_WEIGHT,
+                    ),
+                    component(
+                        float(climactic_spread[index]),
+                        config.SMART_MONEY_CLIMACTIC_SPREAD_WEIGHT,
+                    ),
+                    component(
+                        float(climactic_close[index]),
+                        config.SMART_MONEY_CLIMACTIC_CLOSE_WEIGHT,
+                    ),
+                ),
+            )
+            smart_money = SmartMoneyScore(
+                stopping_volume=stopping.overall,
+                stopping_breakdown=stopping,
+                climactic_volume=climactic.overall,
+                climactic_breakdown=climactic,
+                overall=smart_money_score,
+            )
 
             structure_score = StructuralSwingScore(
                 price=price,
@@ -135,7 +188,6 @@ class StructureFilter:
                     grade=grade,
                 )
             )
-            previous = current
 
         return structural
 

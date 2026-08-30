@@ -117,6 +117,7 @@ class ProfessionalScorer:
         low_adjusted_counts = [0] * (len(swings) + 1)
         tuple_type = tuple
         sorted_type = sorted
+        snapshot_type = SwingHistorySnapshot
 
         for index, current in enumerate(swings):
             if index == 0:
@@ -126,7 +127,6 @@ class ProfessionalScorer:
                 low_adjusted_counts[index + 1] = low_adjusted_counts[index]
                 continue
 
-            # previous = swings[index - 1]
             pair_amplitude = pair_amplitudes[index - 1]
             pair_duration = pair_durations[index - 1]
 
@@ -185,7 +185,7 @@ class ProfessionalScorer:
             spread_end = spread_counts[index]
             spreads = tuple(cumulative_spreads[spread_start:spread_end])
 
-            snapshots[index] = SwingHistorySnapshot(
+            snapshots[index] = snapshot_type(
                 current_amplitude=pair_amplitude,
                 current_duration=pair_duration,
                 current_spread_adjusted_amplitude=(

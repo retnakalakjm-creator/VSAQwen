@@ -149,13 +149,18 @@ class StructuralSwingScorer:
         if total_weight <= 0:
             overall = 0.0
         else:
+            price_weight = self._price_weight
+            structural_size_weight = self._structural_size_weight
+            duration_weight = self._duration_weight
+            volume_weight = self._volume_weight
+            spread_weight = self._spread_weight
             overall = min(
                 (
-                    price * self._price_weight
-                    + structural_size * self._structural_size_weight
-                    + duration_score * self._duration_weight
-                    + volume_score * self._volume_weight
-                    + spread_score * self._spread_weight
+                    price * price_weight
+                    + structural_size * structural_size_weight
+                    + duration_score * duration_weight
+                    + volume_score * volume_weight
+                    + spread_score * spread_weight
                 ) / total_weight,
                 1.0,
             )
