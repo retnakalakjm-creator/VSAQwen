@@ -98,8 +98,14 @@ class ProfessionalScorer:
         swings = tuple(swings)
         snapshots: list[SwingHistorySnapshot | None] = [None] * len(swings)
 
-        pair_amplitudes: list[float | None] = [None] * len(swings)
-        pair_durations: list[int | None] = [None] * len(swings)
+        pair_amplitudes: list[float] = [
+            abs(current.price - previous.price)
+            for previous, current in zip(swings[:-1], swings[1:])
+        ]
+        pair_durations: list[int] = [
+            abs(current.bar_index - previous.bar_index)
+            for previous, current in zip(swings[:-1], swings[1:])
+        ]
 
         cumulative_volumes: list[float] = []
         cumulative_spreads: list[float] = []
@@ -109,6 +115,8 @@ class ProfessionalScorer:
         spread_counts = [0] * (len(swings) + 1)
         high_adjusted_counts = [0] * (len(swings) + 1)
         low_adjusted_counts = [0] * (len(swings) + 1)
+        tuple_type = tuple
+        sorted_type = sorted
 
         for index, current in enumerate(swings):
             if index == 0:
@@ -118,11 +126,9 @@ class ProfessionalScorer:
                 low_adjusted_counts[index + 1] = low_adjusted_counts[index]
                 continue
 
-            previous = swings[index - 1]
-            pair_amplitude = abs(current.price - previous.price)
-            pair_duration = abs(current.bar_index - previous.bar_index)
-            pair_amplitudes[index] = pair_amplitude
-            pair_durations[index] = pair_duration
+            # previous = swings[index - 1]
+            pair_amplitude = pair_amplitudes[index - 1]
+            pair_duration = pair_durations[index - 1]
 
             metrics_index = current.metrics_index
             avg_spread = avg_spread_values[metrics_index]
@@ -156,8 +162,8 @@ class ProfessionalScorer:
             history_end = index
             pair_start = max(1, start)
 
-            amplitudes = tuple(pair_amplitudes[pair_start:history_end])
-            durations = tuple(pair_durations[pair_start:history_end])
+            amplitudes = tuple(pair_amplitudes[pair_start - 1:history_end - 1])
+            durations = tuple(pair_durations[pair_start - 1:history_end - 1])
 
             if is_high:
                 adjusted_values = cumulative_high_adjusted
@@ -192,16 +198,16 @@ class ProfessionalScorer:
                 durations=durations,
                 volumes=volumes,
                 spreads=spreads,
-                sorted_amplitudes=tuple(sorted(amplitudes)),
-                sorted_spread_adjusted_amplitudes=tuple(
-                    sorted(spread_adjusted_amplitudes)
+                sorted_amplitudes=tuple_type(sorted_type(amplitudes)),
+                sorted_spread_adjusted_amplitudes=tuple_type(
+                    sorted_type(spread_adjusted_amplitudes)
                 ),
-                sorted_durations=tuple(sorted(durations)),
-                sorted_volumes=tuple(sorted(volumes)),
-                sorted_spreads=tuple(sorted(spreads)),
+                sorted_durations=tuple_type(sorted_type(durations)),
+                sorted_volumes=tuple_type(sorted_type(volumes)),
+                sorted_spreads=tuple_type(sorted_type(spreads)),
             )
 
-        return tuple(snapshots)
+        return tuple_type(snapshots)
 
     def _history_snapshot(
         self,

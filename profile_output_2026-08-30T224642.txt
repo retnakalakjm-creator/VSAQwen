@@ -1,0 +1,268 @@
+Timer unit: 1e-07 s
+
+Total time: 0.173937 s
+File: C:\Users\User\ProVSA\market_structure\professional_scorer.py
+Function: ProfessionalScorer.prepare_history_snapshots at line 79
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    79                                               @profile
+    80                                               def prepare_history_snapshots(
+    81                                                   self,
+    82                                                   swings: list[Swing] | tuple[Swing, ...],
+    83                                                   arrays,
+    84                                                   lookback: int,
+    85                                               ) -> tuple[SwingHistorySnapshot | None, ...]:
+    86        62        447.0      7.2      0.0          (
+    87        62        182.0      2.9      0.0              _open_values,
+    88        62        123.0      2.0      0.0              _high_values,
+    89        62        116.0      1.9      0.0              _low_values,
+    90        62        180.0      2.9      0.0              _close_values,
+    91        62        202.0      3.3      0.0              volume_values,
+    92        62        162.0      2.6      0.0              spread_values,
+    93        62        116.0      1.9      0.0              _avg_volume_values,
+    94        62        139.0      2.2      0.0              avg_spread_values,
+    95        62        198.0      3.2      0.0          ) = arrays
+    96                                           
+    97        62        318.0      5.1      0.0          volume_valid, spread_valid, avg_spread_valid = self._metric_valid_cache
+    98        62        373.0      6.0      0.0          swings = tuple(swings)
+    99        62       1213.0     19.6      0.1          snapshots: list[SwingHistorySnapshot | None] = [None] * len(swings)
+   100                                           
+   101       124        416.0      3.4      0.0          pair_amplitudes: list[float] = [
+   102      7024      20513.0      2.9      1.2              abs(current.price - previous.price)
+   103      7148      16826.0      2.4      1.0              for previous, current in zip(swings[:-1], swings[1:])
+   104                                                   ]
+   105       124        382.0      3.1      0.0          pair_durations: list[int] = [
+   106      7024      18020.0      2.6      1.0              abs(current.bar_index - previous.bar_index)
+   107      7148      15671.0      2.2      0.9              for previous, current in zip(swings[:-1], swings[1:])
+   108                                                   ]
+   109                                           
+   110        62        215.0      3.5      0.0          cumulative_volumes: list[float] = []
+   111        62        199.0      3.2      0.0          cumulative_spreads: list[float] = []
+   112        62        179.0      2.9      0.0          cumulative_high_adjusted: list[float] = []
+   113        62        173.0      2.8      0.0          cumulative_low_adjusted: list[float] = []
+   114        62        581.0      9.4      0.0          volume_counts = [0] * (len(swings) + 1)
+   115        62        468.0      7.5      0.0          spread_counts = [0] * (len(swings) + 1)
+   116        62        319.0      5.1      0.0          high_adjusted_counts = [0] * (len(swings) + 1)
+   117        62        336.0      5.4      0.0          low_adjusted_counts = [0] * (len(swings) + 1)
+   118        62        187.0      3.0      0.0          tuple_type = tuple
+   119        62        202.0      3.3      0.0          sorted_type = sorted
+   120                                           
+   121      7148      18902.0      2.6      1.1          for index, current in enumerate(swings):
+   122      7086      16569.0      2.3      1.0              if index == 0:
+   123        62        232.0      3.7      0.0                  volume_counts[index + 1] = volume_counts[index]
+   124        62        141.0      2.3      0.0                  spread_counts[index + 1] = spread_counts[index]
+   125        62        165.0      2.7      0.0                  high_adjusted_counts[index + 1] = high_adjusted_counts[index]
+   126        62        171.0      2.8      0.0                  low_adjusted_counts[index + 1] = low_adjusted_counts[index]
+   127        62        157.0      2.5      0.0                  continue
+   128                                           
+   129                                                       # previous = swings[index - 1]
+   130      7024      15511.0      2.2      0.9              pair_amplitude = pair_amplitudes[index - 1]
+   131      7024      18128.0      2.6      1.0              pair_duration = pair_durations[index - 1]
+   132                                           
+   133      7024      14438.0      2.1      0.8              metrics_index = current.metrics_index
+   134      7024      25248.0      3.6      1.5              avg_spread = avg_spread_values[metrics_index]
+   135      7024      18447.0      2.6      1.1              is_high = current.type is SwingType.HIGH
+   136      7024      15478.0      2.2      0.9              high_adjusted_count = high_adjusted_counts[index]
+   137      7024      15448.0      2.2      0.9              low_adjusted_count = low_adjusted_counts[index]
+   138      7024      21337.0      3.0      1.2              if avg_spread_valid[metrics_index] and avg_spread > 0:
+   139      6877      19674.0      2.9      1.1                  adjusted = pair_amplitude / avg_spread
+   140      6877      19884.0      2.9      1.1                  if is_high:
+   141      3438       8529.0      2.5      0.5                      cumulative_high_adjusted.append(adjusted)
+   142      3438       8000.0      2.3      0.5                      high_adjusted_count += 1
+   143                                                           else:
+   144      3439       8780.0      2.6      0.5                      cumulative_low_adjusted.append(adjusted)
+   145      3439       7488.0      2.2      0.4                      low_adjusted_count += 1
+   146                                           
+   147      7024      14544.0      2.1      0.8              volume_count = volume_counts[index]
+   148      7024      15095.0      2.1      0.9              spread_count = spread_counts[index]
+   149      7024      18683.0      2.7      1.1              if volume_valid[metrics_index]:
+   150      7024      27909.0      4.0      1.6                  cumulative_volumes.append(float(volume_values[metrics_index]))
+   151      7024      15950.0      2.3      0.9                  volume_count += 1
+   152      7024      19070.0      2.7      1.1              if spread_valid[metrics_index]:
+   153      7024      23359.0      3.3      1.3                  cumulative_spreads.append(float(spread_values[metrics_index]))
+   154      7024      18428.0      2.6      1.1                  spread_count += 1
+   155                                           
+   156      7024      18241.0      2.6      1.0              volume_counts[index + 1] = volume_count
+   157      7024      15557.0      2.2      0.9              spread_counts[index + 1] = spread_count
+   158      7024      16193.0      2.3      0.9              high_adjusted_counts[index + 1] = high_adjusted_count
+   159      7024      15930.0      2.3      0.9              low_adjusted_counts[index + 1] = low_adjusted_count
+   160                                           
+   161      7024      26707.0      3.8      1.5              start = max(0, index - lookback + 1)
+   162      7024      16710.0      2.4      1.0              history_end = index
+   163      7024      20194.0      2.9      1.2              pair_start = max(1, start)
+   164                                           
+   165      7024      41396.0      5.9      2.4              amplitudes = tuple(pair_amplitudes[pair_start - 1:history_end - 1])
+   166      7024      29183.0      4.2      1.7              durations = tuple(pair_durations[pair_start - 1:history_end - 1])
+   167                                           
+   168      7024      15870.0      2.3      0.9              if is_high:
+   169      3496       7596.0      2.2      0.4                  adjusted_values = cumulative_high_adjusted
+   170      3496       7309.0      2.1      0.4                  adjusted_start = high_adjusted_counts[pair_start]
+   171      3496       7668.0      2.2      0.4                  adjusted_end = high_adjusted_counts[history_end]
+   172                                                       else:
+   173      3528       7875.0      2.2      0.5                  adjusted_values = cumulative_low_adjusted
+   174      3528       8151.0      2.3      0.5                  adjusted_start = low_adjusted_counts[pair_start]
+   175      3528       7316.0      2.1      0.4                  adjusted_end = low_adjusted_counts[history_end]
+   176     14048      39231.0      2.8      2.3              spread_adjusted_amplitudes = tuple(
+   177      7024      21874.0      3.1      1.3                  adjusted_values[adjusted_start:adjusted_end]
+   178                                                       )
+   179                                           
+   180      7024      15017.0      2.1      0.9              volume_start = volume_counts[start]
+   181      7024      16419.0      2.3      0.9              volume_end = volume_counts[index]
+   182      7024      27921.0      4.0      1.6              volumes = tuple(cumulative_volumes[volume_start:volume_end])
+   183                                           
+   184      7024      14667.0      2.1      0.8              spread_start = spread_counts[start]
+   185      7024      13564.0      1.9      0.8              spread_end = spread_counts[index]
+   186      7024      25119.0      3.6      1.4              spreads = tuple(cumulative_spreads[spread_start:spread_end])
+   187                                           
+   188     14048     347204.0     24.7     20.0              snapshots[index] = SwingHistorySnapshot(
+   189      7024      15123.0      2.2      0.9                  current_amplitude=pair_amplitude,
+   190      7024      14882.0      2.1      0.9                  current_duration=pair_duration,
+   191                                                           current_spread_adjusted_amplitude=(
+   192      6877      21627.0      3.1      1.2                      pair_amplitude / avg_spread
+   193      7024      21576.0      3.1      1.2                      if avg_spread_valid[metrics_index] and avg_spread > 0
+   194       147        332.0      2.3      0.0                      else None
+   195                                                           ),
+   196      7024      14225.0      2.0      0.8                  amplitudes=amplitudes,
+   197      7024      14105.0      2.0      0.8                  spread_adjusted_amplitudes=spread_adjusted_amplitudes,
+   198      7024      14706.0      2.1      0.8                  durations=durations,
+   199      7024      15151.0      2.2      0.9                  volumes=volumes,
+   200      7024      15899.0      2.3      0.9                  spreads=spreads,
+   201      7024      66262.0      9.4      3.8                  sorted_amplitudes=tuple_type(sorted_type(amplitudes)),
+   202     14048      40306.0      2.9      2.3                  sorted_spread_adjusted_amplitudes=tuple_type(
+   203      7024      45264.0      6.4      2.6                      sorted_type(spread_adjusted_amplitudes)
+   204                                                           ),
+   205      7024      59555.0      8.5      3.4                  sorted_durations=tuple_type(sorted_type(durations)),
+   206      7024      58421.0      8.3      3.4                  sorted_volumes=tuple_type(sorted_type(volumes)),
+   207      7024      54130.0      7.7      3.1                  sorted_spreads=tuple_type(sorted_type(spreads)),
+   208                                                       )
+   209                                           
+   210        62        669.0     10.8      0.0          return tuple_type(snapshots)
+
+Total time: 0.53869 s
+File: C:\Users\User\ProVSA\market_structure\structure_filter.py
+Function: StructureFilter.filter at line 23
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    23                                               @profile
+    24                                               def filter(
+    25                                                   self,
+    26                                                   swings: list[Swing],
+    27                                                   metrics: pd.DataFrame,
+    28                                               ) -> list[StructuralSwing]:
+    29                                           
+    30        62        412.0      6.6      0.0          self._metrics = metrics
+    31        62        402.0      6.5      0.0          structural: list[StructuralSwing] = []
+    32        62       1053.0     17.0      0.0          previous: Swing | None = None
+    33        62       8960.0    144.5      0.2          scorer = ProfessionalScorer()
+    34        62        572.0      9.2      0.0          swing_tuple = tuple(swings)
+    35        62     379650.0   6123.4      7.0          arrays = scorer._metric_arrays(metrics)
+    36       124    2026595.0  16343.5     37.6          history_snapshots = scorer.prepare_history_snapshots(
+    37        62        150.0      2.4      0.0              swing_tuple,
+    38        62        141.0      2.3      0.0              arrays,
+    39        62        376.0      6.1      0.0              config.STRUCTURE_LOOKBACK,
+    40                                                   )
+    41                                           
+    42        62        358.0      5.8      0.0          (
+    43        62        208.0      3.4      0.0              open_values,
+    44        62        140.0      2.3      0.0              _high_values,
+    45        62        131.0      2.1      0.0              low_values,
+    46        62        135.0      2.2      0.0              close_values,
+    47        62        135.0      2.2      0.0              volume_values,
+    48        62        182.0      2.9      0.0              spread_values,
+    49        62        193.0      3.1      0.0              avg_volume_values,
+    50        62        372.0      6.0      0.0              avg_spread_values,
+    51        62        196.0      3.2      0.0          ) = arrays
+    52       124     978871.0   7894.1     18.2          smart_money_scores = scorer._smart_money.score_values_batch(
+    53        62        160.0      2.6      0.0              open_values=open_values,
+    54        62        147.0      2.4      0.0              low_values=low_values,
+    55        62        212.0      3.4      0.0              close_values=close_values,
+    56        62        164.0      2.6      0.0              spread_values=spread_values,
+    57        62        164.0      2.6      0.0              avg_spread_values=avg_spread_values,
+    58        62        235.0      3.8      0.0              volume_values=volume_values,
+    59        62        190.0      3.1      0.0              avg_volume_values=avg_volume_values,
+    60        62       2954.0     47.6      0.1              indices=[swing.metrics_index for swing in swing_tuple],
+    61                                                   )
+    62                                           
+    63        62        270.0      4.4      0.0          total_weight = scorer._professional_total_weight
+    64        62        209.0      3.4      0.0          structure_weight = scorer._professional_structure_weight
+    65        62        166.0      2.7      0.0          smart_money_weight = scorer._professional_smart_money_weight
+    66                                           
+    67      7148      18970.0      2.7      0.4          for index, current in enumerate(swings):
+    68      7086      15998.0      2.3      0.3              if index == 0:
+    69        62        194.0      3.1      0.0                  previous = current
+    70        62        150.0      2.4      0.0                  continue
+    71                                           
+    72      7024      16092.0      2.3      0.3              snapshot = history_snapshots[index]
+    73      7024      14608.0      2.1      0.3              if snapshot is None:
+    74                                                           previous = current
+    75                                                           continue
+    76                                           
+    77      7024      18729.0      2.7      0.3              (
+    78      7024      16164.0      2.3      0.3                  price,
+    79      7024      14763.0      2.1      0.3                  structural_size,
+    80      7024      16190.0      2.3      0.3                  duration_score,
+    81      7024      14266.0      2.0      0.3                  volume_score,
+    82      7024      17148.0      2.4      0.3                  spread_score,
+    83      7024      17473.0      2.5      0.3                  structure_overall,
+    84     14048    1107277.0     78.8     20.6              ) = scorer._structure._prepared_values(
+    85      7024      15311.0      2.2      0.3                  snapshot=snapshot,
+    86      7024      27099.0      3.9      0.5                  volume=float(volume_values[current.metrics_index]),
+    87      7024      24118.0      3.4      0.4                  spread=float(spread_values[current.metrics_index]),
+    88                                                       )
+    89                                           
+    90      7024      17025.0      2.4      0.3              smart_money = smart_money_scores[index]
+    91      7024      14693.0      2.1      0.3              smart_money_score = smart_money.overall
+    92      7024      17104.0      2.4      0.3              if total_weight <= 0:
+    93                                                           professional_overall = 0.0
+    94                                                       else:
+    95     14048      35482.0      2.5      0.7                  professional_overall = min(
+    96      7024      15006.0      2.1      0.3                      (
+    97     14048      31140.0      2.2      0.6                          structure_overall * structure_weight
+    98      7024      13271.0      1.9      0.2                          + smart_money_score * smart_money_weight
+    99      7024      16129.0      2.3      0.3                      ) / total_weight,
+   100      7024      14906.0      2.1      0.3                      1.0,
+   101                                                           )
+   102                                           
+   103      7024      48696.0      6.9      0.9              if not self._is_structural(professional_overall):
+   104      4662       9397.0      2.0      0.2                  previous = current
+   105      4662       9776.0      2.1      0.2                  continue
+   106                                           
+   107      4724      71328.0     15.1      1.3              structure_score = StructuralSwingScore(
+   108      2362       4930.0      2.1      0.1                  price=price,
+   109      2362       4697.0      2.0      0.1                  structural_size=structural_size,
+   110      2362       5437.0      2.3      0.1                  duration=duration_score,
+   111      2362       5120.0      2.2      0.1                  volume=volume_score,
+   112      2362       4832.0      2.0      0.1                  spread=spread_score,
+   113      2362       4449.0      1.9      0.1                  overall=structure_overall,
+   114                                                       )
+   115      4724      37028.0      7.8      0.7              structure_evaluation = StructuralSwingEvaluation(
+   116      2362       4507.0      1.9      0.1                  score=structure_score,
+   117      2362       4697.0      2.0      0.1                  snapshot=snapshot,
+   118                                                       )
+   119      4724      65489.0     13.9      1.2              professional_score = SwingProfessionalScore(
+   120      2362       5107.0      2.2      0.1                  structure=structure_score,
+   121      2362       4975.0      2.1      0.1                  smart_money=smart_money,
+   122      2362       5002.0      2.1      0.1                  overall=professional_overall,
+   123                                                       )
+   124      4724      47218.0     10.0      0.9              evaluation = SwingProfessionalEvaluation(
+   125      2362       4776.0      2.0      0.1                  structure=structure_evaluation,
+   126      2362       6178.0      2.6      0.1                  smart_money=smart_money,
+   127      2362       4626.0      2.0      0.1                  professional=professional_score,
+   128                                                       )
+   129                                           
+   130      2362      17083.0      7.2      0.3              grade = self._grade_swing(professional_overall)
+   131      4724      11458.0      2.4      0.2              structural.append(
+   132      4724      47168.0     10.0      0.9                  StructuralSwing(
+   133      2362       4813.0      2.0      0.1                      swing=current,
+   134      2362       4626.0      2.0      0.1                      evaluation=evaluation,
+   135      2362       4304.0      1.8      0.1                      grade=grade,
+   136                                                           )
+   137                                                       )
+   138      2362       5625.0      2.4      0.1              previous = current
+   139                                           
+   140        62        154.0      2.5      0.0          return structural
+
+  0.17 seconds - C:\Users\User\ProVSA\market_structure\professional_scorer.py:79 - ProfessionalScorer.prepare_history_snapshots
+  0.54 seconds - C:\Users\User\ProVSA\market_structure\structure_filter.py:23 - StructureFilter.filter
