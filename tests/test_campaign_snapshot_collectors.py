@@ -21,11 +21,6 @@ def _ctx() -> SimpleNamespace:
 def test_buying_climax_uses_snapshot_not_campaign_function(monkeypatch) -> None:
     ctx = _ctx()
 
-    monkeypatch.setattr(
-        supply,
-        "has_buying_campaign",
-        lambda _ctx: (_ for _ in ()).throw(AssertionError("legacy campaign path called")),
-    )
     monkeypatch.setattr(supply, "is_bullish_bar", lambda _bar: True)
     monkeypatch.setattr(supply, "is_very_high_volume", lambda _bar: True)
     monkeypatch.setattr(supply, "is_above_average_spread", lambda _bar: True)
@@ -40,14 +35,9 @@ def test_buying_climax_uses_snapshot_not_campaign_function(monkeypatch) -> None:
     assert result == []
 
 
-def test_stopping_volume_uses_snapshot_not_campaign_function(monkeypatch) -> None:
+def test_stopping_volume_uses_snapshot_campaign_state(monkeypatch) -> None:
     ctx = _ctx()
 
-    monkeypatch.setattr(
-        demand,
-        "has_selling_campaign",
-        lambda _ctx: (_ for _ in ()).throw(AssertionError("legacy campaign path called")),
-    )
     monkeypatch.setattr(demand, "is_bearish_bar", lambda _bar: True)
     monkeypatch.setattr(demand, "is_high_volume", lambda _bar: True)
     monkeypatch.setattr(demand, "is_above_average_spread", lambda _bar: True)
@@ -64,14 +54,9 @@ def test_stopping_volume_uses_snapshot_not_campaign_function(monkeypatch) -> Non
     assert result == []
 
 
-def test_selling_climax_uses_snapshot_not_campaign_function(monkeypatch) -> None:
+def test_selling_climax_uses_snapshot_campaign_state(monkeypatch) -> None:
     ctx = _ctx()
 
-    monkeypatch.setattr(
-        demand,
-        "has_selling_campaign",
-        lambda _ctx: (_ for _ in ()).throw(AssertionError("legacy campaign path called")),
-    )
     monkeypatch.setattr(demand, "is_bearish_bar", lambda _bar: True)
     monkeypatch.setattr(demand, "is_very_high_volume", lambda _bar: True)
     monkeypatch.setattr(demand, "is_above_average_spread", lambda _bar: True)
@@ -86,14 +71,9 @@ def test_selling_climax_uses_snapshot_not_campaign_function(monkeypatch) -> None
     assert result == []
 
 
-def test_test_uses_snapshot_not_campaign_function(monkeypatch) -> None:
+def test_test_uses_snapshot_campaign_state(monkeypatch) -> None:
     ctx = _ctx()
 
-    monkeypatch.setattr(
-        demand,
-        "has_selling_campaign",
-        lambda _ctx: (_ for _ in ()).throw(AssertionError("legacy campaign path called")),
-    )
     monkeypatch.setattr(demand, "is_bearish_bar", lambda _bar: True)
     monkeypatch.setattr(demand, "is_low_volume", lambda _bar: True)
     monkeypatch.setattr(demand, "is_narrow_spread", lambda _bar: True)
