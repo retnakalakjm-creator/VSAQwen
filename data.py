@@ -6,13 +6,16 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
+import config
 from config import CACHE_DIR, DEFAULT_PERIOD, MIN_DAILY_BARS, WEEK_RULE
+from scanner_state import ScannerState
 
 CACHE_DIR.mkdir(exist_ok=True)
 
 # Historical data is downloaded once. Live scans only refresh a small recent window.
 CACHE_MAX_AGE_SECONDS = 15 * 60
 INCREMENTAL_PERIOD = "10d"
+METRIC_REPLAY_SEED_BARS = config.LOOKBACK_PERIOD * 2
 
 
 def _normalize_daily_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -143,3 +146,43 @@ def daily_to_weekly(df: pd.DataFrame) -> pd.DataFrame:
     return weekly[
         ["week_beginning", "open", "high", "low", "close", "volume"]
     ].reset_index(drop=True)
+
+
+def incremental_replay_window(
+    weekly: pd.DataFrame,
+    state: ScannerState,
+    *,
+    metric_seed_bars: int = METRIC_REPLAY_SEED_BARS,
+) -> pd.DataFrame:
+    """Return the smallest safe weekly replay window for a persisted state.
+
+    Every persisted state identity must remain available, and enough raw bars
+    must precede the earliest required identity to reproduce rolling metrics.
+    """
+    if weekly.empty:
+        raise ValueError("weekly data cannot be empty")
+    if metric_seed_bars < 0:
+        raise ValueError("metric_seed_bars cannot be negative")
+    if "week_beginning" not in weekly.columns:
+        raise ValueError("weekly data must contain week_beginning")
+    if state.candidate is None:
+        raise ValueError("ScannerState must contain an active candidate")
+
+    keys = [state.last_closed_bar, state.candidate.bar_key]
+    keys.extend(swing.pivot_bar_key for swing in state.confirmed_swings)
+    keys.extend(swing.confirmation_bar_key for swing in state.confirmed_swings)
+
+    key_to_index: dict[str, int] = {}
+    for index, value in enumerate(weekly["week_beginning"]):
+        key = str(value)
+        if key in key_to_index:
+            raise ValueError(f"Duplicate weekly bar identity: {key!r}")
+        key_to_index[key] = index
+
+    missing = [key for key in keys if key not in key_to_index]
+    if missing:
+        raise ValueError(f"State identities not present in weekly data: {missing}")
+
+    earliest_required = min(key_to_index[key] for key in keys)
+    replay_start = max(0, earliest_required - metric_seed_bars)
+    return weekly.iloc[replay_start:].reset_index(drop=True)
