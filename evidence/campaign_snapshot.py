@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import pandas as pd
+
 import config
+from engine.columns import COL_CLOSE, COL_CLOSE_POSITION, COL_DIRECTION
 from models import BackgroundContext, TrendDirection, SwingType
 
 
@@ -73,6 +76,62 @@ class CampaignSnapshot:
             recent_weak_closes=sum(
                 int(bar.close_position) <= 1 for bar in recent
             ),
+            trend_direction=trend_direction,
+            high_scores=tuple(
+                float(item.evaluation.smart_money.overall)
+                for item in highs
+            ),
+            high_amplitudes=tuple(
+                float(item.evaluation.structure.snapshot.current_spread_adjusted_amplitude)
+                for item in highs
+                if item.evaluation.structure.snapshot.current_spread_adjusted_amplitude
+                is not None
+            ),
+            low_scores=tuple(
+                float(item.evaluation.smart_money.overall)
+                for item in lows
+            ),
+            low_amplitudes=tuple(
+                float(item.evaluation.structure.snapshot.current_spread_adjusted_amplitude)
+                for item in lows
+                if item.evaluation.structure.snapshot.current_spread_adjusted_amplitude
+                is not None
+            ),
+        )
+
+    @classmethod
+    def from_metrics(
+        cls,
+        metrics: pd.DataFrame,
+        *,
+        trend_direction: TrendDirection,
+        structural_swings: tuple,
+    ) -> "CampaignSnapshot":
+        """Build candidate-time campaign state directly from metric rows."""
+        if metrics.empty:
+            raise ValueError("CampaignSnapshot requires non-empty metrics.")
+
+        recent = metrics.tail(config.BACKGROUND_LOOKBACK)
+        close = recent[COL_CLOSE]
+
+        highs = [
+            item
+            for item in structural_swings
+            if item.swing.type is SwingType.HIGH
+        ][-2:]
+        lows = [
+            item
+            for item in structural_swings
+            if item.swing.type is SwingType.LOW
+        ][-2:]
+
+        return cls(
+            recent_up_bars=int((recent[COL_DIRECTION] > 0).sum()),
+            recent_down_bars=int((recent[COL_DIRECTION] < 0).sum()),
+            recent_higher_closes=int((close.diff() > 0).sum()),
+            recent_lower_closes=int((close.diff() < 0).sum()),
+            recent_strong_closes=int((recent[COL_CLOSE_POSITION] >= 3).sum()),
+            recent_weak_closes=int((recent[COL_CLOSE_POSITION] <= 1).sum()),
             trend_direction=trend_direction,
             high_scores=tuple(
                 float(item.evaluation.smart_money.overall)

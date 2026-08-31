@@ -6,7 +6,7 @@ from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, c
 from evidence.campaign_snapshot import CampaignSnapshot
 from evidence.helpers import evaluate_detector, requirement, requirements_passed
 from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_high_volume, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing, is_bullish_bar
-from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadClass, VolumeClass, SwingLabel, TrendDirection
+from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadClass, VolumeClass, TrendDirection, SwingLabel
 from trend import TrendAnalyzer
 
 
@@ -126,37 +126,46 @@ def _collect_test(ctx: BackgroundContext, campaign_snapshot: CampaignSnapshot | 
     return evidence
 
 
-def _candidate_trend_direction(ctx: BackgroundContext, candidate_index: int) -> TrendDirection:
-    """Derive candidate-time trend direction from confirmed structural swings."""
-    structural = tuple(
+def _candidate_trend_direction(
+    classified_structural: list,
+    candidate_index: int,
+) -> TrendDirection:
+    """Derive candidate-time trend direction from causal structural swings."""
+    structural = [
         item
-        for item in ctx.structural_swings
+        for item in classified_structural
         if item.swing.confirmation_index <= candidate_index
-    )
+    ]
     if not structural:
         return TrendDirection.UNKNOWN
 
-    analyzer = TrendAnalyzer()
-    classified = analyzer._classify_swings(list(structural))
     return TrendAnalyzer._determine_direction(
-        TrendAnalyzer._weighted_label_counts(classified)
+        TrendAnalyzer._weighted_label_counts(structural)
     )
 
 
-def _candidate_campaign_snapshot(ctx: BackgroundContext, candidate_index: int) -> CampaignSnapshot:
-    bars = tuple(
-        bar
-        for bar in ctx.bars
-        if bar.bar_index <= candidate_index
+def _candidate_campaign_snapshot(
+    ctx: BackgroundContext,
+    validation_metrics: pd.DataFrame,
+    candidate_index: int,
+    classified_structural: list,
+) -> CampaignSnapshot:
+    start = max(
+        0,
+        candidate_index + 1 - config.BACKGROUND_LOOKBACK,
     )
+    recent_metrics = validation_metrics.iloc[start : candidate_index + 1]
     structural = tuple(
         item
         for item in ctx.structural_swings
         if item.swing.confirmation_index <= candidate_index
     )
-    return CampaignSnapshot.from_parts(
-        bars=bars,
-        trend_direction=_candidate_trend_direction(ctx, candidate_index),
+    return CampaignSnapshot.from_metrics(
+        recent_metrics,
+        trend_direction=_candidate_trend_direction(
+            classified_structural,
+            candidate_index,
+        ),
         structural_swings=structural,
     )
 
@@ -169,6 +178,13 @@ def _find_recovery_anchored_shakeout(ctx: BackgroundContext, validation_metrics:
     start = max(0, current_index - lookback)
     point_in_time_metrics = validation_metrics.iloc[: current_index + 1]
 
+    from evidence.engine import EvidenceEngine
+
+    context_factory = EvidenceEngine()
+    classified_structural = TrendAnalyzer()._classify_swings(
+        list(ctx.structural_swings)
+    )
+
     for candidate_index in range(current_index - 1, start - 1, -1):
         candidate_row = validation_metrics.iloc[candidate_index]
         if Direction(int(candidate_row[COL_DIRECTION])) != Direction.DOWN:
@@ -178,17 +194,23 @@ def _find_recovery_anchored_shakeout(ctx: BackgroundContext, validation_metrics:
         if SpreadClass(int(candidate_row[COL_SPREAD_CLASS])) < SpreadClass.WIDE:
             continue
 
-        candidate_snapshot = _candidate_campaign_snapshot(ctx, candidate_index)
-        candidate_bars = tuple(
-            bar
-            for bar in ctx.bars
-            if bar.bar_index <= candidate_index
+        candidate_snapshot = _candidate_campaign_snapshot(
+            ctx,
+            validation_metrics,
+            candidate_index,
+            classified_structural,
         )
-        if len(candidate_bars) < 2:
+        candidate_bar = context_factory._create_bar_context(
+            candidate_row,
+            candidate_index,
+        )
+        previous_index = candidate_index - 1
+        if previous_index < 0:
             continue
-
-        candidate_bar = candidate_bars[-1]
-        candidate_previous = candidate_bars[-2]
+        candidate_previous = context_factory._create_bar_context(
+            validation_metrics.iloc[previous_index],
+            previous_index,
+        )
         candidate_requirements = (
             requirement(name="Bearish Bar", passed=is_bearish_bar(candidate_bar)),
             requirement(name="Selling Pressure Present", passed=candidate_snapshot.has_selling_campaign()),
