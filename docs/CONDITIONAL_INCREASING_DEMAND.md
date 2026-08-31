@@ -2,25 +2,30 @@
 
 ## Decision
 
-`increasing_demand` remains a valid VSA observation and remains **confirmation-only** for professional pressure scoring. It must not, by itself, upgrade a structurally qualified setup into an actionable decision.
+`increasing_demand` remains a valid VSA observation and remains **confirmation-only** for professional pressure scoring. It is not given a professional pressure weight and must not, by itself, upgrade a setup outside the validated market-structure context.
 
-## Actionability gate
+## Validated actionability behavior
 
-When `increasing_demand` is the only bullish directional VSA evidence in the current scoring window, the confirmation can support actionability only when all of the following hold:
+The production gate treats `increasing_demand` by VSA code semantics rather than relying on the optional evidence-direction field.
+
+When `increasing_demand` is the only bullish directional VSA evidence in the current scoring window, the candidate remains eligible for actionability only when:
 
 1. Trend direction is `UP`.
 2. Trend state is `HEALTHY`.
-3. Professional demand-minus-supply pressure is strictly positive.
-4. There is no opposing bearish directional VSA evidence.
+3. No opposing bearish directional VSA evidence is present.
 
-When these conditions are not met, professional confidence is forced to zero for that candidate, which prevents actionability without changing the underlying VSA evidence or its professional pressure weights.
+The gate does **not** require positive professional demand-minus-supply pressure from `increasing_demand` itself, because the event is intentionally confirmation-only and has no professional pressure weight.
 
-## Why
+## Evidence supporting the rule
 
-The 30-symbol audit showed that unconditional `increasing_demand` upgrades (`False -> True`) underperformed matched controls across 3-, 5-, and 10-week horizons. The effect was consistently negative but bootstrap intervals crossed zero, so the implementation is intentionally conservative rather than treating the audit as causal proof.
+The 30-symbol historical audit initially showed unconditional `increasing_demand` upgrades (`False -> True`) underperformed matched controls across 3-, 5-, and 10-week horizons. Unique-control bootstrap testing preserved the negative point estimate, but the 95% intervals crossed zero, so this was treated as evidence for conservative conditioning rather than causal proof.
 
-The rule therefore preserves the VSA observation while requiring agreement from market structure and professional pressure before it can influence actionability.
+The post-gate outcome audit then showed that blocked cases were concentrated in correcting, exhausted, and healthy-downtrend contexts. The production gate therefore preserves healthy-uptrend `increasing_demand` while blocking the clearly conflicting structural contexts.
 
 ## Scope
 
-This is a scanner actionability rule. It does not delete, reclassify, or assign a professional pressure weight to `increasing_demand`, and it does not alter unrelated VSA confirmation events.
+This is a scanner actionability rule. It does not delete or reclassify the VSA observation, does not assign it professional pressure weight, and does not alter unrelated confirmation events.
+
+## Validation status
+
+This target is considered complete for the current scoring architecture. Future changes should be revalidated with the same universe, matched-control, robustness, and post-gate outcome methodology rather than tuned from isolated examples.
