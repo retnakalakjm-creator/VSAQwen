@@ -26,44 +26,54 @@ class CampaignSnapshot:
 
     @classmethod
     def from_context(cls, ctx: BackgroundContext) -> "CampaignSnapshot":
-        bars = ctx.bars
+        return cls.from_parts(
+            bars=ctx.bars,
+            trend_direction=ctx.trend.direction,
+            structural_swings=ctx.structural_swings,
+        )
+
+    @classmethod
+    def from_parts(
+        cls,
+        *,
+        bars: tuple,
+        trend_direction: TrendDirection,
+        structural_swings: tuple,
+    ) -> "CampaignSnapshot":
         recent = bars[-config.BACKGROUND_LOOKBACK :]
 
-        def higher_closes() -> int:
-            return sum(
-                current.close_price > previous.close_price
-                for previous, current in zip(recent, recent[1:])
-            )
-
-        def lower_closes() -> int:
-            return sum(
-                current.close_price < previous.close_price
-                for previous, current in zip(recent, recent[1:])
-            )
+        higher_closes = sum(
+            current.close_price > previous.close_price
+            for previous, current in zip(recent, recent[1:])
+        )
+        lower_closes = sum(
+            current.close_price < previous.close_price
+            for previous, current in zip(recent, recent[1:])
+        )
 
         highs = [
             item
-            for item in ctx.structural_swings
+            for item in structural_swings
             if item.swing.type is SwingType.HIGH
         ][-2:]
         lows = [
             item
-            for item in ctx.structural_swings
+            for item in structural_swings
             if item.swing.type is SwingType.LOW
         ][-2:]
 
         return cls(
             recent_up_bars=sum(int(bar.direction) > 0 for bar in recent),
             recent_down_bars=sum(int(bar.direction) < 0 for bar in recent),
-            recent_higher_closes=higher_closes(),
-            recent_lower_closes=lower_closes(),
+            recent_higher_closes=higher_closes,
+            recent_lower_closes=lower_closes,
             recent_strong_closes=sum(
                 int(bar.close_position) >= 3 for bar in recent
             ),
             recent_weak_closes=sum(
                 int(bar.close_position) <= 1 for bar in recent
             ),
-            trend_direction=ctx.trend.direction,
+            trend_direction=trend_direction,
             high_scores=tuple(
                 float(item.evaluation.smart_money.overall)
                 for item in highs

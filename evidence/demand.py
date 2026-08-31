@@ -2,11 +2,12 @@ import pandas as pd
 
 import config
 from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
-from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, has_selling_campaign, validate_shakeout, _recent_structural_weakness
+from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, validate_shakeout, _recent_structural_weakness
 from evidence.campaign_snapshot import CampaignSnapshot
 from evidence.helpers import evaluate_detector, requirement, requirements_passed
 from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_high_volume, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing, is_bullish_bar
-from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadClass, VolumeClass
+from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadClass, VolumeClass, SwingLabel, TrendDirection
+from trend import TrendAnalyzer
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +126,41 @@ def _collect_test(ctx: BackgroundContext, campaign_snapshot: CampaignSnapshot | 
     return evidence
 
 
+def _candidate_trend_direction(ctx: BackgroundContext, candidate_index: int) -> TrendDirection:
+    """Derive candidate-time trend direction from confirmed structural swings."""
+    structural = tuple(
+        item
+        for item in ctx.structural_swings
+        if item.swing.confirmation_index <= candidate_index
+    )
+    if not structural:
+        return TrendDirection.UNKNOWN
+
+    analyzer = TrendAnalyzer()
+    classified = analyzer._classify_swings(list(structural))
+    return TrendAnalyzer._determine_direction(
+        TrendAnalyzer._weighted_label_counts(classified)
+    )
+
+
+def _candidate_campaign_snapshot(ctx: BackgroundContext, candidate_index: int) -> CampaignSnapshot:
+    bars = tuple(
+        bar
+        for bar in ctx.bars
+        if bar.bar_index <= candidate_index
+    )
+    structural = tuple(
+        item
+        for item in ctx.structural_swings
+        if item.swing.confirmation_index <= candidate_index
+    )
+    return CampaignSnapshot.from_parts(
+        bars=bars,
+        trend_direction=_candidate_trend_direction(ctx, candidate_index),
+        structural_swings=structural,
+    )
+
+
 def _find_recovery_anchored_shakeout(ctx: BackgroundContext, validation_metrics: pd.DataFrame):
     current_index = int(ctx.current.bar_index)
     if current_index <= 0:
@@ -142,21 +178,20 @@ def _find_recovery_anchored_shakeout(ctx: BackgroundContext, validation_metrics:
         if SpreadClass(int(candidate_row[COL_SPREAD_CLASS])) < SpreadClass.WIDE:
             continue
 
-        from evidence.engine import EvidenceEngine
-        from trend import TrendAnalyzer
-        candidate_replay = validation_metrics.iloc[: candidate_index + 1].copy()
-        candidate_trend = TrendAnalyzer().analyze(candidate_replay)
-        candidate_engine = EvidenceEngine()
-        candidate_engine._reset(metrics=candidate_replay, trend=candidate_trend, structural_swings=tuple(candidate_trend.structure.structural_swings), validation_metrics=candidate_replay)
-        candidate_ctx = candidate_engine._ctx
-        if candidate_ctx is None or candidate_ctx.previous is None:
+        candidate_snapshot = _candidate_campaign_snapshot(ctx, candidate_index)
+        candidate_bars = tuple(
+            bar
+            for bar in ctx.bars
+            if bar.bar_index <= candidate_index
+        )
+        if len(candidate_bars) < 2:
             continue
 
-        candidate_bar = candidate_ctx.current
-        candidate_previous = candidate_ctx.previous
+        candidate_bar = candidate_bars[-1]
+        candidate_previous = candidate_bars[-2]
         candidate_requirements = (
             requirement(name="Bearish Bar", passed=is_bearish_bar(candidate_bar)),
-            requirement(name="Selling Pressure Present", passed=has_selling_campaign(candidate_ctx)),
+            requirement(name="Selling Pressure Present", passed=candidate_snapshot.has_selling_campaign()),
             requirement(name="Wide Spread", passed=has_strong_spread(candidate_bar)),
             requirement(name="Very High Volume", passed=is_very_high_volume(candidate_bar)),
             requirement(name="Lower Low", passed=makes_lower_low(candidate_bar, candidate_previous)),
