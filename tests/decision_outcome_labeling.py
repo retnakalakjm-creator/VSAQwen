@@ -18,6 +18,16 @@ class DecisionOutcome:
     complete: bool
 
 
+def _column(frame: pd.DataFrame, name: str) -> str:
+    if name in frame.columns:
+        return name
+    lowered = {str(column).lower(): column for column in frame.columns}
+    try:
+        return lowered[name.lower()]
+    except KeyError as exc:
+        raise ValueError(f"Missing required outcome column: {name}") from exc
+
+
 def label_outcome(
     frame: pd.DataFrame,
     signal_index: int,
@@ -31,7 +41,11 @@ def label_outcome(
     if signal_index < 0 or signal_index >= len(frame):
         raise IndexError("signal_index is outside the frame")
 
-    entry = float(frame.iloc[signal_index]["Close"])
+    close_col = _column(frame, "Close")
+    high_col = _column(frame, "High")
+    low_col = _column(frame, "Low")
+
+    entry = float(frame.iloc[signal_index][close_col])
     end = signal_index + horizon
     if end >= len(frame):
         return DecisionOutcome(
@@ -47,11 +61,11 @@ def label_outcome(
         )
 
     future = frame.iloc[signal_index + 1 : end + 1]
-    exit_close = float(future.iloc[-1]["Close"])
+    exit_close = float(future.iloc[-1][close_col])
     forward_return = direction * (exit_close / entry - 1.0)
 
-    highs = future["High"].astype(float)
-    lows = future["Low"].astype(float)
+    highs = future[high_col].astype(float)
+    lows = future[low_col].astype(float)
     if direction == 1:
         mfe = float(max(0.0, highs.max() / entry - 1.0))
         mae = float(max(0.0, 1.0 - lows.min() / entry))
