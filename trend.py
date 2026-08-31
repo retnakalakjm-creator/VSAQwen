@@ -481,11 +481,6 @@ class TrendAnalyzer:
 
         required = config.TREND_STATE_LOOKBACK - 1
 
-        print("bullish:", bullish)
-        print("bearish:", bearish)
-        print("latest :", latest)
-        print("required:", required)
-
         if direction == TrendDirection.UP:         
             
             return (
