@@ -28,14 +28,16 @@ def _bars(size: int = 120) -> pd.DataFrame:
     )
 
 
-def _swing_signature(swings) -> tuple[tuple[object, int, int, float, str], ...]:
+def _swing_signature(
+    swings,
+    metrics: pd.DataFrame,
+) -> tuple[tuple[object, float, str, str], ...]:
     return tuple(
         (
             swing.type,
-            swing.bar_index,
-            swing.confirmation_index,
             swing.price,
             swing.week_beginning,
+            str(metrics.iloc[swing.confirmation_index][COL_WEEK]),
         )
         for swing in swings
     )
@@ -68,11 +70,49 @@ def test_serialized_swing_state_reconstruction_matches_full_history() -> None:
     resumed_swings = resumed_engine.calculate_from_state(full_metrics, restored)
     resumed_structure = TrendAnalyzer().analyze(full_metrics).structure
 
-    assert _swing_signature(resumed_swings) == _swing_signature(full_swings)
+    assert _swing_signature(resumed_swings, full_metrics) == _swing_signature(
+        full_swings, full_metrics
+    )
     assert _structure_signature(resumed_structure) == _structure_signature(full_structure)
     assert restored.search_state in (
         SwingSearchState.TRACKING_HIGH,
         SwingSearchState.TRACKING_LOW,
         SwingSearchState.WAITING_HIGH_CONFIRMATION,
         SwingSearchState.WAITING_LOW_CONFIRMATION,
+    )
+
+
+def test_scanner_state_can_resume_from_rebased_metric_window() -> None:
+    bars = _bars()
+    full_metrics = MetricsEngine().calculate(bars)
+    split = 80
+
+    prefix_engine = SwingEngine()
+    prefix_engine.calculate(full_metrics.iloc[: split + 1].copy())
+    state = ScannerState.from_dict(
+        prefix_engine.snapshot_state(symbol="TEST", timeframe="W").to_dict()
+    )
+
+    required_keys = [state.last_closed_bar]
+    if state.candidate is not None:
+        required_keys.append(state.candidate.bar_key)
+    required_keys.extend(
+        swing.pivot_bar_key for swing in state.confirmed_swings
+    )
+    required_keys.extend(
+        swing.confirmation_bar_key for swing in state.confirmed_swings
+    )
+
+    key_to_index = {
+        str(week): index
+        for index, week in enumerate(full_metrics[COL_WEEK])
+    }
+    replay_start = min(key_to_index[key] for key in required_keys)
+
+    rebased_metrics = full_metrics.iloc[replay_start:].reset_index(drop=True)
+    resumed = SwingEngine().calculate_from_state(rebased_metrics, state)
+    expected = SwingEngine().calculate(full_metrics)
+
+    assert _swing_signature(resumed, rebased_metrics) == _swing_signature(
+        expected, full_metrics
     )
