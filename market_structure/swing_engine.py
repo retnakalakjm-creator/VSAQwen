@@ -15,6 +15,7 @@ from models import (
     SwingSearchState,
     SwingType,    
 )
+from scanner_state import CandidateState, ScannerState
 
 
 # =============================================================================
@@ -73,6 +74,75 @@ class SwingEngine:
 
         return tuple(self._swings)
 
+    def snapshot_state(
+        self,
+        symbol: str,
+        timeframe: str,
+    ) -> ScannerState:
+        """Capture the causal swing state at the current data boundary."""
+
+        if self._df is None or self._df.empty:
+            raise ValueError("Cannot snapshot an uninitialized SwingEngine.")
+
+        if self._candidate is None:
+            raise RuntimeError("Cannot snapshot SwingEngine without a candidate.")
+
+        return ScannerState(
+            schema_version=1,
+            symbol=symbol,
+            timeframe=timeframe,
+            last_closed_bar=str(self._weeks[-1]),
+            search_state=self._state,
+            candidate=CandidateState(
+                bar_index=self._candidate.bar_index,
+                week_beginning=self._candidate.week_beginning,
+                type=self._candidate.type,
+                price=self._candidate.price,
+            ),
+            confirmed_swings=tuple(self._swings),
+        )
+
+    def calculate_from_state(
+        self,
+        metrics: pd.DataFrame,
+        state: ScannerState,
+    ) -> tuple[Swing, ...]:
+        """Resume swing detection from previously captured causal state."""
+
+        self._reset(metrics)
+
+        if state.candidate is None:
+            raise ValueError("ScannerState must contain an active swing candidate.")
+
+        try:
+            last_closed_index = next(
+                index
+                for index, week in enumerate(self._weeks)
+                if str(week) == state.last_closed_bar
+            )
+        except StopIteration as exc:
+            raise ValueError(
+                "ScannerState last_closed_bar is not present in metrics."
+            ) from exc
+
+        candidate = state.candidate
+        self._state = state.search_state
+        self._candidate = CandidateSwing(
+            bar_index=candidate.bar_index,
+            week_beginning=candidate.week_beginning,
+            type=candidate.type,
+            price=candidate.price,
+        )
+        self._swings = list(state.confirmed_swings)
+        self._classified_swings.clear()
+
+        self._find_potential_swings(
+            start_index=last_closed_index + 1,
+            initialize=False,
+        )
+
+        return tuple(self._swings)
+
     def _reset(
         self,
         df: pd.DataFrame,
@@ -113,7 +183,11 @@ class SwingEngine:
     # Swing Detection
     # -------------------------------------------------------------------------
 
-    def _find_potential_swings(self) -> None:
+    def _find_potential_swings(
+        self,
+        start_index: int = 1,
+        initialize: bool = True,
+    ) -> None:
         """
         Detect confirmed swing highs and swing lows.
 
@@ -126,13 +200,14 @@ class SwingEngine:
         if self._df.empty:
             return
 
-        # Initialize first candidate.
-        self._initialize_candidate(0)
+        if initialize:
+            # Initialize first candidate.
+            self._initialize_candidate(0)
         
         assert self._candidate is not None
 
         # Process remaining bars.
-        for bar_index in range(1, len(self._df)):
+        for bar_index in range(start_index, len(self._df)):
 
             
 
@@ -394,4 +469,4 @@ class SwingEngine:
         return (
             low1 > self._candidate.price
             and low2 > low1
-        )                  
+        )
