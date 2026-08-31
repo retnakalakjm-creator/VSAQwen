@@ -9,6 +9,7 @@ Collects all supply-side background evidence.
 from __future__ import annotations
 
 from .campaign import has_buying_campaign
+from .campaign_snapshot import CampaignSnapshot
 
 from .rules import (
     closes_lower, closes_lower_than_previous, has_strong_spread, is_above_average_spread, is_bullish_bar, is_confirmed_uptrend, is_down_bar, 
@@ -44,6 +45,7 @@ def collect_supply(
     background bars.
     """
 
+    campaign_snapshot = CampaignSnapshot.from_context(ctx)
     evidence: list[Evidence] = []
 
     # Skip index 0 because it has no previous bar.
@@ -52,11 +54,11 @@ def collect_supply(
         bar_ctx = ctx.with_current(i)
 
         evidence.extend(
-            _collect_buying_climax(bar_ctx)
+            _collect_buying_climax(bar_ctx, campaign_snapshot)
         )
 
         evidence.extend(
-            _collect_supply_coming_in(bar_ctx)
+            _collect_supply_coming_in(bar_ctx, campaign_snapshot)
         )
 
         evidence.extend(
@@ -72,24 +74,12 @@ def collect_supply(
         )
 
         evidence.extend(
-            _collect_upthrust(bar_ctx)
+            _collect_upthrust(bar_ctx, campaign_snapshot)
         )
 
         evidence.extend(
             _collect_no_demand(bar_ctx)
         )
-
-        # evidence.extend(
-        #     _collect_supply_absorption(bar_ctx)
-        # )
-        #
-        # evidence.extend(
-        #     _collect_high_volume_supply(bar_ctx)
-        # )
-        #
-        # evidence.extend(
-        #     _collect_wide_spread_supply(bar_ctx)
-        # )
 
     return evidence
 
@@ -99,87 +89,58 @@ def collect_supply(
 # -------------------------------------------------------------------------
 def _collect_buying_climax(
     ctx: BackgroundContext,
+    campaign_snapshot: CampaignSnapshot | None = None,
 ) -> list[Evidence]:
 
     evidence: list[Evidence] = []
 
     bar = ctx.current
     previous = ctx.previous   
-
-    # --------------------------------------------------
-    # Requirements
-    # --------------------------------------------------
+    snapshot = campaign_snapshot or CampaignSnapshot.from_context(ctx)
 
     requirements = (
-
         requirement(
             name="Buying Campaign",
-            passed=has_buying_campaign(ctx),
+            passed=snapshot.has_buying_campaign(),
         ),
-
         requirement(
             name="Bullish Bar",
             passed=is_bullish_bar(bar),
         ),
-
         requirement(
             name="Very High Volume",
             passed=is_very_high_volume(bar),
         ),
-
         requirement(
             name="Above Average Spread",
             passed=is_above_average_spread(bar),
         ),
-
     )
 
     if not requirements_passed(requirements):
         return evidence
-    
-    
-    # --------------------------------------------------
-    # Confirmations
-    # --------------------------------------------------
 
     confirmations = (
-
         requirement(
             name="Wide Spread",
             passed=has_strong_spread(bar),
-        ),    
-
+        ),
         requirement(
             name="Weak Close",
             passed=is_weak_close(bar),
         ),
-
         requirement(
             name="Increasing Volume",
-            passed=volume_increasing(
-                bar,
-                previous,
-            ),
+            passed=volume_increasing(bar, previous),
         ),
-
     )
 
-    # --------------------------------------------------
-    # Evidence
-    # --------------------------------------------------
-
     evaluate_detector(
-
         evidence=evidence,
-
         ctx=ctx,
-
         code=EvidenceCode.BUYING_CLIMAX,
-
         requirements=requirements,
-
         confirmations=confirmations,
-
     )
 
     return evidence
@@ -190,45 +151,39 @@ def _collect_buying_climax(
 # -------------------------------------------------------------------------
 def _collect_supply_coming_in(
     ctx: BackgroundContext,
+    campaign_snapshot: CampaignSnapshot | None = None,
 ) -> list[Evidence]:
 
     evidence: list[Evidence] = []
 
     bar = ctx.current
     previous = ctx.previous
+    snapshot = campaign_snapshot or CampaignSnapshot.from_context(ctx)
 
     requirements = (
         requirement(
             name="Buying Campaign",
-            passed=has_buying_campaign(ctx),
+            passed=snapshot.has_buying_campaign(),
         ),
-
         requirement(
             name="Down Bar",
             passed=is_down_bar(bar),
         ),
-
         requirement(
             name="High Volume",
             passed=is_high_volume(bar),
         ),
-
         requirement(
             name="Above Average Spread",
             passed=is_above_average_spread(bar),
         ),
-
         requirement(
             name="Weak Close",
             passed=is_weak_close(bar),
         ),
-
         requirement(
             name="Volume Increasing",
-            passed=volume_increasing(
-                bar,
-                previous,
-            ),
+            passed=volume_increasing(bar, previous),
         ),
     )
 
@@ -242,7 +197,6 @@ def _collect_supply_coming_in(
     return evidence
 
 
-
 # -------------------------------------------------------------------------
 # Hidden Supply
 # -------------------------------------------------------------------------
@@ -251,7 +205,6 @@ def _collect_hidden_supply(
 ) -> list[Evidence]:
 
     evidence: list[Evidence] = []
-
     bar = ctx.current
 
     if (
@@ -259,11 +212,10 @@ def _collect_hidden_supply(
         and is_high_volume(bar)
         and closes_lower(bar)
     ):
-
         add_evidence(
             evidence=evidence,
             ctx=ctx,
-            code=EvidenceCode.HIDDEN_SUPPLY,            
+            code=EvidenceCode.HIDDEN_SUPPLY,
         )
 
     return evidence
@@ -271,8 +223,6 @@ def _collect_hidden_supply(
 # -------------------------------------------------------------------------
 # Wide Spread Supply
 # -------------------------------------------------------------------------
-
-
 
 
 # -------------------------------------------------------------------------
@@ -295,11 +245,10 @@ def _collect_increasing_supply(
         and volume_increasing(current, previous)
         and spread_increasing(current, previous)
     ):
-
         add_evidence(
             evidence=evidence,
             ctx=ctx,
-            code=EvidenceCode.INCREASING_SUPPLY,  
+            code=EvidenceCode.INCREASING_SUPPLY,
         )
 
     return evidence
@@ -313,7 +262,6 @@ def _collect_supply_drying_up(
 ) -> list[Evidence]:
 
     evidence: list[Evidence] = []
-
     bar = ctx.current
 
     if (
@@ -321,11 +269,10 @@ def _collect_supply_drying_up(
         and is_low_volume(bar)
         and is_narrow_spread(bar)
     ):
-
         add_evidence(
             evidence=evidence,
             ctx=ctx,
-            code=EvidenceCode.SUPPLY_DRYING_UP,            
+            code=EvidenceCode.SUPPLY_DRYING_UP,
         )
 
     return evidence
@@ -335,11 +282,8 @@ def _collect_supply_drying_up(
 # -------------------------------------------------------------------------
 
 
-
-
-
 # -------------------------------------------------------------------------
-# No Demand 
+# No Demand
 # -------------------------------------------------------------------------
 def _collect_no_demand(
     ctx: BackgroundContext,
@@ -351,47 +295,36 @@ def _collect_no_demand(
     previous = ctx.previous
 
     requirements = (
-
         requirement(
             name="Bullish Environment",
             passed=ctx.is_bullish_environment(),
         ),
-
         requirement(
             name="Bullish Bar",
             passed=is_bullish_bar(bar),
         ),
-
         requirement(
             name="Low Volume",
             passed=is_low_volume(bar),
         ),
-
         requirement(
             name="Narrow Spread",
             passed=is_narrow_spread(bar),
         ),
-
     )
 
     if not requirements_passed(requirements):
         return evidence
 
     confirmations = (
-
         requirement(
             name="Volume Decreasing",
-            passed=volume_decreasing(
-                bar,
-                previous,
-            ),
+            passed=volume_decreasing(bar, previous),
         ),
-
         requirement(
             name="Weak Close",
             passed=is_weak_close(bar),
         ),
-
     )
 
     evaluate_detector(
@@ -406,72 +339,56 @@ def _collect_no_demand(
 
 
 # -------------------------------------------------------------------------
-# Uptrust 
+# Upthrust
 # -------------------------------------------------------------------------
 def _collect_upthrust(
     ctx: BackgroundContext,
+    campaign_snapshot: CampaignSnapshot | None = None,
 ) -> list[Evidence]:
 
     evidence: list[Evidence] = []
 
     bar = ctx.current
     previous = ctx.previous
+    snapshot = campaign_snapshot or CampaignSnapshot.from_context(ctx)
 
     requirements = (
-
         requirement(
             name="Buying Campaign",
-            passed=has_buying_campaign(ctx),
+            passed=snapshot.has_buying_campaign(),
         ),
-
         requirement(
             name="Bullish Bar",
             passed=is_bullish_bar(bar),
         ),
-
         requirement(
             name="Very High Volume",
             passed=is_very_high_volume(bar),
         ),
-
         requirement(
             name="Above Average Spread",
             passed=is_above_average_spread(bar),
         ),
-
     )
 
     if not requirements_passed(requirements):
         return evidence
 
     confirmations = (
-
         requirement(
             name="Wide Spread",
             passed=has_strong_spread(bar),
         ),
-
         requirement(
             name="Weak Close",
             passed=is_weak_close(bar),
         ),
-
         requirement(
             name="Lower Close Than Previous",
-            passed=closes_lower_than_previous(
-                bar,
-                previous,
-            ),
+            passed=closes_lower_than_previous(bar, previous),
         ),
-
     )
-    # print(
-    #     "UPTHRUST CREATED",
-    #     {
-    #         "bar_index": ctx.current.bar_index,
-    #         "code": EvidenceCode.UPTHRUST,
-    #     },
-    # )
+
     evaluate_detector(
         evidence=evidence,
         ctx=ctx,

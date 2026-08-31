@@ -2,7 +2,8 @@ import pandas as pd
 
 import config
 from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
-from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, has_recent_weakness, has_selling_campaign, validate_shakeout, _recent_structural_weakness
+from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, has_selling_campaign, validate_shakeout, _recent_structural_weakness
+from evidence.campaign_snapshot import CampaignSnapshot
 from evidence.helpers import evaluate_detector, requirement, requirements_passed
 from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_high_volume, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing, is_bullish_bar
 from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadClass, VolumeClass
@@ -13,10 +14,11 @@ from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadC
 # ---------------------------------------------------------------------------
 def collect_demand(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Evidence]:
     evidence: list[Evidence] = []
-    evidence.extend(_collect_stopping_volume(ctx))
-    evidence.extend(_collect_selling_climax(ctx))
+    campaign_snapshot = CampaignSnapshot.from_context(ctx)
+    evidence.extend(_collect_stopping_volume(ctx, campaign_snapshot))
+    evidence.extend(_collect_selling_climax(ctx, campaign_snapshot))
     evidence.extend(_collect_increasing_demand(ctx))
-    evidence.extend(_collect_test(ctx))
+    evidence.extend(_collect_test(ctx, campaign_snapshot))
     evidence.extend(_collect_shakeout(ctx=ctx, validation_metrics=metrics))
     evidence.extend(_collect_no_supply(ctx))
     return evidence
@@ -52,12 +54,13 @@ def _collect_increasing_demand(ctx: BackgroundContext) -> list[Evidence]:
     return evidence
 
 
-def _collect_stopping_volume(ctx: BackgroundContext) -> list[Evidence]:
+def _collect_stopping_volume(ctx: BackgroundContext, campaign_snapshot: CampaignSnapshot | None = None) -> list[Evidence]:
     evidence: list[Evidence] = []
     bar = ctx.current
     previous = ctx.previous
+    snapshot = campaign_snapshot or CampaignSnapshot.from_context(ctx)
     requirements = (
-        requirement(name="Selling Campaign", passed=has_selling_campaign(ctx)),
+        requirement(name="Selling Campaign", passed=snapshot.has_selling_campaign()),
         requirement(name="Bearish Bar", passed=is_bearish_bar(bar)),
         requirement(name="High Volume", passed=is_high_volume(bar)),
         requirement(name="Above Average Spread", passed=is_above_average_spread(bar)),
@@ -75,12 +78,13 @@ def _collect_stopping_volume(ctx: BackgroundContext) -> list[Evidence]:
     return evidence
 
 
-def _collect_selling_climax(ctx: BackgroundContext) -> list[Evidence]:
+def _collect_selling_climax(ctx: BackgroundContext, campaign_snapshot: CampaignSnapshot | None = None) -> list[Evidence]:
     evidence: list[Evidence] = []
     bar = ctx.current
     previous = ctx.previous
+    snapshot = campaign_snapshot or CampaignSnapshot.from_context(ctx)
     requirements = (
-        requirement(name="Selling Campaign", passed=has_selling_campaign(ctx)),
+        requirement(name="Selling Campaign", passed=snapshot.has_selling_campaign()),
         requirement(name="Bearish Bar", passed=is_bearish_bar(bar)),
         requirement(name="Very High Volume", passed=is_very_high_volume(bar)),
         requirement(name="Above Average Spread", passed=is_above_average_spread(bar)),
@@ -96,14 +100,15 @@ def _collect_selling_climax(ctx: BackgroundContext) -> list[Evidence]:
     return evidence
 
 
-def _collect_test(ctx: BackgroundContext) -> list[Evidence]:
+def _collect_test(ctx: BackgroundContext, campaign_snapshot: CampaignSnapshot | None = None) -> list[Evidence]:
     evidence: list[Evidence] = []
     bar = ctx.current
     previous = ctx.previous
+    snapshot = campaign_snapshot or CampaignSnapshot.from_context(ctx)
     trend = getattr(ctx, "trend", None)
     no_strong_downtrend_contradiction = True if trend is None else not (is_confirmed_downtrend(trend) and not _recent_structural_weakness(ctx))
     requirements = (
-        requirement(name="Selling Campaign", passed=has_selling_campaign(ctx)),
+        requirement(name="Selling Campaign", passed=snapshot.has_selling_campaign()),
         requirement(name="Down Bar", passed=is_bearish_bar(bar)),
         requirement(name="Low Volume", passed=is_low_volume(bar)),
         requirement(name="Narrow Spread", passed=is_narrow_spread(bar)),
