@@ -37,7 +37,7 @@ from models import (
     SwingLabel,
     SwingSearchState,
     SwingType,
-    TrendDirection,    
+    TrendDirection,
     TrendResult,
     TrendState,
     TrendStructure,
@@ -496,7 +496,7 @@ class TrendAnalyzer:
                 )
             )
 
-        if direction == TrendDirection.DOWN:           
+        if direction == TrendDirection.DOWN:          
 
             return (
                bearish >= required
