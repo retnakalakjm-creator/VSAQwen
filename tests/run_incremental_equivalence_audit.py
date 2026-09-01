@@ -12,14 +12,14 @@ from data import daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
 from market_structure.swing_engine import SwingEngine
 from tests.incremental_equivalence_harness import (
-    _state_anchor_index,
+    _reopen_start,
     compare_state,
     compare_swing_sequences,
     snapshot_after_prefix,
 )
 from tests.run_nse_increasing_demand_universe_audit import SYMBOLS
 
-HARNESS_REVISION = "2026-09-01-checkpoint-continuation-v1"
+HARNESS_REVISION = "2026-09-01-checkpoint-continuation-v2"
 
 
 def _audit_symbol(
@@ -48,8 +48,8 @@ def _audit_symbol(
             timeframe="weekly",
             split_index=split_index,
         )
-        anchor_index = _state_anchor_index(metrics, prefix_state)
-        reopened = metrics.iloc[anchor_index:].copy()
+        reopen_start = _reopen_start(metrics, prefix_state)
+        reopened = metrics.iloc[reopen_start:].copy()
 
         incremental_engine = SwingEngine()
         try:
@@ -81,7 +81,7 @@ def _audit_symbol(
                 "symbol": symbol,
                 "split_index": split_index,
                 "split_ratio": ratio,
-                "anchor_index": anchor_index,
+                "reopen_start": reopen_start,
                 "reopen_bars": len(reopened),
                 "equal_swings": equal_swings,
                 "equal_state": equal_state,
@@ -126,7 +126,7 @@ def main() -> None:
     print(f"split ratios: {', '.join(f'{r:.0%}' for r in split_ratios)}")
     print()
     print(
-        f"{'Symbol':<14}{'Split':>8}{'Anchor':>9}{'Reopen':>9}"
+        f"{'Symbol':<14}{'Split':>8}{'Reopen':>9}"
         f"{'Swings':>9}{'State':>8}{'Equivalent':>13}{'Full':>8}{'Inc':>8}"
     )
 
@@ -134,8 +134,7 @@ def main() -> None:
         print(
             f"{str(row['symbol']):<14}"
             f"{float(row['split_ratio']):>7.0%}"
-            f"{int(row['anchor_index']):>9}"
-            f"{int(row['reopen_bars']):>9}"
+            f"{int(row['reopen_start']):>9}"
             f"{str(row['equal_swings']):>9}"
             f"{str(row['equal_state']):>8}"
             f"{str(row['equivalent']):>13}"
