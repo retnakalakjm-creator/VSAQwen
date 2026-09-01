@@ -19,6 +19,8 @@ class WeightCalculator:
                 return 0.0
             case EvidenceCode.ABSORPTION:
                 return 0.0
+            case EvidenceCode.DEMAND_DRYING_UP:
+                return 0.0
             case EvidenceCode.NO_DEMAND:
                 return WeightCalculator._no_demand_weight(ctx)
             case EvidenceCode.NO_SUPPLY:
@@ -351,7 +353,7 @@ class WeightCalculator:
     @staticmethod
     def _no_demand_weight(ctx: BackgroundContext) -> float:
         weight = 1.0
-        weight += 0.30 if ctx.is_bearish_environment() else -0.30
+        weight += 0.30 if ctx.is_bullish_environment() else -0.30
         weight += WeightCalculator._no_demand_trend_adjustment(ctx.trend.direction, ctx.trend.state)
         weight += WeightCalculator._structure_adjustment(ctx.structural_pattern)
         evaluation = ctx.latest_professional_evaluation

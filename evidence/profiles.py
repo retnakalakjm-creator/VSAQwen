@@ -46,11 +46,12 @@ SUPPLY_PROFILES = (BUYING_CLIMAX, SUPPLY_COMING_IN, HIDDEN_SUPPLY, INCREASING_SU
 STOPPING_VOLUME = EvidenceProfile(EvidenceCode.STOPPING_VOLUME, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 1.00, 95, "Stopping Volume", "Heavy selling effort after a decline with evidence of professional demand capable of absorbing supply.")
 DEMAND_COMING_IN = EvidenceProfile(EvidenceCode.DEMAND_COMING_IN, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 1.00, 85, "Demand Coming In", "Bullish effort/result evidence suggesting demand is entering the market.")
 INCREASING_DEMAND = EvidenceProfile(EvidenceCode.INCREASING_DEMAND, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 0.85, 85, "Increasing Demand", "Bullish effort/result evidence showing increasing demand pressure.")
+DEMAND_DRYING_UP = EvidenceProfile(EvidenceCode.DEMAND_DRYING_UP, EvidenceCategory.DEMAND, EvidenceDirection.BEARISH, 0.80, 0.0, 55, "Demand Drying Up", "Buying effort has diminished significantly; retain as audit/context evidence until separately validated.")
 SELLING_CLIMAX = EvidenceProfile(EvidenceCode.SELLING_CLIMAX, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.95, 0.38, 100, "Selling Climax", "Climactic selling that may indicate exhaustion and professional absorption.")
 NO_SUPPLY = EvidenceProfile(EvidenceCode.NO_SUPPLY, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.80, 1.0, 70, "No Supply", "A decline occurring with insufficient selling pressure.")
 TEST = EvidenceProfile(EvidenceCode.TEST, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.85, 1.0, 80, "Test", "A low-volume test of available supply.")
 SHAKEOUT = EvidenceProfile(EvidenceCode.SHAKEOUT, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 1.0, 90, "Shakeout", "A sharp downward move that is rejected and shows absorption of selling.")
-DEMAND_PROFILES = (STOPPING_VOLUME, DEMAND_COMING_IN, INCREASING_DEMAND, SELLING_CLIMAX, NO_SUPPLY, TEST, SHAKEOUT)
+DEMAND_PROFILES = (STOPPING_VOLUME, DEMAND_COMING_IN, INCREASING_DEMAND, DEMAND_DRYING_UP, SELLING_CLIMAX, NO_SUPPLY, TEST, SHAKEOUT)
 
 # Effort/Result profiles are contextual only. Weight remains zero until a separate
 # production decision establishes an evidence contribution.

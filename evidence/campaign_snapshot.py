@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -8,6 +9,12 @@ import pandas as pd
 import config
 from engine.columns import COL_CLOSE, COL_CLOSE_POSITION, COL_DIRECTION
 from models import BackgroundContext, TrendDirection, SwingType
+
+
+_CONTEXT_CACHE: ContextVar[tuple[BackgroundContext, "CampaignSnapshot"] | None] = ContextVar(
+    "campaign_snapshot_context_cache",
+    default=None,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,11 +36,17 @@ class CampaignSnapshot:
 
     @classmethod
     def from_context(cls, ctx: BackgroundContext) -> "CampaignSnapshot":
-        return cls.from_parts(
+        cached = _CONTEXT_CACHE.get()
+        if cached is not None and cached[0] is ctx:
+            return cached[1]
+
+        snapshot = cls.from_parts(
             bars=ctx.bars,
             trend_direction=ctx.trend.direction,
             structural_swings=ctx.structural_swings,
         )
+        _CONTEXT_CACHE.set((ctx, snapshot))
+        return snapshot
 
     @classmethod
     def from_parts(
