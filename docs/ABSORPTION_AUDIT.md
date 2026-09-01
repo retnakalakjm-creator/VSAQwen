@@ -109,6 +109,80 @@ conflict_penalty = 0.20   # provisional audit policy only
 rejection = NO
 ```
 
+## 30-symbol matched-control robustness
+
+The candidate was re-tested on the full 30-symbol NSE universe using matched controls, with 520 weekly sample bars per symbol, 72 unique matched pairs per horizon, and 5,000 bootstrap iterations. The conflict definition remained:
+
+```text
+down bar + increasing volume + increasing spread
+```
+
+### Clean candidates
+
+```text
+H=3   pairs=35   delta=+3.503%   95% CI=[+1.018%, +6.143%]   robust positive
+H=5   pairs=35   delta=+4.292%   95% CI=[+2.280%, +6.558%]   robust positive
+H=10  pairs=35   delta=+5.891%   95% CI=[+3.541%, +8.528%]   robust positive
+```
+
+### Conflict candidates
+
+```text
+H=3   pairs=37   delta=+0.953%   95% CI=[-0.728%, +2.633%]   inconclusive
+H=5   pairs=37   delta=+3.163%   95% CI=[+1.465%, +4.945%]   robust positive
+H=10  pairs=37   delta=+1.586%   95% CI=[-0.506%, +3.499%]   inconclusive
+```
+
+The conflicted group therefore remains positive at H5, but its advantage is materially weaker than the clean group and is not robust at H3 or H10.
+
+### Conflict penalty robustness
+
+The clean-minus-conflict delta was:
+
+```text
+H=3   penalty=+2.551 pp   95% CI=[-0.477 pp, +5.720 pp]   inconclusive
+H=5   penalty=+1.129 pp   95% CI=[-1.603 pp, +3.996 pp]   inconclusive
+H=10  penalty=+4.305 pp   95% CI=[+1.242 pp, +7.645 pp]   robust positive
+```
+
+The evidence therefore supports a **horizon-dependent attenuation effect**, strongest and statistically robust at H10, while not supporting a universally quantified penalty across all horizons.
+
+## Conflict actionability safety
+
+A counterfactual actionability audit evaluated the full 72 matched target events at each horizon by comparing all candidates with a policy that rejects the `INCREASING_SUPPLY_LIKE` conflict group.
+
+```text
+   H     All    Keep  Reject   PosLost  NegAvoid     MeanAll    MeanKeep      Lift
+   3      72      35      37        14        23    -3.143%    -3.244%  -0.101%
+   5      72      35      37        17        20    -0.151%     0.280%   0.431%
+  10      72      35      37        18        19     1.006%     5.529%   4.524%
+```
+
+Conflict outcomes themselves were:
+
+```text
+   H  Events  Positive  Negative     MeanRet   PosRate
+   3      37        14        23    -3.047%   37.84%
+   5      37        17        20    -0.559%   45.95%
+  10      37        18        19    -3.273%   48.65%
+```
+
+Interpretation:
+
+- Hard rejection does not pass the safety requirement because it removes meaningful positive outcomes as well as negative ones.
+- At H3, rejection slightly worsens mean return (`-0.101 pp`).
+- At H5 and H10, rejection improves mean return, substantially so at H10.
+- The conflict group is weak enough to justify attenuation, but not sufficiently uniformly harmful to justify a hard veto.
+
+Decision:
+
+```text
+hard rejection safety = DO NOT PROMOTE
+soft conflict penalty  = RETAIN AS COUNTERFACTUAL / PROVISIONAL
+```
+
+The `0.20` penalty remains a provisional modelling value only. The robustness result does not justify increasing the penalty or converting it into rejection.
+
 ## Decision-value audit
 
 The candidate population compared with the eligible-market baseline produced:
