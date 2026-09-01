@@ -33,12 +33,18 @@ def add_evidence(
 ) -> Evidence:
     profile = EVIDENCE_REGISTRY[code]
 
-    if code == EvidenceCode.DEMAND_COMING_IN:
-        weight = 0.38
-    elif code == EvidenceCode.INCREASING_DEMAND:
-        weight = 0.85
-    elif code == EvidenceCode.SELLING_CLIMAX:
-        weight = 0.38
+    if code in (
+        EvidenceCode.DEMAND_COMING_IN,
+        EvidenceCode.DEMAND_DRYING_UP,
+        EvidenceCode.INCREASING_DEMAND,
+        EvidenceCode.SELLING_CLIMAX,
+    ):
+        weight = {
+            EvidenceCode.DEMAND_COMING_IN: 0.38,
+            EvidenceCode.DEMAND_DRYING_UP: 0.0,
+            EvidenceCode.INCREASING_DEMAND: 0.85,
+            EvidenceCode.SELLING_CLIMAX: 0.38,
+        }[code]
     else:
         weight = WeightCalculator.calculate(
             code,
