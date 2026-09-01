@@ -4,6 +4,7 @@ import config
 from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
 from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, validate_shakeout, _recent_structural_weakness
 from evidence.campaign_snapshot import CampaignSnapshot
+from evidence.demand_coming_in import collect_demand_coming_in
 from evidence.helpers import evaluate_detector, requirement, requirements_passed
 from evidence.rules import has_strong_spread, has_weak_spread, is_above_average_spread, is_bearish_bar, is_confirmed_downtrend, is_high_volume, is_low_volume, is_narrow_spread, is_strong_close, is_very_high_volume, is_weak_close, makes_higher_low, makes_lower_low, volume_decreasing, volume_increasing, is_bullish_bar
 from models import BackgroundContext, Evidence, EvidenceCode, Direction, SpreadClass, VolumeClass, TrendDirection, SwingLabel
@@ -19,6 +20,7 @@ def collect_demand(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Eviden
     evidence.extend(_collect_stopping_volume(ctx, campaign_snapshot))
     evidence.extend(_collect_selling_climax(ctx, campaign_snapshot))
     evidence.extend(_collect_increasing_demand(ctx))
+    evidence.extend(collect_demand_coming_in(ctx))
     evidence.extend(_collect_test(ctx, campaign_snapshot))
     evidence.extend(_collect_shakeout(ctx=ctx, validation_metrics=metrics))
     evidence.extend(_collect_no_supply(ctx))

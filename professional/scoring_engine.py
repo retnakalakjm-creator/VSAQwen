@@ -54,6 +54,11 @@ class ProfessionalScoringEngine:
             trend=trend,
             evidence=evidence,
         )
+        confidence = self._apply_demand_coming_in_gate(
+            confidence=confidence,
+            trend=trend,
+            evidence=evidence,
+        )
 
         scores = ProfessionalScore(
             trend=trend_score,
@@ -125,6 +130,23 @@ class ProfessionalScoringEngine:
             return 0.0
 
         return confidence
+
+    @staticmethod
+    def _apply_demand_coming_in_gate(
+        *,
+        confidence: float,
+        trend: TrendResult,
+        evidence: EvidenceResult,
+    ) -> float:
+        """Suppress DEMAND_COMING_IN in the validated correcting+bullish regime."""
+        codes = {item.code for item in evidence.evidence}
+        if EvidenceCode.DEMAND_COMING_IN not in codes:
+            return confidence
+        if trend.structure.direction != TrendDirection.UP:
+            return confidence
+        if trend.structure.state != TrendState.CORRECTING:
+            return confidence
+        return 0.0
 
     @staticmethod
     def _score_trend(
