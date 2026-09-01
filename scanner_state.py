@@ -3,7 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from models import Swing, SwingSearchState, SwingType
+from models import (
+    Evidence,
+    EvidenceCategory,
+    EvidenceCode,
+    EvidenceDirection,
+    SwingSearchState,
+    SwingType,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +65,76 @@ class ConfirmedSwingState:
 
 
 @dataclass(frozen=True, slots=True)
+class StructuralEventState:
+    """Causal structural-progression evidence needed by qualification."""
+
+    bar_key: str
+    code: EvidenceCode
+    category: EvidenceCategory
+    direction: EvidenceDirection
+    strength: float
+    weight: float
+    observation: str
+    description: str
+    quality: float
+
+    @classmethod
+    def from_evidence(cls, evidence: Evidence) -> "StructuralEventState":
+        return cls(
+            bar_key=str(evidence.week_beginning),
+            code=evidence.code,
+            category=evidence.category,
+            direction=evidence.direction,
+            strength=float(evidence.strength),
+            weight=float(evidence.weight),
+            observation=str(evidence.observation),
+            description=str(evidence.description),
+            quality=float(evidence.quality),
+        )
+
+    def to_evidence(self, bar_index: int) -> Evidence:
+        return Evidence(
+            code=self.code,
+            category=self.category,
+            direction=self.direction,
+            strength=self.strength,
+            weight=self.weight,
+            observation=self.observation,
+            description=self.description,
+            bar_index=bar_index,
+            week_beginning=self.bar_key,
+            quality=self.quality,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bar_key": self.bar_key,
+            "code": self.code.value,
+            "category": int(self.category),
+            "direction": int(self.direction),
+            "strength": self.strength,
+            "weight": self.weight,
+            "observation": self.observation,
+            "description": self.description,
+            "quality": self.quality,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "StructuralEventState":
+        return cls(
+            bar_key=str(data["bar_key"]),
+            code=EvidenceCode(data["code"]),
+            category=EvidenceCategory(int(data["category"])),
+            direction=EvidenceDirection(int(data["direction"])),
+            strength=float(data["strength"]),
+            weight=float(data["weight"]),
+            observation=str(data["observation"]),
+            description=str(data["description"]),
+            quality=float(data.get("quality", 1.0)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ScannerState:
     """Minimal causal state required to resume incremental scanning."""
 
@@ -68,6 +145,7 @@ class ScannerState:
     search_state: SwingSearchState
     candidate: CandidateState | None
     confirmed_swings: tuple[ConfirmedSwingState, ...]
+    structural_events: tuple[StructuralEventState, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +157,9 @@ class ScannerState:
             "candidate": None if self.candidate is None else self.candidate.to_dict(),
             "confirmed_swings": [
                 swing.to_dict() for swing in self.confirmed_swings
+            ],
+            "structural_events": [
+                event.to_dict() for event in self.structural_events
             ],
         }
 
@@ -99,5 +180,9 @@ class ScannerState:
             confirmed_swings=tuple(
                 ConfirmedSwingState.from_dict(item)
                 for item in data.get("confirmed_swings", ())
+            ),
+            structural_events=tuple(
+                StructuralEventState.from_dict(item)
+                for item in data.get("structural_events", ())
             ),
         )
