@@ -218,12 +218,18 @@ class ProfessionalScoringEngine:
     def _score_effort(
         result: EvidenceResult,
     ) -> float:
-        """Calculate professional effort."""
-        return ProfessionalScoringEngine._score_evidence(
+        """Calculate professional effort, including the dedicated ABSORPTION category."""
+        score = ProfessionalScoringEngine._score_evidence(
             result.evidence,
             EvidenceCategory.EFFORT,
             config.EFFORT_EVIDENCE_WEIGHTS,
         )
+        score += ProfessionalScoringEngine._score_evidence(
+            result.evidence,
+            EvidenceCategory.ABSORPTION,
+            config.EFFORT_EVIDENCE_WEIGHTS,
+        )
+        return min(score, 1.0)
 
     @staticmethod
     def _score_strength(

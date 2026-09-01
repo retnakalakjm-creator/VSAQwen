@@ -2,6 +2,7 @@ import pandas as pd
 
 import config
 from engine.columns import COL_DIRECTION, COL_SPREAD_CLASS, COL_VOLUME_CLASS
+from evidence.absorption import collect_absorption
 from evidence.campaign import ShakeoutRecoveryResult, _validate_shakeout_test, calculate_shakeout_quality, validate_shakeout, _recent_structural_weakness
 from evidence.campaign_snapshot import CampaignSnapshot
 from evidence.demand_coming_in import collect_demand_coming_in
@@ -24,6 +25,7 @@ def collect_demand(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Eviden
     evidence.extend(_collect_test(ctx, campaign_snapshot))
     evidence.extend(_collect_shakeout(ctx=ctx, validation_metrics=metrics))
     evidence.extend(_collect_no_supply(ctx))
+    evidence.extend(collect_absorption(ctx))
     return evidence
 
 

@@ -2,120 +2,66 @@
 
 ## Status
 
-`ABSORPTION` is **audit-complete / provisional / non-production**.
+`ABSORPTION` is **production-connected / non-scoring / provisional**.
 
-The event is not collected by the production `EvidenceEngine`, is not registered in `evidence/evidence_registry.py`, and does not mutate production scoring or ranking.
+The canonical detector is now connected to the production `EvidenceEngine` through the demand collection path and registered in the evidence registries. It remains excluded from professional scoring and scanner ranking because the audit has not justified a production scoring weight.
 
 ```text
 base weight        = 0.38   # provisional audit value only
 conflict penalty   = 0.20   # provisional audit policy only
+production weight  = 0.00
 rejection          = NO
-production path    = NO
+production path    = YES
+production scoring = NO
 ```
 
-## Candidate semantics
+## Canonical detector
 
-The audit-only candidate definition is:
+The production detector is:
 
 1. Bearish/down bar.
 2. High volume.
 3. Above-average spread.
-4. Close in the upper portion of the bar.
+4. Upper close.
 5. Lower low than the previous bar.
 
-This represents selling effort with a comparatively resilient result and is treated as an effort/result absorption concept rather than an automatically actionable bullish event.
+All five conditions are mandatory. The detector is point-in-time and emits one `EvidenceCode.ABSORPTION` observation on the current bar when the definition passes.
+
+`ABSORPTION` is represented under the dedicated `EvidenceCategory.ABSORPTION` category. Its runtime evidence weight is `0.00`.
 
 ## Candidate outcome audit
 
-- Symbols requested: `8`
-- Symbols with results: `8`
-- Candidate events: `68`
-- Positive: `44`
-- Negative: `24`
-- Flat: `0`
-- Decisive: `68`
-- Positive decisive rate: `64.71%`
-- Mean 8-bar return: `+3.08%`
-- Failures: `0`
+Original 8-symbol audit:
+
+```text
+candidate events              = 68
+positive                      = 44
+negative                      = 24
+flat                          = 0
+positive decisive rate        = 64.71%
+mean 8-bar return             = +3.08%
+failure count                 = 0
+```
 
 ## Semantic-quality audit
 
-The 68 candidates were internally consistent with the intended structural definition:
-
-- Upper close: `68 / 68`
-- Lower low: `68 / 68`
-- High volume classification: `16 / 68`
-- Wide spread classification: `16 / 68`
-- Semantic failures: `0`
-
-The high-volume and wide-spread classifications are therefore confirmation descriptors rather than universal requirements beyond the candidate definition already used.
+All original candidates satisfied upper-close and lower-low semantics. High-volume and wide-spread classifications were present in `16 / 68` cases each, so those classifications remain supporting descriptors rather than separate mandatory conditions beyond the frozen detector definition.
 
 ## Interaction / contradiction audit
 
-The 68 candidates were compared against same-bar supply and demand evidence families.
-
-### Supply-side interaction
-
-- Events with supply conflict: `37 / 68`
-- Conflict rate: `54.41%`
-- `INCREASING_SUPPLY_LIKE`: `37`
-- `SUPPLY_COMING_IN_LIKE`: `0`
-- `HIDDEN_SUPPLY_LIKE`: `0`
-- `UPTHRUST_LIKE`: `0`
-- `NO_DEMAND_LIKE`: `0`
-- `BUYING_CLIMAX_LIKE`: `0`
-
-The supply overlap is concentrated entirely in `INCREASING_SUPPLY_LIKE`.
-
-### Demand-side interaction
-
-All `68 / 68` candidates also interacted with `STOPPING_VOLUME_LIKE`.
-
-This is treated as compatible contextual confirmation rather than contradiction: both events describe substantial selling effort whose result shows resilience.
-
-Other audited demand interactions were zero.
-
-## Conflict-outcome audit
-
-The `INCREASING_SUPPLY_LIKE` overlap was materially harmful to historical outcome quality.
-
-- Conflict events: `37`
-- Clean events: `31`
-- Conflict positive decisive rate: `59.46%`
-- Clean positive decisive rate: `70.97%`
-- Positive-rate gap: `-11.51` percentage points
-- Conflict mean return: `-0.58%`
-- Clean mean return: `+7.44%`
-- Mean-return gap: `-8.02` percentage points
-
-This supports applying a quality penalty to conflicted absorption observations in audit modelling.
-
-## Conflict-penalty sensitivity
-
-Tested penalties:
+Original interaction population:
 
 ```text
-0.00 -> effective conflict weight 1.00
-0.05 -> effective conflict weight 0.95
-0.10 -> effective conflict weight 0.90
-0.15 -> effective conflict weight 0.85
-0.20 -> effective conflict weight 0.80
+ABSORPTION candidates                 = 68
+INCREASING_SUPPLY_LIKE conflict       = 37
+STOPPING_VOLUME_LIKE interaction      = 68
 ```
 
-The sensitivity audit recommended the maximum tested penalty:
-
-```text
-conflict_penalty = 0.20   # provisional audit policy only
-rejection = NO
-```
+The `STOPPING_VOLUME_LIKE` interaction is treated as compatible confirmation. The supply overlap is concentrated entirely in `INCREASING_SUPPLY_LIKE`.
 
 ## 30-symbol matched-control robustness
 
-The candidate was re-tested on the full 30-symbol NSE universe using matched controls, with 520 weekly sample bars per symbol, 72 unique matched pairs per horizon, and 5,000 bootstrap iterations. The conflict definition remained:
-
-```text
-down bar + increasing volume + increasing spread
-```
+The full robustness audit used 30 symbols, 520 sample bars per symbol, matched target/control events, and 5,000 bootstrap iterations.
 
 ### Clean candidates
 
@@ -133,9 +79,13 @@ H=5   pairs=37   delta=+3.163%   95% CI=[+1.465%, +4.945%]   robust positive
 H=10  pairs=37   delta=+1.586%   95% CI=[-0.506%, +3.499%]   inconclusive
 ```
 
-The conflicted group therefore remains positive at H5, but its advantage is materially weaker than the clean group and is not robust at H3 or H10.
+The conflict group therefore remains positive at H5, but is materially weaker than clean ABSORPTION and is not robust at H3 or H10.
 
-### Conflict penalty robustness
+### Leave-one-symbol-out concentration
+
+All 30 symbols remained robustly positive at H3, H5, and H10 when excluded one at a time. The matched-control effect is therefore not dependent on a single symbol.
+
+## Conflict penalty robustness
 
 The clean-minus-conflict delta was:
 
@@ -145,11 +95,11 @@ H=5   penalty=+1.129 pp   95% CI=[-1.603 pp, +3.996 pp]   inconclusive
 H=10  penalty=+4.305 pp   95% CI=[+1.242 pp, +7.645 pp]   robust positive
 ```
 
-The evidence therefore supports a **horizon-dependent attenuation effect**, strongest and statistically robust at H10, while not supporting a universally quantified penalty across all horizons.
+This supports a horizon-dependent attenuation effect, strongest and robust at H10, without establishing a universally quantified penalty across every horizon.
 
 ## Conflict actionability safety
 
-A counterfactual actionability audit evaluated the full 72 matched target events at each horizon by comparing all candidates with a policy that rejects the `INCREASING_SUPPLY_LIKE` conflict group.
+A counterfactual policy rejecting the `INCREASING_SUPPLY_LIKE` conflict group was evaluated over the 72 matched target events at each horizon.
 
 ```text
    H     All    Keep  Reject   PosLost  NegAvoid     MeanAll    MeanKeep      Lift
@@ -158,7 +108,7 @@ A counterfactual actionability audit evaluated the full 72 matched target events
   10      72      35      37        18        19     1.006%     5.529%   4.524%
 ```
 
-Conflict outcomes themselves were:
+Conflict outcomes:
 
 ```text
    H  Events  Positive  Negative     MeanRet   PosRate
@@ -167,88 +117,103 @@ Conflict outcomes themselves were:
   10      37        18        19    -3.273%   48.65%
 ```
 
-Interpretation:
+Hard rejection is unsafe because it removes meaningful positive outcomes as well as negatives. It slightly worsens H3 mean return and improves H5/H10, with the strongest improvement at H10.
 
-- Hard rejection does not pass the safety requirement because it removes meaningful positive outcomes as well as negative ones.
-- At H3, rejection slightly worsens mean return (`-0.101 pp`).
-- At H5 and H10, rejection improves mean return, substantially so at H10.
-- The conflict group is weak enough to justify attenuation, but not sufficiently uniformly harmful to justify a hard veto.
-
-Decision:
+Frozen policy:
 
 ```text
 hard rejection safety = DO NOT PROMOTE
 soft conflict penalty  = RETAIN AS COUNTERFACTUAL / PROVISIONAL
 ```
 
-The `0.20` penalty remains a provisional modelling value only. The robustness result does not justify increasing the penalty or converting it into rejection.
+The `0.20` penalty remains a research-policy value only. It is not applied by the production scorer.
 
 ## Decision-value audit
 
-The candidate population compared with the eligible-market baseline produced:
-
-- Candidate positive decisive rate: `64.71%`
-- Eligible-market positive decisive rate: `60.68%`
-- Positive-rate lift: `+4.02` percentage points
-- Candidate mean return: `+3.08%`
-- Eligible-market mean return: `+3.78%`
-- Mean-return lift: `-0.71` percentage points
-- Candidate share of eligible events: `0.61%`
-
-Clean absorption events were substantially stronger than conflicted events, so the signal appears to contain useful information when supply-increase conflict is absent.
-
-Weight sensitivity tested:
+The original candidate population versus the eligible-market baseline showed:
 
 ```text
-0.00
-0.25
-0.30
-0.38
-0.45
-0.50
+candidate positive decisive rate = 64.71%
+eligible-market positive rate    = 60.68%
+positive-rate lift               = +4.02 pp
+candidate mean 8-bar return      = +3.08%
+eligible-market mean return      = +3.78%
+mean-return lift                 = -0.71 pp
+candidate share                 = 0.61%
 ```
 
-At the provisional base weight of `0.38`:
+This supports retaining ABSORPTION as useful contextual evidence, while not approving a scoring contribution without a genuine production ranking study.
+
+## Production-path integration
+
+The canonical production path now includes:
 
 ```text
-clean effective weight    = 0.38
-conflict effective weight = 0.304
+collector             = YES
+dedicated detector     = evidence/absorption.py
+collection path       = EvidenceEngine -> collect_demand -> collect_absorption
+registry               = YES
+category               = ABSORPTION
+runtime scoring weight = 0.00
+conflict penalty       = 0.20 provisional / not applied
+scanner ranking        = UNCHANGED
 ```
 
-The `0.38` value is therefore retained as a conservative provisional audit weight, not as a production-approved weight.
+The dedicated category is intentional: it makes the ABSORPTION contribution explicit in the professional scorer rather than silently inheriting a generic effort rule. The canonical scorer can therefore evaluate a counterfactual ABSORPTION weight without changing the production value, which remains `0.00`.
 
-## Production-path readiness
+## Production ranking-impact audit
 
-A dedicated readiness audit established:
+The first genuine production-path counterfactual used the canonical detector and `ScannerEngine.evaluate()` with ABSORPTION weights of `0.00`, `0.10`, `0.15`, `0.20`, `0.25`, `0.30`, and `0.38`.
+
+Production ABSORPTION emissions:
 
 ```text
-collector_contains_target       = False
-engine_collect_mentions_target = False
-registry_contains_target       = False
-base_weight                    = 0.38
-conflict_penalty               = 0.20
-clean_effective_weight         = 0.38
-conflict_effective_weight      = 0.304
-true_ranking_impact_status      = NOT_APPLICABLE_PRODUCTION_PATH_ABSENT
-synthetic_ranking_safe_weight   = True
-production_score_mutation       = False
-status                         = PASS
+symbols with results = 30
+ABSORPTION emissions = 72
 ```
 
-This is the decisive architectural boundary. No live ranking-impact result is claimed because `ABSORPTION` is not in the production evidence path.
+Counterfactual score impact:
 
-## Final audit decision
+```text
+Weight   Mean dStrength   Mean dConfidence   Actionable 0   Actionable 1   Gained   Lost
+0.00          0.0000            0.0000              0              0         0       0
+0.10          0.0400            0.0200              0              0         0       0
+0.15          0.0600            0.0300              0              0         0       0
+0.20          0.0800            0.0400              0              0         0       0
+0.25          0.1000            0.0500              0              0         0       0
+0.30          0.1200            0.0600              0              0         0       0
+0.38          0.1520            0.0760              0              0         0       0
+```
+
+Interpretation:
+
+- The production scorer now responds to ABSORPTION counterfactual weights, confirming that the scoring path is real rather than a dead configuration entry.
+- The response is deterministic and monotonic across the tested weights.
+- No ABSORPTION event changed scanner actionability in this population. The event is not part of the scanner's directional VSA confirmation sets, so changing its professional score alone does not make a structural candidate actionable.
+- Therefore the tested nonzero weights currently affect the professional score fields but do **not** produce a validated scanner decision/ranking benefit.
+
+Decision from this audit:
+
+```text
+counterfactual scoring sensitivity = YES
+validated actionability impact      = NO
+validated ranking benefit            = NO
+production weight                   = KEEP 0.00
+```
+
+## Final decision
 
 ```text
 ABSORPTION
-    base weight        = 0.38   # provisional
-    conflict penalty   = 0.20   # provisional
-    rejection          = NO
-    production path    = NO
-    registry           = NO
-    collector          = NO
-    scoring mutation   = NO
-    status             = AUDIT_COMPLETE / PROVISIONAL
+    detector          = PRODUCTION-CONNECTED
+    registry          = YES
+    base weight       = 0.38   # provisional audit reference
+    runtime weight    = 0.00
+    conflict penalty  = 0.20   # provisional counterfactual only
+    rejection         = NO
+    scoring mutation  = NO
+    ranking mutation  = NO
+    status             = PRODUCTION-CONNECTED / NON-SCORING / PROVISIONAL
 ```
 
-The event remains eligible for future production promotion, but promotion requires a canonical production detector, registry registration, production-path verification, and genuine ranking/regression validation. No audit-only weight should be interpreted as an active production scoring rule.
+Future promotion to production scoring requires a validated downstream decision or ranking benefit from the canonical detector, followed by regression validation. No audit-only weight should be interpreted as an active production scoring rule.

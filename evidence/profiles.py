@@ -53,11 +53,9 @@ TEST = EvidenceProfile(EvidenceCode.TEST, EvidenceCategory.DEMAND, EvidenceDirec
 SHAKEOUT = EvidenceProfile(EvidenceCode.SHAKEOUT, EvidenceCategory.DEMAND, EvidenceDirection.BULLISH, 0.90, 1.0, 90, "Shakeout", "A sharp downward move that is rejected and shows absorption of selling.")
 DEMAND_PROFILES = (STOPPING_VOLUME, DEMAND_COMING_IN, INCREASING_DEMAND, DEMAND_DRYING_UP, SELLING_CLIMAX, NO_SUPPLY, TEST, SHAKEOUT)
 
-# Effort/Result profiles are contextual only. Weight remains zero until a separate
-# production decision establishes an evidence contribution.
 EFFORT_GT_RESULT = EvidenceProfile(EvidenceCode.EFFORT_GT_RESULT, EvidenceCategory.EFFORT, EvidenceDirection.NEUTRAL, 0.50, 0.0, 40, "Effort exceeds result", "Elevated effort produced comparatively limited result; interpret with directional and event context.")
 RESULT_GT_EFFORT = EvidenceProfile(EvidenceCode.RESULT_GT_EFFORT, EvidenceCategory.EFFORT, EvidenceDirection.NEUTRAL, 0.50, 0.0, 40, "Result exceeds effort", "Price result is comparatively strong for the observed effort; interpret with directional and event context.")
-ABSORPTION = EvidenceProfile(EvidenceCode.ABSORPTION, EvidenceCategory.EFFORT, EvidenceDirection.NEUTRAL, 0.50, 0.0, 45, "Absorption candidate", "High effort with limited result may indicate absorption; directional/contextual evidence is required.")
+ABSORPTION = EvidenceProfile(EvidenceCode.ABSORPTION, EvidenceCategory.ABSORPTION, EvidenceDirection.BULLISH, 0.90, 0.0, 45, "Absorption", "Selling effort is absorbed as price shows a resilient upper close despite a lower low. Scoring remains disabled pending ranking validation.")
 EFFORT_PROFILES = (EFFORT_GT_RESULT, RESULT_GT_EFFORT, ABSORPTION)
 
 ALL_PROFILES = SUPPLY_PROFILES + DEMAND_PROFILES + EFFORT_PROFILES

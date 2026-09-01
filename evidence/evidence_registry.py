@@ -102,6 +102,16 @@ EVIDENCE_LIBRARY = {
                 "leave-one-symbol-out robustness."
             ),
         ),
+
+    EvidenceCode.ABSORPTION:
+        EvidenceDefinition(
+            category=EvidenceCategory.ABSORPTION,
+            direction=EvidenceDirection.BULLISH,
+            strength=0.90,
+            weight=0.00,
+            observation="Absorption",
+            description="Selling effort is absorbed as price shows a resilient upper close despite a lower low. Scoring remains disabled pending ranking validation.",
+        ),
 }
 
 
