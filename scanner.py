@@ -171,7 +171,6 @@ class ScannerEngine:
 
     @classmethod
     def _vsa_confirmation_is_current(cls, scoring_evidence: tuple[Evidence, ...], bar_index: int | None) -> bool:
-        """Require directional VSA confirmation to be close enough to the target bar."""
         if bar_index is None or not scoring_evidence:
             return False
         scoring_bar_index = max(item.bar_index for item in scoring_evidence)
@@ -342,25 +341,43 @@ class ScannerEngine:
             return None
         return str(value)
 
+    def _scan_history_to_index(self, metrics: pd.DataFrame, target_index: int) -> tuple[list[EvidenceResult], TrendResult, EvidenceResult]:
+        """Build chronological trend/evidence snapshots through target_index."""
+        history: list[EvidenceResult] = []
+        current_trend: TrendResult | None = None
+        current_evidence: EvidenceResult | None = None
+
+        for index in range(self.MIN_REPLAY_BARS, target_index + 1):
+            replay = metrics.iloc[: index + 1].copy()
+            trend = TrendAnalyzer().analyze(replay)
+            structural_swings = list(trend.structure.structural_swings)
+            evidence = EvidenceEngine().collect(
+                metrics=replay,
+                trend=trend,
+                structural_swings=structural_swings,
+            )
+            history.append(evidence)
+            current_trend = trend
+            current_evidence = evidence
+
+        assert current_trend is not None
+        assert current_evidence is not None
+        return history, current_trend, current_evidence
+
     def scan_to_index(self, metrics: pd.DataFrame, target_index: int) -> ScannerCandidate:
         if target_index < self.MIN_REPLAY_BARS:
             raise ValueError(f"target_index must be >= {self.MIN_REPLAY_BARS}")
         if target_index >= len(metrics):
             raise IndexError("target_index is outside metrics")
-        history = []
-        current_trend = None
-        current_evidence = None
-        for index in range(self.MIN_REPLAY_BARS, target_index + 1):
-            replay = metrics.iloc[: index + 1].copy()
-            trend = TrendAnalyzer().analyze(replay)
-            structural_swings = list(trend.structure.structural_swings)
-            evidence = EvidenceEngine().collect(metrics=replay, trend=trend, structural_swings=structural_swings)
-            history.append(evidence)
-            current_trend = trend
-            current_evidence = evidence
-        assert current_trend is not None
-        assert current_evidence is not None
-        return self.evaluate(trend=current_trend, evidence=current_evidence, history=history, bar_index=target_index, week=self._week_at(metrics, target_index))
+
+        history, current_trend, current_evidence = self._scan_history_to_index(metrics, target_index)
+        return self.evaluate(
+            trend=current_trend,
+            evidence=current_evidence,
+            history=history,
+            bar_index=target_index,
+            week=self._week_at(metrics, target_index),
+        )
 
     def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
         history = []
@@ -375,29 +392,16 @@ class ScannerEngine:
         return candidates
 
     def scan_actionable(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
-        """Return the actionable candidate for the latest bar only.
-
-        The historical replay in ``scan_to_index`` is retained for diagnostics
-        and full chronological scans. Production live scanning does not need
-        to rebuild every prefix: the latest full metrics frame already contains
-        the complete historical evidence needed by qualification.
-        """
+        """Return the actionable candidate for the latest bar using full chronological qualification history."""
         if len(metrics) <= self.MIN_REPLAY_BARS:
             return []
 
         target_index = len(metrics) - 1
-        replay = metrics.copy()
-        trend = TrendAnalyzer().analyze(replay)
-        structural_swings = list(trend.structure.structural_swings)
-        evidence = EvidenceEngine().collect(
-            metrics=replay,
-            trend=trend,
-            structural_swings=structural_swings,
-        )
+        history, trend, evidence = self._scan_history_to_index(metrics, target_index)
         candidate = self.evaluate(
             trend=trend,
             evidence=evidence,
-            history=(evidence,),
+            history=history,
             bar_index=target_index,
             week=self._week_at(metrics, target_index),
         )
