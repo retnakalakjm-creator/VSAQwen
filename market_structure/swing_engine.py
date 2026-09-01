@@ -67,7 +67,7 @@ class SwingEngine:
         if self._candidate is None:
             raise RuntimeError("Cannot snapshot SwingEngine without a candidate.")
 
-        retained_swings = self._swings[-config.STRUCTURE_LOOKBACK :]
+        retained_swings = self._swings
 
         return ScannerState(
             schema_version=2,
