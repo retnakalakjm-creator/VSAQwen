@@ -2,7 +2,7 @@
 
 ## Status
 
-**State:** Evidence-validated, production policy still pending.
+**State:** Evidence-validated; **frozen as non-scoring production evidence**.
 
 ## Validation ladder completed
 
@@ -12,36 +12,38 @@
 - Context stratification: strongest robust contexts were `healthy + up` and `unknown + range`.
 - Symbol concentration: leave-one-symbol-out remained positive and robust for all 30 dropped-symbol cases at all three horizons (90/90 positive rows).
 - Policy-value audit: the context-qualified subset outperformed the universal subset at all three horizons, approximately +2.476%, +2.226%, +2.347% versus +2.028%, +1.977%, +1.927%.
+- Production-formula sensitivity: non-zero synthetic weights increased strength but reduced confidence, with materially changed actionability.
+- Changed-decision outcome audit: every tested weight from 0.10 through 0.30 changed the same 34 cases (16 gained, 18 lost).
+- Gain-minus-loss decision-value bootstrap: all tested weights and horizons remained **inconclusive** because the 95% intervals crossed zero.
 
-## Policy implication
+## Interpretation
 
-HIDDEN_DEMAND has credible positive incremental value, but the evidence supports context-aware use rather than unconditional bullish weighting.
+HIDDEN_DEMAND has credible positive incremental market value as an empirical observation. The evidence is broad across the 30-symbol universe and survives matched-control, bootstrap, context, and leave-one-symbol-out testing.
 
-Candidate promoted contexts:
+However, empirical usefulness does not automatically justify a production score contribution. In the current production scoring architecture, adding HIDDEN_DEMAND changes the demand component and therefore changes strength, weakness, and confidence. The resulting actionability changes are not robustly superior to the baseline when evaluated as gained-versus-lost decision outcomes.
+
+## Frozen production policy
+
+**HIDDEN_DEMAND remains non-scoring.**
+
+It may remain available as evidence/confirmation for research, diagnostics, reports, and future policy review, but it receives **no production demand weight** and must not alter production ranking or actionability.
+
+The context findings (`healthy + up` and `unknown + range`) are retained as research metadata only. They do not constitute permission to add a score contribution.
+
+## Reason for freeze
+
+The final decision-value gate did not establish a statistically robust advantage for any tested production weight:
 
 ```text
-healthy + up
-unknown + range
+weight 0.10 → inconclusive at 3/5/10 weeks
+weight 0.15 → inconclusive at 3/5/10 weeks
+weight 0.20 → inconclusive at 3/5/10 weeks
+weight 0.25 → inconclusive at 3/5/10 weeks
+weight 0.30 → inconclusive at 3/5/10 weeks
 ```
 
-All other contexts remain neutral/excluded until further evidence justifies promotion. Excluded does not mean negative; it means not promoted by the current policy test.
+Therefore the correct architecture-preserving decision is **no production weight**, rather than selecting a weight by preference or by maximizing raw strength.
 
-## Weight/actionability finding
-
-The initial actionability sensitivity audit showed that adding a synthetic HIDDEN_DEMAND weight changes production actionability materially because the professional confidence gate moves while strength rises. The baseline had 18 actionable cases out of 106 promoted-context events; each non-zero tested weight changed 34 cases (16 gained, 18 lost).
-
-The changed-decision outcome audit then showed, for every tested weight from 0.10 through 0.30, the same realized outcome profile:
-
-- 3 weeks: gained average about +0.300%; lost average about -4.774%.
-- 5 weeks: gained average about +0.424%; lost average about -4.275%.
-- 10 weeks: gained average about +5.248%; lost average about -0.565%.
-
-These results are encouraging for decision quality, but the tested weights produced identical changed-case populations. Therefore the current evidence does **not** establish an optimal production weight; it only shows that the actionability boundary is crossed by the synthetic contribution.
-
-## Production decision
-
-**Do not add a HIDDEN_DEMAND production weight yet.**
-
-Before production integration, the next required test is a proper decision-value comparison that treats the changed cases as decision outcomes and establishes whether a chosen weight improves net scanner decisions without creating ranking instability. The existing actionability audit is diagnostic, not sufficient by itself for weight selection.
+## Production impact
 
 Production collector, registry, and scoring configuration remain unchanged.
