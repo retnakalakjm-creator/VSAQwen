@@ -49,7 +49,7 @@ def _stable_swing_identity(swing, metrics: pd.DataFrame) -> tuple:
 
 
 def _retained_swing_identities(swings, metrics: pd.DataFrame) -> tuple:
-    retained = tuple(swings)[-config.STRUCTURE_LOOKBACK :]
+    retained = tuple(swings)[-config.STRUCTURE_LOOKBACK:]
     return tuple(_stable_swing_identity(swing, metrics) for swing in retained)
 
 
@@ -73,22 +73,30 @@ def compare_state(
     return full_state.to_dict() == incremental_state.to_dict()
 
 
-def _state_anchor_index(metrics: pd.DataFrame, state: ScannerState) -> int:
+def _state_indices(metrics: pd.DataFrame, state: ScannerState) -> dict[str, int]:
     weeks = [str(week) for week in metrics[COL_WEEK].tolist()]
     positions = {week: index for index, week in enumerate(weeks)}
-    if state.last_closed_bar not in positions:
-        raise ValueError(
-            f"State last_closed_bar is not present in metrics: {state.last_closed_bar!r}"
-        )
-    keys = [
-        state.candidate.bar_key if state.candidate is not None else None,
-        *(item.pivot_bar_key for item in state.confirmed_swings),
-        *(item.confirmation_bar_key for item in state.confirmed_swings),
-    ]
-    missing = [key for key in keys if key is not None and key not in positions]
+    keys = {
+        "last_closed_bar": state.last_closed_bar,
+        "candidate.bar_key": state.candidate.bar_key if state.candidate is not None else None,
+        **{
+            f"confirmed_swings[{index}].pivot_bar_key": item.pivot_bar_key
+            for index, item in enumerate(state.confirmed_swings)
+        },
+        **{
+            f"confirmed_swings[{index}].confirmation_bar_key": item.confirmation_bar_key
+            for index, item in enumerate(state.confirmed_swings)
+        },
+    }
+    missing = [f"{name}={key!r}" for name, key in keys.items() if key is not None and key not in positions]
     if missing:
-        raise ValueError(f"State bar identity is not present in metrics: {missing[0]!r}")
-    return positions[state.last_closed_bar]
+        raise ValueError(f"State bar identity is not present in metrics: {missing[0]}")
+    return {name: positions[key] for name, key in keys.items() if key is not None}
+
+
+def _reopen_start(metrics: pd.DataFrame, state: ScannerState) -> int:
+    indices = _state_indices(metrics, state)
+    return min(indices.values())
 
 
 def run_equivalence_case(
@@ -109,8 +117,8 @@ def run_equivalence_case(
     full_swings = full_engine.calculate(metrics)
     full_state = full_engine.snapshot_state(symbol=symbol, timeframe=timeframe)
 
-    anchor_index = _state_anchor_index(metrics, state)
-    reopened = metrics.iloc[anchor_index:].copy()
+    reopen_start = _reopen_start(metrics, state)
+    reopened = metrics.iloc[reopen_start:].copy()
 
     incremental_engine = SwingEngine()
     incremental_swings = incremental_engine.calculate_from_state(reopened, state)
