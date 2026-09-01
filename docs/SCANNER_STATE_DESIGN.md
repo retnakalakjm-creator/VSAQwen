@@ -1,12 +1,11 @@
 # ProVSA Scanner State Design
 
-**Status:** Proposed / evolving
-
-**Purpose:** Define the minimum state required for incremental scanning without prematurely implementing persistence. This document is derived from the current repository implementation and is intended to evolve with validated architecture decisions.
+**Status:** Proposed / evolving  
+**Purpose:** Define the minimum state required for incremental scanning without prematurely implementing persistence.
 
 ## 1. Current runtime facts
 
-The current CLI path is:
+The active CLI path is:
 
 ```text
 Yahoo Finance daily data
@@ -28,7 +27,7 @@ ProfessionalScoringEngine
 ScannerEngine qualification / ranking
 ```
 
-`PROJECT_ARCHITECTURE.md` is the authority for the current system boundaries. The current data layer already refreshes a recent `10d` window into the cached daily history, but the downstream analysis is still rebuilt from the resulting dataframe. This is not yet a true persisted market-structure state machine.
+The existing data layer already refreshes a recent `10d` daily window into the local cache. Downstream analysis is still rebuilt from the resulting dataframe, so this is not yet a true persisted market-structure state machine.
 
 ## 2. State dependency classification
 
@@ -36,28 +35,25 @@ ScannerEngine qualification / ranking
 
 #### Active swing-search state
 
-The `SwingEngine` maintains:
+`SwingEngine` maintains:
 
 - search state: `TRACKING_HIGH`, `WAITING_HIGH_CONFIRMATION`, `TRACKING_LOW`, or `WAITING_LOW_CONFIRMATION`;
-- the current candidate swing:
-  - candidate bar index;
-  - candidate week;
-  - candidate type;
-  - candidate price.
+- current candidate bar index;
+- candidate week;
+- candidate type;
+- candidate price.
 
-These values are causally important because an unconfirmed candidate may continue across scanner runs. Reconstructing them incorrectly can change the next confirmed swing.
+These values are causally important because an unconfirmed candidate may continue across scanner runs.
 
 #### Confirmed swing boundary
 
-The recent confirmed swings required to continue classification and structural analysis must be available. A persisted state should therefore retain at least the confirmed swing sequence that is needed by:
+Confirmed swings needed by downstream structural calculations must remain available across the incremental boundary. The current implementation's strongest explicit swing-history requirement is:
 
-- swing classification;
-- trend direction/state;
-- structure lookbacks;
-- professional structural scoring;
-- phase/context dependencies that consume structural history.
+- `STRUCTURE_LOOKBACK = 20` swings for structural scoring;
+- `TREND_RECENT_SWINGS = 8` swings for trend direction/state context;
+- `TREND_STATE_LOOKBACK = 4` swings for trend-state evaluation.
 
-The exact number should be derived from downstream dependencies rather than chosen arbitrarily.
+Therefore **20 confirmed swings is currently the dominant explicit swing-history dependency**. This is a swing-count dependency, not yet a fixed number of bars.
 
 #### Last processed closed-bar identity
 
@@ -71,22 +67,20 @@ This establishes the incremental boundary and prevents duplicate processing.
 
 ### B. Recalculate from a safety window
 
-The following information should generally be recalculated rather than trusted as immutable persisted values:
+The following should generally be recalculated rather than trusted as immutable persisted values:
 
 - swing confirmations near the boundary;
 - the active candidate near the boundary;
 - recent structural swings;
 - recent trend classifications/state;
-- recent VSA evidence whose detector depends on a boundary bar;
+- recent VSA evidence whose detector depends on boundary bars;
 - professional scores for affected recent swings.
 
-Reason: swing confirmation is delayed and boundary changes can alter whether a candidate becomes confirmed.
-
-The safety window must therefore extend far enough to cover the largest causal dependency, not merely the latest new bar.
+A safety window must therefore be large enough to reproduce boundary behavior, not merely large enough to contain the newest bars.
 
 ### C. Recompute cheaply from retained bars
 
-The current metrics layer calculates deterministic derived columns such as:
+The metrics layer currently derives:
 
 - spread;
 - body/shadows;
@@ -96,90 +90,109 @@ The current metrics layer calculates deterministic derived columns such as:
 - standard deviation;
 - volume/spread ratios;
 - percentile values;
-- classifications.
+- semantic classifications.
 
-The current implementation calculates these from the dataframe in `MetricsEngine.calculate()`. Until we establish a persisted metric-state contract, these should be treated as derived data and safely rebuildable from an indicator seed window plus new bars.
+`LOOKBACK_PERIOD = 20` is the current rolling dependency. These values should initially be treated as derived data that can be rebuilt from a sufficient indicator seed window plus the new bars.
 
 ### D. Do not persist blindly
 
-Final scanner decisions, professional scores, evidence aggregates, and ranking outputs should not be treated as authoritative state merely because they were produced previously.
-
-They depend on current inputs and recent historical context, so the preferred model is:
-
-```text
-persist causal state
-        ↓
-recalculate affected boundary
-        ↓
-recompute dependent outputs
-```
+Final scanner decisions, professional scores, evidence aggregates, and ranking outputs should not be treated as authoritative causal state. They should be recomputed from persisted causal state and the reopened boundary.
 
 ## 3. Swing continuation state
 
-The current `SwingEngine` starts from a first candidate and processes bars sequentially. A future incremental engine must be able to resume the equivalent logical position.
+A future incremental swing engine must resume the same logical state as the full sequential calculation.
 
 Conceptually:
 
 ```text
 Persisted SwingState
 ├── search_state
-├── candidate_bar_index
-├── candidate_week
+├── candidate_bar_identity
 ├── candidate_type
 ├── candidate_price
 └── confirmed_swing_boundary
 ```
 
-However, this is a **logical design**, not yet a final dataclass/API. The candidate's original bar index must remain meaningful relative to the retained/reopened data window, so the persistence format should use stable timestamps/identifiers in addition to local array positions where appropriate.
+A candidate's stable timestamp/week identity should accompany any local array index because incremental datasets can be truncated/rebased.
 
-## 4. Trend state
+## 4. Confirmed-swing boundary: current conclusion
 
-The current `TrendAnalyzer` derives trend direction and state from classified structural swings. Its state machine is therefore primarily a derived view rather than an independent continuation state.
-
-Current trend outputs include:
-
-- direction;
-- state;
-- strength;
-- confidence;
-- swing count;
-- classified swings;
-- structural swings;
-- HH/HL/LH/LL counts.
-
-The incremental design should prefer persisting the confirmed/classified swing boundary and recomputing these trend values. Persisting trend direction alone is insufficient because the underlying swing sequence can change after boundary recalculation.
-
-## 5. Metric seed requirements
-
-`MetricsEngine` currently uses `config.LOOKBACK_PERIOD` for rolling volume and spread calculations. The configured value is `20` in the current repository.
-
-Therefore the future scanner needs enough prior closed bars to reproduce rolling metrics at the incremental boundary. This is the **indicator seed window**, distinct from the structural safety window.
-
-The final acquisition window should satisfy:
+The boundary has two dimensions:
 
 ```text
-indicator seed dependency
-+
-structural/VSA safety dependency
-+
-new bars
+SWING HISTORY LIMIT
+    20 confirmed swings
+
+BAR SAFETY LIMIT
+    still to be derived
 ```
 
-The exact combined window should be calculated once all active downstream dependencies are formally inventoried.
+The `20` value comes from the current `STRUCTURE_LOOKBACK` setting and represents the minimum confirmed-swing history explicitly required by structural scoring. It must **not** be translated directly into "20 bars" because swing density is variable.
 
-## 6. Weekly boundary requirement
+The bar-based safety window must additionally account for:
 
-The current data layer downloads daily data and converts it to weekly bars using `W-FRI`. It also explicitly treats the newest daily bar as potentially forming and the scanner architecture calls for closed historical data to remain separate from the live snapshot.
+- the active swing candidate;
+- delayed swing confirmation;
+- rolling metric seed requirements;
+- evidence detectors with cross-bar dependencies;
+- scanner qualification/freshness windows.
 
-Future state processing must therefore identify:
+## 5. Swing-confirmation dependency
+
+The current swing engine confirms a candidate only after:
+
+- at least `MIN_SWING_CONFIRMATION_BARS = 2` bars since the candidate;
+- the reversal threshold is reached;
+- two completed bars after the candidate satisfy the structural confirmation test.
+
+This means the most recent bars cannot be treated as final structural history until the confirmation conditions have matured.
+
+The future safety-window calculation should derive its minimum from these rules rather than hard-code an arbitrary 20-bar truncation.
+
+## 6. Indicator seed requirements
+
+`MetricsEngine` uses `LOOKBACK_PERIOD = 20` for rolling volume and spread statistics. Percentile calculation also uses that lookback.
+
+Therefore the incremental acquisition layer needs enough prior **closed** bars to reproduce metric values at the boundary.
+
+Conceptually:
+
+```text
+indicator seed
+      +
+structural safety window
+      +
+new closed bars
+      ↓
+reproducible metrics and structure
+```
+
+The final combined acquisition window remains open until all evidence dependencies are inventoried.
+
+## 7. Evidence and scanner dependency
+
+The current scanner introduces additional time windows, including:
+
+- `ScannerEngine.SCORING_LOOKBACK_BARS = 10`;
+- `ScannerEngine.MAX_ACTIONABLE_VSA_AGE = 3`;
+- `ScannerEngine.MIN_REPLAY_BARS = 20`;
+- event-specific detector windows configured in `config.py`, including look-aheads for validated patterns such as Shakeout.
+
+Some evidence detectors can inspect bars beyond the event bar during confirmation. Consequently the safety-window analysis must distinguish **causal lookback** from any intentionally validated point-in-time confirmation logic. We should not collapse these dependencies into one arbitrary number.
+
+## 8. Weekly boundary requirement
+
+Daily data is converted to weekly bars using `W-FRI`. The scanner architecture requires closed historical state to remain separate from the current live snapshot.
+
+Future state processing therefore needs to identify:
 
 - last finalized weekly candle;
-- current in-progress week, when present;
-- whether a weekly bar is eligible for persistent structural state.
+- current in-progress week, if present;
+- whether the weekly bar is eligible for persistent structural state.
 
 An unfinished weekly candle must not silently rewrite finalized historical structure.
 
-## 7. Proposed state envelope
+## 9. Proposed state envelope
 
 A future persisted state is likely to resemble:
 
@@ -202,9 +215,9 @@ ScannerState
 
 This is intentionally smaller than a serialized copy of the entire scanner output.
 
-## 8. Incremental equivalence contract
+## 10. Incremental equivalence contract
 
-The scanner may adopt incremental processing only after demonstrating:
+Incremental processing is acceptable only after demonstrating:
 
 ```text
 full-history rebuild
@@ -215,7 +228,7 @@ incremental rebuild from persisted state + safety window
 The comparison must cover at least:
 
 - confirmed swings;
-- swing candidate/confirmation boundary;
+- candidate/confirmation boundary;
 - swing labels;
 - trend direction/state/strength/confidence;
 - structural swing selection;
@@ -224,39 +237,41 @@ The comparison must cover at least:
 - qualification/actionability;
 - final scanner decisions.
 
-A faster result that changes any of these unexpectedly is not an acceptable optimization.
+## 11. Initial implementation boundary
 
-## 9. Initial implementation boundary
+Do **not** implement persistent storage yet.
 
-The first implementation should **not** attempt to persist everything.
-
-Recommended first slice:
+The first code slice should instead be a deterministic equivalence harness that can take a dataset, split it at a chosen boundary, and compare:
 
 ```text
-ScannerState
-    ↓
-last closed bar
-    +
-swing continuation state
-    +
-minimum confirmed swing boundary
-```
-
-Then build a test harness that runs:
-
-```text
-full scan
+FULL RUN
 vs
-incremental scan
+PREFIX STATE + REOPENED WINDOW + SUFFIX RUN
 ```
 
-on controlled datasets with bars added one at a time.
+The harness should tell us exactly which swings/evidence/scores differ. That will empirically determine the required bar safety window before persistence is introduced.
 
-Only after equivalence is demonstrated should we add persistent metric caches, storage-format changes, or ticker-level parallel execution.
+## 12. Current conclusion
 
-## 10. Current implementation references
+The state dependency audit now establishes:
 
-Relevant current modules reviewed while deriving this contract:
+```text
+rolling metric dependency     = 20 bars
+structural swing history      = 20 confirmed swings
+trend structural history      = 8 confirmed swings
+trend state history            = 4 confirmed swings
+swing confirmation             = minimum 2-bar maturation + structural test
+scanner VSA scoring lookback   = 10 bars
+scanner actionable VSA age     = 3 bars
+```
+
+These numbers are **dependencies**, not a final safety-window constant.
+
+The next engineering target is therefore the **incremental equivalence harness**, not the persistence layer. Once that harness proves what boundary window reproduces the full-history result, the resulting window can become a formal scanner invariant.
+
+## 13. Current implementation references
+
+Relevant modules reviewed while deriving this contract:
 
 - `PROJECT_ARCHITECTURE.md`
 - `data.py`
@@ -264,6 +279,7 @@ Relevant current modules reviewed while deriving this contract:
 - `trend.py`
 - `market_structure/swing_engine.py`
 - `market_structure/swing_history.py`
+- `market_structure/structure_filter.py`
 - `models.py`
 - `scanner.py`
 - `config.py`
@@ -271,13 +287,23 @@ Relevant current modules reviewed while deriving this contract:
 
 The original scanner architecture proposal remains preserved separately in `docs/SCANNER_MODEL_PROPOSAL.md`, with the original external idea set retained in commit `e926e9d8b29f9dda83d8f033dcc2c69e6cf34d79`.
 
-## 11. Open questions before implementation
+## 14. Empirical audit implications
 
-- What is the minimum confirmed-swing history required by every active downstream consumer?
-- Should persisted candidate positions use absolute bar timestamps rather than array indices?
-- What exact weekly close rule should be shared by acquisition and state persistence?
-- Which evidence/phase engines contain additional cross-bar state that must be represented?
-- Can rolling metrics be safely reconstructed from a seed window in every case, or are any statistics stateful enough to justify persistence?
-- What state versioning/migration strategy is required before persistent files are introduced?
+The recent VSA event audits add an important state requirement: **decision state cannot be reduced to structural state alone**.
 
-**Decision rule:** derive these answers from the active implementation and equivalence tests, not from arbitrary constants.
+For incremental processing, the boundary must preserve or deterministically reconstruct enough information to reproduce:
+
+- event identity and direction;
+- event freshness/age;
+- event confirmation status;
+- professional score inputs;
+- suppression-gate inputs;
+- qualification/actionability.
+
+This is particularly important because an event may remain present as evidence while being suppressed from actionability by a regime-specific production gate.
+
+The validated `DEMAND_COMING_IN` workflow demonstrated that a suppression gate can be tested for zero leakage across the scanner universe. Therefore gate state must be causally reproducible at the incremental boundary rather than reconstructed from future outcomes.
+
+`DEMAND_DRYING_UP` also demonstrates why raw event outcomes must not be persisted as decision truth: its raw returns were positive while matched-control incremental deltas were negative. Incremental state should preserve causal evidence and context, not historical outcome-derived labels.
+
+**Decision rule:** persisted/reconstructed state must reproduce the production information boundary, not merely reproduce the final numeric score.
