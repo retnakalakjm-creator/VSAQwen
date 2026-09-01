@@ -1,6 +1,6 @@
 # DEMAND_DRYING_UP Findings
 
-Status: audit-complete; not production-integrated; no production penalty or weight change implemented.
+Status: **audit-complete; frozen research-only; not production-integrated; no production penalty or weight change implemented.**
 
 ## Detector
 
@@ -45,7 +45,7 @@ Using 5,000 bootstrap iterations and 95% percentile intervals:
 | 5 weeks | 143 | -1.576% | -2.997% | -0.181% |
 | 10 weeks | 139 | -0.497% | -2.616% | +1.661% |
 
-Conclusion at this stage: robust negative incremental value at 3 and 5 weeks; 10-week effect negative but not statistically robust.
+Conclusion: robust negative incremental value at 3 and 5 weeks; 10-week effect negative but not statistically robust.
 
 ## Context stratification
 
@@ -100,9 +100,29 @@ Therefore DDU is not currently emitted by the production evidence pipeline.
 
 Do **not** add a production penalty, suppression gate, or professional weight for `DEMAND_DRYING_UP` at this time.
 
-The research establishes that DDU has negative incremental association in the audited research population, particularly at 3–5 weeks, but it does not establish production decision impact because DDU is not presently integrated into the production evidence path.
+The research establishes negative incremental association in the audited research population, particularly at 3–5 weeks, but it does not establish production decision impact because DDU is not presently integrated into the production evidence path.
+
+Current frozen policy:
+
+```text
+production path        = NO
+professional weight    = NONE
+production penalty     = NONE
+production suppression = NONE
+production rejection   = NONE
+status                 = RESEARCH-ONLY
+```
 
 If DDU is intentionally promoted into production later, the integrated detector must be re-audited through the production path before any weight or actionability change is made.
+
+## Regression status
+
+The current frozen production-policy boundary is protected by the full repository regression suite:
+
+```text
+python -m pytest -q
+210 passed
+```
 
 ## Methodological lesson
 

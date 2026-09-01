@@ -2,9 +2,9 @@
 
 ## Status
 
-**Type:** Proposed architecture with validated empirical decisions
+**Type:** Production decision architecture with validated empirical policies
 
-**State:** EVOLVING — core decision principles are validated; event-specific production rules remain evidence-gated.
+**State:** EVOLVING — core decision principles and the current four-event production policy boundary are validated; future event-specific changes remain evidence-gated.
 
 This document defines the decision layer after the completed incremental-scanner and VSA event audit work. It is a living decision specification: empirical findings can promote, suppress, or leave individual evidence events provisional without weakening the overall architecture.
 
@@ -138,6 +138,10 @@ state × direction regime analysis
         ↓
 symbol concentration analysis
         ↓
+production-path audit
+        ↓
+ranking / actionability impact
+        ↓
 production decision
         ↓
 documentation
@@ -153,71 +157,99 @@ Target outcome − matched-control outcome
 
 Bootstrap intervals are used to determine whether that incremental effect is robust rather than driven by a small number of cases.
 
-## 5. Validated event findings
-
-### `INCREASING_DEMAND`
-
-The NSE 30-symbol universe audit produced materially different results across regimes and change directions. The matched-control robustness work showed that the event can underperform controls in important buckets.
-
-The event therefore must not be treated as unconditional bullish confirmation. Its interpretation is context-dependent and must remain subject to structure/regime qualification.
-
-The audit also established the importance of unique target/control pairing and horizon-specific analysis.
-
-**Production principle:** do not promote `INCREASING_DEMAND` based on raw event returns alone.
+## 5. Current validated event policies
 
 ### `DEMAND_COMING_IN`
 
-The raw universe audit produced positive absolute outcomes:
+`DEMAND_COMING_IN` is production-connected and remains a **frozen provisional runtime-weight event**.
 
-- 3w: approximately **+0.852%**, 54.1% win rate;
-- 5w: approximately **+1.509%**, 56.2% win rate;
-- 10w: approximately **+2.796%**, 58.8% win rate.
-
-However, matched-control analysis showed only small incremental advantages:
-
-- 3w: **+0.143%**;
-- 5w: **+0.101%**;
-- 10w: **+0.318%**.
-
-Bootstrap robustness did not establish a strong universal effect. Regime analysis also showed substantial variation, including materially negative correcting/bullish buckets.
-
-The production gate was therefore retained as a **suppressive qualification rule** for the validated adverse regime rather than treating `DEMAND_COMING_IN` as unconditional bullish confirmation.
-
-The post-gate leakage audit across the 30-symbol universe found:
+Current policy:
 
 ```text
-symbols requested: 30
-symbols scanned: 30
-blocked actionable cases expected: 0
+production path        = YES
+runtime emitted weight = 0.38
+professional weight    = no standalone config-map entry
+conflict penalty        = 0.00
+rejection               = NO
+qualification change    = NO
+actionability change    = NO
 ```
 
-This validates that the production gate is not leaking actionable cases through the targeted suppression condition.
+The production ranking-impact audit is now valid and confirms meaningful, non-dominant influence:
 
-**Production principle:** `DEMAND_COMING_IN` is context-dependent evidence with an empirically validated suppression gate; it is not standalone bullish alpha.
+```text
+symbols requested      = 8
+symbols with results   = 8
+target events          = 967
+bias changes           = 198
+bias change rate       = 20.48%
+all emitted weights    = 0.38
+failures               = 0
+status                 = PASS
+```
+
+This confirms that the actual runtime event weight is `0.38` and that DCI participates materially in ranking/bias calculations. It does not show that another weight is superior. The existing `UP + CORRECTING` suppressive gate therefore remains the production qualification rule for the adverse regime.
+
+**Production principle:** `DEMAND_COMING_IN` is context-dependent demand evidence with controlled ranking influence, not unconditional standalone bullish alpha.
+
+### `INCREASING_DEMAND`
+
+`INCREASING_DEMAND` remains a valid VSA observation and is **confirmation-only** for professional pressure scoring.
+
+It has no professional demand weight. When it is the only bullish directional VSA evidence in the current scoring window, actionable confidence is retained only when:
+
+1. trend direction is `UP`;
+2. trend state is `HEALTHY`;
+3. no opposing bearish directional VSA evidence is present.
+
+This preserves the observation without allowing it to create an unconditional bullish upgrade.
+
+**Production principle:** `INCREASING_DEMAND` is structural/contextual confirmation, not independent professional demand pressure.
 
 ### `DEMAND_DRYING_UP`
 
-The raw event audit initially looked strongly bullish:
+`DEMAND_DRYING_UP` remains **research-only / not production-integrated**.
 
-- 3w: **+1.635%**, 62.0% win rate;
-- 5w: **+2.508%**, 60.8% win rate;
-- 10w: **+4.047%**, 62.3% win rate.
+The raw detector produced positive absolute returns, but matched-control results were negative at 3 and 5 weeks and directionally negative at 10 weeks. The detector is not emitted by the production evidence path, so those historical results do not justify a production weight, penalty, suppression rule, or rejection rule.
 
-Matched-control analysis reversed that interpretation:
+Current policy:
 
-- 3w: **-1.207%** target-control delta;
-- 5w: **-1.575%**;
-- 10w: **-0.499%**.
+```text
+production path        = NO
+professional weight    = NONE
+production penalty     = NONE
+production suppression = NONE
+production rejection   = NONE
+```
 
-The 5,000-iteration bootstrap audit produced:
+**Production principle:** DDU must not be treated as an active production decision input until it is intentionally integrated and re-audited through the production path.
 
-- 3w: **-1.208%**, 95% interval **[-2.458%, -0.050%]**;
-- 5w: **-1.576%**, 95% interval **[-2.997%, -0.181%]**;
-- 10w: **-0.497%**, 95% interval **[-2.616%, +1.661%]**.
+### `ABSORPTION`
 
-Therefore the 3- and 5-week negative incremental effect is robust. The 10-week effect is directionally negative but not statistically decisive under this bootstrap test.
+`ABSORPTION` is **production-connected but non-scoring**.
 
-**Current production status:** `DEMAND_DRYING_UP` remains audit-only / zero production weight until state × direction and symbol-concentration analysis are completed. The empirical evidence strongly argues against unconditional bullish weighting and supports investigation of suppressive use.
+Canonical production semantics require:
+
+1. bearish/down bar;
+2. high volume;
+3. above-average spread;
+4. upper close;
+5. lower low than the previous bar.
+
+Current policy:
+
+```text
+production path        = YES
+runtime scoring weight = 0.00
+hard rejection         = NO
+soft conflict penalty  = 0.20 research-only / not applied
+ranking mutation       = NO
+actionability mutation = NO
+```
+
+The genuine production-path counterfactual tested weights `0.00` through `0.38` and showed deterministic monotonic score sensitivity but zero actionable gains/losses at every tested weight. Therefore no validated downstream ranking/actionability benefit exists yet.
+
+**Production principle:** `ABSORPTION` is retained as explicit contextual production evidence, but its research counterfactual weight and conflict penalty must not leak into runtime scoring.
 
 ## 6. Matched-control policy
 
@@ -322,35 +354,71 @@ matched-control delta
 + robustness
 + regime consistency
 + symbol breadth
++ production-path impact
 = production evidence
 ```
 
-## 13. Current next target
+## 13. Production safety gate
 
-`DEMAND_DRYING_UP` is the active research event.
+The current four-event policy boundary is protected by explicit regression tests and a full repository regression run.
 
-The remaining validation sequence is:
+Final observed gate result:
 
 ```text
-DEMAND_DRYING_UP
-        ↓
-state × direction analysis
-        ↓
-symbol concentration
-        ↓
-production decision
-        ↓
-documentation
+python -m pytest -q
+210 passed
 ```
 
-Only after those steps should any production suppression or weighting change be considered.
+This means the current production scoring boundary is regression-safe. It does **not** authorize a new scoring promotion.
 
-## 14. Relationship to other documents
+Production-policy changes require both:
+
+```text
+validated empirical decision/ranking evidence
+                 +
+full regression pass
+```
+
+The regression guard specifically preserves:
+
+- `INCREASING_DEMAND` without professional demand weight;
+- `DEMAND_COMING_IN` without a silent professional demand-map weight;
+- `DEMAND_DRYING_UP` outside the production scoring map;
+- `ABSORPTION = 0.00` in the production effort weight map;
+- the existing DCI and increasing-demand gates;
+- zero-weight ABSORPTION invariance for professional effort scoring.
+
+## 14. Current production policy matrix
+
+| Evidence | Production path | Professional scoring | Actionability / qualification | Current status |
+| --- | --- | --- | --- | --- |
+| `DEMAND_COMING_IN` | YES | Runtime `0.38` | Existing correcting + bullish suppression | Frozen provisional |
+| `INCREASING_DEMAND` | YES | Confirmation-only | Sole bullish evidence retained only in `UP + HEALTHY` without bearish evidence | Frozen |
+| `DEMAND_DRYING_UP` | NO | None | None | Research-only |
+| `ABSORPTION` | YES | Runtime `0.00` | No validated contribution | Frozen non-scoring |
+
+Detailed policy evidence is maintained in:
+
+- `docs/PRODUCTION_SCORING_MILESTONE.md`
+- `docs/DEMAND_COMING_IN_DECISION_SYNTHESIS.md`
+- `docs/CONDITIONAL_INCREASING_DEMAND.md`
+- `docs/DEMAND_DRYING_UP_FINDINGS.md`
+- `docs/ABSORPTION_AUDIT.md`
+
+## 15. Relationship to other documents
 
 `PROJECT_ARCHITECTURE.md` remains the authoritative current-state architecture document.
 
-`SCANNER_STATE_DESIGN.md` defines causal/incremental state and boundary requirements.
+`SCANNER_STATE_DESIGN.md` defines causal/incremental state and boundary requirements, including the decision-state information that must remain reproducible at an incremental boundary.
+
+`PRODUCTION_SCORING_MILESTONE.md` defines the frozen production policy boundary and regression gate.
 
 Event-specific audit and findings documents contain the detailed empirical evidence.
 
 This document defines how those validated findings should influence the decision architecture.
+
+## 16. Current next target
+
+The four-event production scoring/ranking milestone is complete and regression-safe.
+
+No immediate weight promotion is authorized. The next engineering milestone should introduce new validated production value rather than retuning these frozen policies without new evidence.

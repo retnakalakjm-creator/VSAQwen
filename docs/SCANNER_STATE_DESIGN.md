@@ -289,7 +289,7 @@ The original scanner architecture proposal remains preserved separately in `docs
 
 ## 14. Empirical audit implications
 
-The recent VSA event audits add an important state requirement: **decision state cannot be reduced to structural state alone**.
+The VSA event audits add an important state requirement: **decision state cannot be reduced to structural state alone**.
 
 For incremental processing, the boundary must preserve or deterministically reconstruct enough information to reproduce:
 
@@ -300,10 +300,36 @@ For incremental processing, the boundary must preserve or deterministically reco
 - suppression-gate inputs;
 - qualification/actionability.
 
-This is particularly important because an event may remain present as evidence while being suppressed from actionability by a regime-specific production gate.
-
-The validated `DEMAND_COMING_IN` workflow demonstrated that a suppression gate can be tested for zero leakage across the scanner universe. Therefore gate state must be causally reproducible at the incremental boundary rather than reconstructed from future outcomes.
+This is particularly important because an event may remain present as evidence while being suppressed from actionability by a regime-specific production gate. Therefore gate state must be causally reproducible at the incremental boundary rather than reconstructed from future outcomes.
 
 `DEMAND_DRYING_UP` also demonstrates why raw event outcomes must not be persisted as decision truth: its raw returns were positive while matched-control incremental deltas were negative. Incremental state should preserve causal evidence and context, not historical outcome-derived labels.
 
 **Decision rule:** persisted/reconstructed state must reproduce the production information boundary, not merely reproduce the final numeric score.
+
+## 15. Current production decision-state contract
+
+The production scoring milestone now freezes four event-specific policies that must be reproducible at an incremental boundary:
+
+| Event | Production state requirement |
+| --- | --- |
+| `DEMAND_COMING_IN` | Preserve/reconstruct emitted runtime weight `0.38` and the existing `UP + CORRECTING` suppression condition. |
+| `INCREASING_DEMAND` | Preserve/reconstruct confirmation-only semantics and the `UP + HEALTHY` sole-bullish actionability gate. |
+| `DEMAND_DRYING_UP` | Do not reconstruct it as production evidence; it remains research-only and is not emitted by the production path. |
+| `ABSORPTION` | Preserve/reconstruct production connectivity while retaining runtime scoring weight `0.00`; research-only counterfactual penalties must not leak into production state. |
+
+These are decision-layer constraints, not persisted output fields. The incremental engine should reconstruct them from causal state and current production configuration rather than serializing final decisions as authoritative state.
+
+## 16. Regression status
+
+The current production scoring policy is regression-safe under the full repository suite:
+
+```text
+python -m pytest -q
+210 passed
+```
+
+The 210-test result validates the current policy boundary. It does not establish the final bar safety window; that remains an empirical responsibility of the incremental equivalence harness.
+
+## 17. Current engineering boundary
+
+The production scoring/ranking milestone is complete without authorizing a scoring promotion. The next incremental-state work should therefore focus on preserving causal reproducibility of the validated decision path while avoiding unnecessary persistence of derived outputs.

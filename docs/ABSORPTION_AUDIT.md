@@ -2,13 +2,13 @@
 
 ## Status
 
-`ABSORPTION` is **production-connected / non-scoring / provisional**.
+`ABSORPTION` is **production-connected / non-scoring / frozen**.
 
-The canonical detector is now connected to the production `EvidenceEngine` through the demand collection path and registered in the evidence registries. It remains excluded from professional scoring and scanner ranking because the audit has not justified a production scoring weight.
+The canonical detector is connected to the production `EvidenceEngine` through the demand collection path and registered in the evidence registries. It remains excluded from professional scoring and scanner ranking because the completed production ranking/actionability audit did not justify a production scoring weight.
 
 ```text
-base weight        = 0.38   # provisional audit value only
-conflict penalty   = 0.20   # provisional audit policy only
+base weight        = 0.38   # research/audit reference only
+conflict penalty   = 0.20   # research counterfactual only
 production weight  = 0.00
 rejection          = NO
 production path    = YES
@@ -123,7 +123,7 @@ Frozen policy:
 
 ```text
 hard rejection safety = DO NOT PROMOTE
-soft conflict penalty  = RETAIN AS COUNTERFACTUAL / PROVISIONAL
+soft conflict penalty  = RETAIN AS COUNTERFACTUAL / RESEARCH-ONLY
 ```
 
 The `0.20` penalty remains a research-policy value only. It is not applied by the production scorer.
@@ -139,31 +139,31 @@ positive-rate lift               = +4.02 pp
 candidate mean 8-bar return      = +3.08%
 eligible-market mean return      = +3.78%
 mean-return lift                 = -0.71 pp
-candidate share                 = 0.61%
+candidate share                  = 0.61%
 ```
 
 This supports retaining ABSORPTION as useful contextual evidence, while not approving a scoring contribution without a genuine production ranking study.
 
 ## Production-path integration
 
-The canonical production path now includes:
+The canonical production path includes:
 
 ```text
-collector             = YES
-dedicated detector     = evidence/absorption.py
-collection path       = EvidenceEngine -> collect_demand -> collect_absorption
-registry               = YES
-category               = ABSORPTION
-runtime scoring weight = 0.00
-conflict penalty       = 0.20 provisional / not applied
-scanner ranking        = UNCHANGED
+collector              = YES
+dedicated detector      = evidence/absorption.py
+collection path         = EvidenceEngine -> collect_demand -> collect_absorption
+registry                = YES
+category                = ABSORPTION
+runtime scoring weight  = 0.00
+conflict penalty        = 0.20 research-only / not applied
+scanner ranking         = UNCHANGED
 ```
 
 The dedicated category is intentional: it makes the ABSORPTION contribution explicit in the professional scorer rather than silently inheriting a generic effort rule. The canonical scorer can therefore evaluate a counterfactual ABSORPTION weight without changing the production value, which remains `0.00`.
 
 ## Production ranking-impact audit
 
-The first genuine production-path counterfactual used the canonical detector and `ScannerEngine.evaluate()` with ABSORPTION weights of `0.00`, `0.10`, `0.15`, `0.20`, `0.25`, `0.30`, and `0.38`.
+The genuine production-path counterfactual used the canonical detector and `ScannerEngine.evaluate()` with ABSORPTION weights of `0.00`, `0.10`, `0.15`, `0.20`, `0.25`, `0.30`, and `0.38`.
 
 Production ABSORPTION emissions:
 
@@ -187,10 +187,10 @@ Weight   Mean dStrength   Mean dConfidence   Actionable 0   Actionable 1   Gaine
 
 Interpretation:
 
-- The production scorer now responds to ABSORPTION counterfactual weights, confirming that the scoring path is real rather than a dead configuration entry.
+- The production scorer responds to ABSORPTION counterfactual weights, confirming that the scoring path is real rather than a dead configuration entry.
 - The response is deterministic and monotonic across the tested weights.
 - No ABSORPTION event changed scanner actionability in this population. The event is not part of the scanner's directional VSA confirmation sets, so changing its professional score alone does not make a structural candidate actionable.
-- Therefore the tested nonzero weights currently affect the professional score fields but do **not** produce a validated scanner decision/ranking benefit.
+- Therefore the tested nonzero weights currently affect professional score fields but do **not** produce a validated scanner decision/ranking benefit.
 
 Decision from this audit:
 
@@ -198,8 +198,19 @@ Decision from this audit:
 counterfactual scoring sensitivity = YES
 validated actionability impact      = NO
 validated ranking benefit            = NO
-production weight                   = KEEP 0.00
+production weight                    = KEEP 0.00
 ```
+
+## Regression status
+
+The full repository regression suite has now passed with the production-policy regression guards present:
+
+```text
+python -m pytest -q
+210 passed
+```
+
+This validates the frozen non-scoring production boundary.
 
 ## Final decision
 
@@ -207,13 +218,13 @@ production weight                   = KEEP 0.00
 ABSORPTION
     detector          = PRODUCTION-CONNECTED
     registry          = YES
-    base weight       = 0.38   # provisional audit reference
+    base weight       = 0.38   # research/audit reference only
     runtime weight    = 0.00
-    conflict penalty  = 0.20   # provisional counterfactual only
+    conflict penalty  = 0.20   # research counterfactual only
     rejection         = NO
     scoring mutation  = NO
     ranking mutation  = NO
-    status             = PRODUCTION-CONNECTED / NON-SCORING / PROVISIONAL
+    status             = FROZEN PRODUCTION-CONNECTED / NON-SCORING
 ```
 
-Future promotion to production scoring requires a validated downstream decision or ranking benefit from the canonical detector, followed by regression validation. No audit-only weight should be interpreted as an active production scoring rule.
+Future promotion to production scoring requires a new validated downstream decision or ranking benefit from the canonical detector, followed by regression validation. No research-only weight or penalty should be interpreted as an active production scoring rule.
