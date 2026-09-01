@@ -67,6 +67,8 @@ class SwingEngine:
         if self._candidate is None:
             raise RuntimeError("Cannot snapshot SwingEngine without a candidate.")
 
+        retained_swings = self._swings[-config.STRUCTURE_LOOKBACK :]
+
         return ScannerState(
             schema_version=2,
             symbol=symbol,
@@ -85,7 +87,7 @@ class SwingEngine:
                     type=swing.type,
                     price=swing.price,
                 )
-                for swing in self._swings
+                for swing in retained_swings
             ),
         )
 
