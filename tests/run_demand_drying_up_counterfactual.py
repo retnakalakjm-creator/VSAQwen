@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -10,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 from background.qualification import PatternQualification
 from data import daily_to_weekly, download_data
+from evidence.demand_drying_up import collect_demand_drying_up
 from evidence.engine import EvidenceEngine
 from metrics_engine import MetricsEngine
 from models import EvidenceCode
@@ -21,34 +24,80 @@ from trend import TrendAnalyzer
 
 
 def _direction(candidate) -> int | None:
-    if candidate.qualification is PatternQualification.PERSISTENT_BULLISH:
+    qualification = candidate.qualification
+    if qualification is PatternQualification.PERSISTENT_BULLISH:
         return 1
-    if candidate.qualification is PatternQualification.PERSISTENT_BEARISH:
+    if qualification is PatternQualification.PERSISTENT_BEARISH:
         return -1
     return None
 
 
-def _audit_symbol(symbol: str, sample_bars: int, horizons: tuple[int, ...], refresh: bool) -> list[dict[str, object]]:
+def _has_demand_drying_up(candidate) -> bool:
+    codes = {
+        item.code
+        for item in (
+            *candidate.target_bar_evidence,
+            *candidate.scoring_evidence,
+            *candidate.campaign_evidence,
+        )
+    }
+    return EvidenceCode.DEMAND_DRYING_UP in codes
+
+
+def _has_ddu_current_bar(metrics, index: int, evidence_engine: EvidenceEngine) -> bool:
+    current = evidence_engine._create_bar_context(metrics.iloc[index], index)
+    previous = evidence_engine._create_bar_context(metrics.iloc[index - 1], index - 1)
+    context = SimpleNamespace(current=current, previous=previous)
+    return bool(collect_demand_drying_up(context))
+
+
+def _audit_symbol(
+    symbol: str,
+    sample_bars: int,
+    horizons: tuple[int, ...],
+    refresh: bool,
+) -> tuple[list[dict[str, object]], dict[str, int], Counter[str]]:
     daily = download_data(symbol, refresh=refresh)
     weekly = daily_to_weekly(daily)
     metrics = MetricsEngine().calculate(weekly)
     scanner = ScannerEngine()
-    sample_start = max(scanner.MIN_REPLAY_BARS, len(metrics) - sample_bars - max(horizons))
-    history = []
+    evidence_engine = EvidenceEngine()
+
+    sample_start = max(
+        scanner.MIN_REPLAY_BARS,
+        len(metrics) - sample_bars - max(horizons),
+    )
+    sample_end = len(metrics) - max(horizons)
+
     rows: list[dict[str, object]] = []
+    history = []
+    counts = {
+        "ddu_detected": 0,
+        "candidate_evaluated": 0,
+        "candidate_has_ddu": 0,
+        "qualified": 0,
+        "actionable_ddu": 0,
+        "target_context_ddu": 0,
+        "suppressed": 0,
+    }
+    reasons: Counter[str] = Counter()
 
     for index in range(scanner.MIN_REPLAY_BARS, len(metrics)):
         replay = metrics.iloc[: index + 1].copy()
         trend = TrendAnalyzer().analyze(replay)
-        evidence = EvidenceEngine().collect(
+        evidence = evidence_engine.collect(
             metrics=replay,
             trend=trend,
             structural_swings=list(trend.structure.structural_swings),
         )
         history.append(evidence)
-        if index < sample_start or index + max(horizons) >= len(metrics):
+
+        if index < sample_start or index >= sample_end:
+            continue
+        if not _has_ddu_current_bar(metrics, index, evidence_engine):
             continue
 
+        counts["ddu_detected"] += 1
         candidate = scanner.evaluate(
             trend=trend,
             evidence=evidence,
@@ -56,21 +105,42 @@ def _audit_symbol(symbol: str, sample_bars: int, horizons: tuple[int, ...], refr
             bar_index=index,
             week=scanner._week_at(metrics, index),
         )
-        if not candidate.actionable or EvidenceCode.DEMAND_DRYING_UP not in {
-            item.code for item in candidate.scoring_evidence
-        }:
+        counts["candidate_evaluated"] += 1
+
+        if not _has_demand_drying_up(candidate):
+            reasons["DDU missing from candidate evidence"] += 1
             continue
+        counts["candidate_has_ddu"] += 1
+
+        if candidate.qualification is PatternQualification.UNQUALIFIED:
+            reasons[f"UNQUALIFIED: {candidate.reason}"] += 1
+            continue
+        counts["qualified"] += 1
+
+        if not candidate.actionable:
+            reasons[candidate.reason] += 1
+            continue
+        counts["actionable_ddu"] += 1
 
         counterfactual = apply_counterfactual(trend, candidate)
         if not counterfactual.suppressed:
+            reasons["actionable but outside target context"] += 1
             continue
+        counts["target_context_ddu"] += 1
+        counts["suppressed"] += 1
 
         direction = _direction(candidate)
         if direction is None:
+            reasons["suppressed but direction unavailable"] += 1
             continue
 
         for horizon in horizons:
-            outcome = label_outcome(metrics, signal_index=index, direction=direction, horizon=horizon)
+            outcome = label_outcome(
+                metrics,
+                signal_index=index,
+                direction=direction,
+                horizon=horizon,
+            )
             if outcome.forward_return is None:
                 continue
             rows.append(
@@ -84,21 +154,44 @@ def _audit_symbol(symbol: str, sample_bars: int, horizons: tuple[int, ...], refr
                     "mae": outcome.maximum_adverse_excursion,
                 }
             )
-    return rows
+
+    return rows, counts, reasons
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Audit-only counterfactual suppression for DEMAND_DRYING_UP target contexts.")
+    parser = argparse.ArgumentParser(
+        description="Audit-only counterfactual suppression for DEMAND_DRYING_UP target contexts."
+    )
     parser.add_argument("--sample-bars", type=int, default=520)
     parser.add_argument("--refresh", action="store_true")
     args = parser.parse_args()
     horizons = (3, 5, 10)
 
     all_rows: list[dict[str, object]] = []
+    totals = {
+        "ddu_detected": 0,
+        "candidate_evaluated": 0,
+        "candidate_has_ddu": 0,
+        "qualified": 0,
+        "actionable_ddu": 0,
+        "target_context_ddu": 0,
+        "suppressed": 0,
+    }
+    reasons: Counter[str] = Counter()
     skipped: list[tuple[str, str, str]] = []
+
     for symbol in SYMBOLS:
         try:
-            all_rows.extend(_audit_symbol(symbol, args.sample_bars, horizons, args.refresh))
+            rows, counts, symbol_reasons = _audit_symbol(
+                symbol,
+                args.sample_bars,
+                horizons,
+                args.refresh,
+            )
+            all_rows.extend(rows)
+            reasons.update(symbol_reasons)
+            for key, value in counts.items():
+                totals[key] += value
         except Exception as exc:
             skipped.append((symbol, type(exc).__name__, str(exc)))
 
@@ -107,11 +200,32 @@ def main() -> None:
     print(f"symbols with suppressed candidates: {len({row['symbol'] for row in all_rows})}")
     print(f"suppressed candidate-horizon rows: {len(all_rows)}")
     print()
-    print(f"{'State':<12}{'Direction':<10}{'H':>4}{'Cases':>8}{'MeanRet':>12}{'Positive':>10}{'MeanMFE':>11}{'MeanMAE':>11}")
+    print(f"detected DDU candidate bars: {totals['ddu_detected']}")
+    print(f"candidate bars evaluated: {totals['candidate_evaluated']}")
+    print(f"candidate bars retaining DDU: {totals['candidate_has_ddu']}")
+    print(f"qualified DDU candidate bars: {totals['qualified']}")
+    print(f"actionable DDU candidate bars: {totals['actionable_ddu']}")
+    print(f"target-context actionable DDU bars: {totals['target_context_ddu']}")
+    print(f"suppressed candidate bars: {totals['suppressed']}")
+
+    print()
+    print("=== WHY DDU CANDIDATES DID NOT BECOME ACTIONABLE ===")
+    for reason, count in reasons.most_common():
+        print(f"{count:>6}  {reason}")
+
+    print()
+    print(
+        f"{'State':<12}{'Direction':<10}{'H':>4}{'Cases':>8}"
+        f"{'MeanRet':>12}{'Positive':>10}{'MeanMFE':>11}{'MeanMAE':>11}"
+    )
 
     groups: dict[tuple[str, str, int], list[dict[str, object]]] = {}
     for row in all_rows:
-        key = (str(row["state"]), str(row["direction"]), int(row["horizon"]))
+        key = (
+            str(row["state"]),
+            str(row["direction"]),
+            int(row["horizon"]),
+        )
         groups.setdefault(key, []).append(row)
 
     for (state, direction, horizon), rows in sorted(groups.items()):
@@ -120,10 +234,10 @@ def main() -> None:
         maes = [float(row["mae"]) for row in rows if row["mae"] is not None]
         print(
             f"{state:<12}{direction:<10}{horizon:>4}{len(returns):>8}"
-            f"{sum(returns)/len(returns):>11.3%}"
+            f"{sum(returns) / len(returns):>11.3%}"
             f"{sum(value > 0 for value in returns):>6}/{len(returns):<4}"
-            f"{sum(mfes)/len(mfes):>10.3%}"
-            f"{sum(maes)/len(maes):>10.3%}"
+            f"{sum(mfes) / len(mfes):>10.3%}"
+            f"{sum(maes) / len(maes):>10.3%}"
         )
 
     print()
