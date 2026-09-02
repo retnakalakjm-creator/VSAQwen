@@ -6,13 +6,13 @@ import config
 from models import (
     StructuralSwingScore,
     Swing,
-    SwingType,
     StructuralSwing,
     SwingGrade,
     StructuralSwingEvaluation,
     SwingProfessionalEvaluation,
     SwingProfessionalScore,
 )
+from .batched_structural_scorer import score_prepared_batch
 from .professional_scorer import ProfessionalScorer
 from line_profiler import profile
 
@@ -37,6 +37,20 @@ class StructureFilter:
             arrays,
             config.STRUCTURE_LOOKBACK,
         )
+        (
+            price_scores,
+            structural_sizes,
+            duration_scores,
+            volume_scores,
+            spread_scores,
+            structure_scores,
+        ) = score_prepared_batch(
+            scorer._structure,
+            history_snapshots,
+            arrays[4],
+            arrays[5],
+            metric_indices,
+        )
         raw_smart_money = scorer._smart_money.score_values_batch_raw(
             open_values=arrays[0],
             low_values=arrays[2],
@@ -51,7 +65,6 @@ class StructureFilter:
         total_weight = scorer._professional_total_weight
         structure_weight = scorer._professional_structure_weight
         smart_money_weight = scorer._professional_smart_money_weight
-        prepared_values = scorer._structure._prepared_values
         is_structural = self._is_structural
         score_from_batch_raw = scorer._smart_money.score_from_batch_raw
 
@@ -63,19 +76,12 @@ class StructureFilter:
             if snapshot is None:
                 continue
 
-            metric_index = metric_indices[index]
-            (
-                price,
-                structural_size,
-                duration_score,
-                volume_score,
-                spread_score,
-                structure_overall,
-            ) = prepared_values(
-                snapshot=snapshot,
-                volume=float(arrays[4][metric_index]),
-                spread=float(arrays[5][metric_index]),
-            )
+            price = float(price_scores[index])
+            structural_size = float(structural_sizes[index])
+            duration_score = float(duration_scores[index])
+            volume_score = float(volume_scores[index])
+            spread_score = float(spread_scores[index])
+            structure_overall = float(structure_scores[index])
 
             smart_money_score = float(raw_smart_money[-1][index])
             if total_weight <= 0:
@@ -92,6 +98,7 @@ class StructureFilter:
             if not is_structural(professional_overall):
                 continue
 
+            metric_index = metric_indices[index]
             smart_money = score_from_batch_raw(
                 raw_smart_money,
                 index,

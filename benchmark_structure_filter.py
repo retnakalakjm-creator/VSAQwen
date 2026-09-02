@@ -18,6 +18,7 @@ from engine.columns import (
     COL_VOLUME,
 )
 from market_structure.professional_scorer import ProfessionalScorer
+from market_structure.smart_money import SmartMoneyAnalyzer
 from market_structure.structure_filter import StructureFilter
 from models import Swing, SwingType
 
@@ -64,21 +65,24 @@ def make_inputs(size: int, seed: int = 42):
     return swings, metrics
 
 
-def scalar_smart_money_scores(self: ProfessionalScorer, arrays, indices, *, include_components=True):
-    (
-        open_values,
-        _high_values,
-        low_values,
-        close_values,
-        volume_values,
-        spread_values,
-        avg_volume_values,
-        avg_spread_values,
-    ) = arrays
+def scalar_batch_raw(
+    *,
+    open_values,
+    low_values,
+    close_values,
+    spread_values,
+    avg_spread_values,
+    volume_values,
+    avg_volume_values,
+    indices,
+):
+    fields = [[] for _ in range(9)]
+    analyzer = SmartMoneyAnalyzer()
 
-    return tuple(
-        self._smart_money.score_values(
-            bar_count=2 if int(index) > 0 else 1,
+    for raw_index in indices:
+        index = int(raw_index)
+        score = analyzer.score_values(
+            bar_count=2 if index > 0 else 1,
             open_value=float(open_values[index]),
             low_value=float(low_values[index]),
             close_value=float(close_values[index]),
@@ -86,20 +90,45 @@ def scalar_smart_money_scores(self: ProfessionalScorer, arrays, indices, *, incl
             avg_spread=float(avg_spread_values[index]),
             volume_value=float(volume_values[index]),
             avg_volume=float(avg_volume_values[index]),
-            include_components=include_components,
+            include_components=True,
         )
-        for index in indices
-    )
+
+        if index == 0:
+            stopping = (0.0, 0.0, 0.0, 0.0)
+        else:
+            stopping_components = score.stopping_breakdown.components
+            stopping = (
+                float(stopping_components[0].value),
+                float(stopping_components[1].value),
+                float(stopping_components[2].value),
+                float(score.stopping_breakdown.overall),
+            )
+
+        climactic_components = score.climactic_breakdown.components
+        climactic = (
+            float(climactic_components[0].value),
+            float(climactic_components[1].value),
+            float(climactic_components[2].value),
+            float(score.climactic_breakdown.overall),
+        )
+
+        values = stopping + climactic + (float(score.overall),)
+        for field, value in zip(fields, values):
+            field.append(value)
+
+    return tuple(np.asarray(field, dtype=float) for field in fields)
 
 
 def run_filter(swings, metrics, *, scalar: bool) -> list:
-    original = ProfessionalScorer.smart_money_scores_batch
+    if not scalar:
+        return StructureFilter().filter(swings, metrics)
+
+    original = SmartMoneyAnalyzer.score_values_batch_raw
+    SmartMoneyAnalyzer.score_values_batch_raw = staticmethod(scalar_batch_raw)
     try:
-        if scalar:
-            ProfessionalScorer.smart_money_scores_batch = scalar_smart_money_scores
         return StructureFilter().filter(swings, metrics)
     finally:
-        ProfessionalScorer.smart_money_scores_batch = original
+        SmartMoneyAnalyzer.score_values_batch_raw = original
 
 
 def elapsed(fn, repeats: int) -> float:
