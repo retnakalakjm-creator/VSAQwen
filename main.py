@@ -48,6 +48,7 @@ def main() -> None:
             "qualification": candidate.qualification,
             "actionable": candidate.actionable,
             "base_score": candidate.base_score,
+            "ranking_score": candidate.ranking_score,
             "net_strength": candidate.net_strength,
             "net_pressure": candidate.net_pressure,
             "confidence": candidate.confidence,

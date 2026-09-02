@@ -10,7 +10,7 @@ from market_structure.progression import calculate_professional_progression
 from market_structure.structure_filter import StructureFilter
 from models import Evidence, EvidenceCode, EvidenceCategory, EvidenceDirection
 from scanner import ScannerCandidate, ScannerEngine
-from scanner_state import ScannerState, StructuralEventState
+from scanner_state import ScannerState, StructuralEventState, SCANNER_STATE_SCHEMA_VERSION
 from model.evidence_result_model import EvidenceResult
 from trend import TrendAnalyzer
 
@@ -74,19 +74,30 @@ class IncrementalScannerEngine:
         swing_state = analyzer._swing_engine.snapshot_state(symbol=symbol, timeframe=timeframe)
         return replace(
             swing_state,
-            schema_version=3,
+            schema_version=SCANNER_STATE_SCHEMA_VERSION,
             structural_events=self._capture_events(trend.structure.structural_swings, prefix),
         )
 
     def resume_latest(self, metrics: pd.DataFrame, state: ScannerState) -> ScannerCandidate:
+        weeks = [str(value) for value in metrics["week_beginning"]]
+        if len(weeks) != len(set(weeks)):
+            raise ValueError("current metrics contain duplicate checkpoint bar identities")
+        index_by_week = {week: i for i, week in enumerate(weeks)}
+        checkpoint_index = index_by_week.get(state.last_closed_bar)
+        if checkpoint_index is None:
+            raise ValueError(
+                f"ScannerState checkpoint bar is not present in current metrics: {state.last_closed_bar}"
+            )
+
         trend = self._resume_trend(metrics, state)
         evidence = EvidenceEngine().collect(metrics=metrics, trend=trend, structural_swings=tuple(trend.structure.structural_swings))
 
-        index_by_week = {str(v): i for i, v in enumerate(metrics["week_beginning"])}
-        checkpoint_index = index_by_week.get(state.last_closed_bar)
         new_events = self._capture_events(trend.structure.structural_swings, metrics)
-        if checkpoint_index is not None:
-            new_events = tuple(event for event in new_events if index_by_week.get(event.bar_key, -1) > checkpoint_index)
+        new_events = tuple(
+            event
+            for event in new_events
+            if index_by_week.get(event.bar_key, -1) > checkpoint_index
+        )
 
         events: dict[tuple[str, EvidenceCode], StructuralEventState] = {
             (event.bar_key, event.code): event for event in state.structural_events

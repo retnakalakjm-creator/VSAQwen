@@ -54,6 +54,16 @@ class ScannerCandidate:
         return self.professional.scores.net_strength
 
     @property
+    def ranking_score(self) -> float:
+        """Comparable conviction magnitude for directional qualifications."""
+        if self.qualification in (
+            PatternQualification.PERSISTENT_BULLISH,
+            PatternQualification.PERSISTENT_BEARISH,
+        ):
+            return abs(self.base_score)
+        return self.base_score
+
+    @property
     def net_strength(self) -> float:
         return self.professional.scores.net_strength
 
@@ -91,7 +101,7 @@ class ScannerCandidate:
 
 
 def rank_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:
-    return sorted(candidates, key=lambda candidate: (candidate.actionable, candidate.base_score), reverse=True)
+    return sorted(candidates, key=lambda candidate: (candidate.actionable, candidate.ranking_score), reverse=True)
 
 
 def rank_actionable_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:

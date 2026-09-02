@@ -15,7 +15,12 @@ from models import (
     SwingSearchState,
     SwingType,
 )
-from scanner_state import CandidateState, ConfirmedSwingState, ScannerState
+from scanner_state import (
+    CandidateState,
+    ConfirmedSwingState,
+    SCANNER_STATE_SCHEMA_VERSION,
+    ScannerState,
+)
 
 
 # =============================================================================
@@ -70,7 +75,7 @@ class SwingEngine:
         retained_swings = self._swings
 
         return ScannerState(
-            schema_version=2,
+            schema_version=SCANNER_STATE_SCHEMA_VERSION,
             symbol=symbol,
             timeframe=timeframe,
             last_closed_bar=str(self._weeks[-1]),

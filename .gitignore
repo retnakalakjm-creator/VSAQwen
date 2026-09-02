@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 
 cache/
+state/
 vsa.log
 
 *.csv
+

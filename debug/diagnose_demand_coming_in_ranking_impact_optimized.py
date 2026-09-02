@@ -38,10 +38,10 @@ def _candidate_indices(metrics):
     for index in range(20, len(metrics)):
         row = metrics.iloc[index]
         if (
-            int(row[COL_DIRECTION]) == -1
+            int(row[COL_DIRECTION]) == 1
             and VolumeClass(int(row[COL_VOLUME_CLASS])) >= VolumeClass.HIGH
             and SpreadClass(int(row[COL_SPREAD_CLASS])) >= SpreadClass.ABOVE_AVERAGE
-            and int(row[COL_CLOSE_POSITION]) >= 2
+            and int(row[COL_CLOSE_POSITION]) >= 3
         ):
             yield index
 

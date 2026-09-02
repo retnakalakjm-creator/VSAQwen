@@ -14,9 +14,12 @@ from engine.columns import (
     COL_VOLUME,
     COL_WEEK,
 )
+from incremental_scanner import IncrementalScannerEngine
 from market_structure.swing_engine import SwingEngine
+from metrics_engine import MetricsEngine
 from models import SwingSearchState
-from scanner_state import ScannerState
+from scanner import ScannerEngine
+from scanner_state import ScannerState, ScannerStateStore
 from trend import TrendAnalyzer
 
 
@@ -47,6 +50,11 @@ def _metrics(size: int = 120) -> pd.DataFrame:
             COL_AVG_SPREAD: spread,
         }
     )
+
+
+def _production_metrics() -> pd.DataFrame:
+    """Use the canonical MetricsEngine contract required by production scanning."""
+    return MetricsEngine().calculate(_metrics())
 
 
 def _swing_signature(swings) -> tuple[tuple[object, int, int, float, str], ...]:
@@ -87,27 +95,16 @@ def _classified_signature(classified_swings) -> tuple[tuple[object, int, int, ob
     )
 
 
-def _advance(engine: SwingEngine, start_index: int, end_index: int) -> None:
-    """Advance a prepared SwingEngine through an inclusive bar range."""
-    for bar_index in range(start_index, end_index + 1):
-        if engine._state in (
-            SwingSearchState.TRACKING_HIGH,
-            SwingSearchState.TRACKING_LOW,
-        ):
-            engine._update_candidate(bar_index)
-            if engine._is_reversal_confirmed(bar_index):
-                if engine._state == SwingSearchState.TRACKING_HIGH:
-                    engine._state = SwingSearchState.WAITING_HIGH_CONFIRMATION
-                else:
-                    engine._state = SwingSearchState.WAITING_LOW_CONFIRMATION
-                continue
-
-        if engine._state == SwingSearchState.WAITING_HIGH_CONFIRMATION:
-            if bar_index - engine._candidate.bar_index >= 2:
-                engine._confirm_candidate(bar_index)
-        elif engine._state == SwingSearchState.WAITING_LOW_CONFIRMATION:
-            if bar_index - engine._candidate.bar_index >= 2:
-                engine._confirm_candidate(bar_index)
+def _candidate_signature(candidate) -> tuple[object, bool, float, float, float, tuple[object, ...], tuple[object, ...]]:
+    return (
+        candidate.qualification,
+        candidate.actionable,
+        candidate.professional.confidence,
+        candidate.professional.scores.net_strength,
+        candidate.professional.scores.net_pressure,
+        tuple(item.code for item in candidate.qualifying_evidence),
+        tuple(item.code for item in candidate.scoring_evidence),
+    )
 
 
 def test_full_history_matches_every_prefix_for_confirmed_swings() -> None:
@@ -189,3 +186,52 @@ def test_serialized_scanner_state_resumes_swing_engine() -> None:
     resumed_swings = SwingEngine().calculate_from_state(metrics, restored_state)
 
     assert _swing_signature(resumed_swings) == _swing_signature(full_swings)
+
+
+def test_persisted_scanner_state_matches_full_production_candidate(tmp_path) -> None:
+    metrics = _production_metrics()
+    split = 72
+    target_index = len(metrics) - 1
+
+    full = ScannerEngine().scan_to_index(metrics, target_index)
+
+    incremental = IncrementalScannerEngine()
+    state = incremental.snapshot(
+        metrics,
+        target_index=split,
+        symbol="TEST",
+        timeframe="1wk",
+    )
+
+    store = ScannerStateStore(tmp_path)
+    store.save(state)
+    restored_state = store.load("TEST", "1wk")
+
+    resumed = incremental.resume_latest(metrics, restored_state)
+
+    assert _candidate_signature(resumed) == _candidate_signature(full)
+    assert resumed.bar_index == full.bar_index
+    assert resumed.week == full.week
+
+
+def test_persisted_scanner_state_matches_full_production_candidate_at_multiple_checkpoints(tmp_path) -> None:
+    metrics = _production_metrics()
+    target_index = len(metrics) - 1
+    full = ScannerEngine().scan_to_index(metrics, target_index)
+    incremental = IncrementalScannerEngine()
+    store = ScannerStateStore(tmp_path)
+
+    for split in (30, 45, 60, 72, 90, 105):
+        state = incremental.snapshot(
+            metrics,
+            target_index=split,
+            symbol="TEST",
+            timeframe=f"1wk-{split}",
+        )
+        store.save(state)
+        restored_state = store.load("TEST", f"1wk-{split}")
+        resumed = incremental.resume_latest(metrics, restored_state)
+
+        assert _candidate_signature(resumed) == _candidate_signature(full)
+        assert resumed.bar_index == full.bar_index
+        assert resumed.week == full.week

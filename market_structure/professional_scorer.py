@@ -20,6 +20,7 @@ from models import (
 )
 from .structural_swing_scorer import StructuralSwingScorer
 from .smart_money import SmartMoneyAnalyzer
+from .batched_smart_money import BatchedSmartMoneyAnalyzer
 from line_profiler import profile
 
 
@@ -29,7 +30,7 @@ class ProfessionalScorer:
         self._structure = StructuralSwingScorer(
             structure_lookback=config.STRUCTURE_LOOKBACK,
         )
-        self._smart_money = SmartMoneyAnalyzer()
+        self._smart_money = BatchedSmartMoneyAnalyzer()
         self._professional_structure_weight = config.PROFESSIONAL_STRUCTURE_WEIGHT
         self._professional_smart_money_weight = config.PROFESSIONAL_SMART_MONEY_WEIGHT
         self._professional_total_weight = (
@@ -208,6 +209,36 @@ class ProfessionalScorer:
             )
 
         return tuple_type(snapshots)
+
+    def smart_money_scores_batch(
+        self,
+        arrays,
+        indices,
+        *,
+        include_components: bool = True,
+    ):
+        (
+            open_values,
+            _high_values,
+            low_values,
+            close_values,
+            volume_values,
+            spread_values,
+            avg_volume_values,
+            avg_spread_values,
+        ) = arrays
+
+        return self._smart_money.score_values_batch(
+            open_values=open_values,
+            low_values=low_values,
+            close_values=close_values,
+            spread_values=spread_values,
+            avg_spread_values=avg_spread_values,
+            volume_values=volume_values,
+            avg_volume_values=avg_volume_values,
+            indices=indices,
+            include_components=include_components,
+        )
 
     def _history_snapshot(
         self,
