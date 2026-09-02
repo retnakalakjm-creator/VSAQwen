@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from bisect import bisect_right
+
 import pandas as pd
 
 from engine.columns import COL_AVG_SPREAD, COL_AVG_VOLUME, COL_CLOSE, COL_HIGH, COL_LOW, COL_OPEN, COL_SPREAD, COL_VOLUME
@@ -78,11 +80,139 @@ class ProfessionalScorer:
         return not pd.isna(value)
 
     @profile
+    def prepare_history_scores(
+        self,
+        swings: list[Swing] | tuple[Swing, ...],
+        arrays,
+        lookback: int,
+    ) -> tuple[tuple[float, float, float, float, float, float] | None, ...]:
+        """Prepare structural score components without snapshot allocation."""
+        (
+            _open_values,
+            _high_values,
+            _low_values,
+            _close_values,
+            volume_values,
+            spread_values,
+            _avg_volume_values,
+            avg_spread_values,
+        ) = arrays
+
+        volume_valid, spread_valid, avg_spread_valid = self._metric_valid_cache
+        swings = tuple(swings)
+        count = len(swings)
+        scores: list[tuple[float, float, float, float, float, float] | None] = [None] * count
+        if count < 2:
+            return tuple(scores)
+
+        pair_amplitudes = [
+            abs(current.price - previous.price)
+            for previous, current in zip(swings[:-1], swings[1:])
+        ]
+        pair_durations = [
+            abs(current.bar_index - previous.bar_index)
+            for previous, current in zip(swings[:-1], swings[1:])
+        ]
+
+        rank = bisect_right
+        price_weight = self._structure._price_weight
+        structural_size_weight = self._structure._structural_size_weight
+        duration_weight = self._structure._duration_weight
+        volume_weight = self._structure._volume_weight
+        spread_weight = self._structure._spread_weight
+        total_weight = self._structure._total_weight
+
+        for index in range(1, count):
+            start = max(0, index - lookback + 1)
+            current_amplitude = pair_amplitudes[index - 1]
+            current_duration = pair_durations[index - 1]
+
+            amplitude_sample = pair_amplitudes[max(0, start - 1): index - 1]
+            duration_sample = pair_durations[max(0, start - 1): index - 1]
+
+            current_metric = swings[index].metrics_index
+            avg_spread = avg_spread_values[current_metric]
+            current_adjusted = (
+                current_amplitude / avg_spread
+                if avg_spread_valid[current_metric] and avg_spread > 0
+                else None
+            )
+
+            adjusted_sample = []
+            current_type = swings[index].type
+            for sample_index in range(start, index):
+                sample_swing = swings[sample_index]
+                if sample_swing.type is not current_type:
+                    continue
+                metric_index = sample_swing.metrics_index
+                value = avg_spread_values[metric_index]
+                if not avg_spread_valid[metric_index] or value <= 0:
+                    continue
+                adjusted_sample.append(pair_amplitudes[sample_index - 1] / value)
+
+            previous_indices = range(start, index)
+            volumes = [
+                float(volume_values[swings[i].metrics_index])
+                for i in previous_indices
+                if volume_valid[swings[i].metrics_index]
+            ]
+            spreads = [
+                float(spread_values[swings[i].metrics_index])
+                for i in previous_indices
+                if spread_valid[swings[i].metrics_index]
+            ]
+
+            amplitude_sample.sort()
+            duration_sample.sort()
+            adjusted_sample.sort()
+            volumes.sort()
+            spreads.sort()
+
+            price = rank(amplitude_sample, current_amplitude) / len(amplitude_sample) if amplitude_sample else 0.0
+            structural_size = (
+                rank(adjusted_sample, current_adjusted) / len(adjusted_sample)
+                if current_adjusted is not None and adjusted_sample
+                else 0.0
+            )
+            duration_score = rank(duration_sample, current_duration) / len(duration_sample) if duration_sample else 0.0
+            volume_value = float(volume_values[current_metric])
+            spread_value = float(spread_values[current_metric])
+            volume_score = rank(volumes, volume_value) / len(volumes) if volumes else 0.0
+            spread_score = rank(spreads, spread_value) / len(spreads) if spreads else 0.0
+
+            overall = (
+                min(
+                    (
+                        price * price_weight
+                        + structural_size * structural_size_weight
+                        + duration_score * duration_weight
+                        + volume_score * volume_weight
+                        + spread_score * spread_weight
+                    ) / total_weight,
+                    1.0,
+                )
+                if total_weight > 0
+                else 0.0
+            )
+
+            scores[index] = (
+                price,
+                structural_size,
+                duration_score,
+                volume_score,
+                spread_score,
+                overall,
+            )
+
+        return tuple(scores)
+
+    @profile
     def prepare_history_snapshots(
         self,
         swings: list[Swing] | tuple[Swing, ...],
         arrays,
         lookback: int,
+        indices_to_build: set[int] | None = None,
     ) -> tuple[SwingHistorySnapshot | None, ...]:
         (
             _open_values,
@@ -158,6 +288,9 @@ class ProfessionalScorer:
             spread_counts[index + 1] = spread_count
             high_adjusted_counts[index + 1] = high_adjusted_count
             low_adjusted_counts[index + 1] = low_adjusted_count
+
+            if indices_to_build is not None and index not in indices_to_build:
+                continue
 
             start = max(0, index - lookback + 1)
             history_end = index
