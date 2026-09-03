@@ -118,10 +118,8 @@ class ProfessionalScorer:
         history_sorted_amplitudes: list[float] = []
         history_sorted_durations: list[int] = []
 
-        history_volume_indices: deque[int] = deque()
-        history_volumes: deque[float] = deque()
-        history_spread_indices: deque[int] = deque()
-        history_spreads: deque[float] = deque()
+        history_volumes: deque[tuple[int, float]] = deque()
+        history_spreads: deque[tuple[int, float]] = deque()
         history_sorted_volumes: list[float] = []
         history_sorted_spreads: list[float] = []
 
@@ -130,7 +128,13 @@ class ProfessionalScorer:
         sorted_high_adjusted: list[float] = []
         sorted_low_adjusted: list[float] = []
 
-        def remove_before(start_index: int) -> None:
+        for index, current in enumerate(swings):
+            if index == 0:
+                continue
+
+            history_start = max(0, index - lookback + 1)
+            start_index = max(1, history_start)
+
             while pair_indices and pair_indices[0] < start_index:
                 pair_indices.popleft()
                 old_amplitude = history_amplitudes.popleft()
@@ -142,16 +146,14 @@ class ProfessionalScorer:
                     bisect_left(history_sorted_durations, old_duration)
                 ]
 
-            while history_volume_indices and history_volume_indices[0] < start_index:
-                history_volume_indices.popleft()
-                old_volume = history_volumes.popleft()
+            while history_volumes and history_volumes[0][0] < start_index:
+                _, old_volume = history_volumes.popleft()
                 del history_sorted_volumes[
                     bisect_left(history_sorted_volumes, old_volume)
                 ]
 
-            while history_spread_indices and history_spread_indices[0] < start_index:
-                history_spread_indices.popleft()
-                old_spread = history_spreads.popleft()
+            while history_spreads and history_spreads[0][0] < start_index:
+                _, old_spread = history_spreads.popleft()
                 del history_sorted_spreads[
                     bisect_left(history_sorted_spreads, old_spread)
                 ]
@@ -168,14 +170,6 @@ class ProfessionalScorer:
                     bisect_left(sorted_low_adjusted, old_adjusted)
                 ]
 
-        for index, current in enumerate(swings):
-            if index == 0:
-                continue
-
-            history_start = max(0, index - lookback + 1)
-            start_index = max(1, history_start)
-            remove_before(start_index)
-
             pair_amplitude = pair_amplitudes[index - 1]
             pair_duration = pair_durations[index - 1]
             metrics_index = current.metrics_index
@@ -184,8 +178,8 @@ class ProfessionalScorer:
 
             amplitudes = tuple(history_amplitudes)
             durations = tuple(history_durations)
-            volumes = tuple(history_volumes)
-            spreads = tuple(history_spreads)
+            volumes = tuple(value for _, value in history_volumes)
+            spreads = tuple(value for _, value in history_spreads)
 
             if is_high:
                 adjusted_window = high_adjusted
@@ -237,14 +231,12 @@ class ProfessionalScorer:
 
             if volume_valid[metrics_index]:
                 volume = float(volume_values[metrics_index])
-                history_volume_indices.append(index)
-                history_volumes.append(volume)
+                history_volumes.append((index, volume))
                 insort_left(history_sorted_volumes, volume)
 
             if spread_valid[metrics_index]:
                 spread = float(spread_values[metrics_index])
-                history_spread_indices.append(index)
-                history_spreads.append(spread)
+                history_spreads.append((index, spread))
                 insort_left(history_sorted_spreads, spread)
 
         return tuple(snapshots)
@@ -354,3 +346,45 @@ class ProfessionalScorer:
         volume_values, spread_values, avg_volume_values, avg_spread_values = arrays[4], arrays[5], arrays[6], arrays[7]
         i = swing.metrics_index
         return SwingMetricSnapshot(volume=float(volume_values[i]), spread=float(spread_values[i]), avg_volume=float(avg_volume_values[i]), avg_spread=float(avg_spread_values[i]))
+
+    @profile
+    def _smart_money_snapshot(
+        self,
+        source,
+        swing: Swing,
+        lookback: int = 3,
+    ) -> SmartMoneySnapshot:
+        end = swing.metrics_index + 1
+        start = max(0, end - lookback)
+
+        arrays = (
+            self._metric_arrays(source)
+            if isinstance(source, pd.DataFrame)
+            else source
+        )
+        (
+            open_values,
+            high_values,
+            low_values,
+            close_values,
+            volume_values,
+            spread_values,
+            avg_volume_values,
+            avg_spread_values,
+        ) = arrays
+
+        bars = tuple(
+            SmartMoneyBar(
+                open=float(open_values[index]),
+                high=float(high_values[index]),
+                low=float(low_values[index]),
+                close=float(close_values[index]),
+                spread=float(spread_values[index]),
+                avg_spread=float(avg_spread_values[index]),
+                volume=float(volume_values[index]),
+                avg_volume=float(avg_volume_values[index]),
+            )
+            for index in range(start, end)
+        )
+
+        return SmartMoneySnapshot(bars=bars)
