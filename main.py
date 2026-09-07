@@ -10,6 +10,7 @@ import argparse
 
 from data import completed_weekly_only, daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
+from production_scanner import scan_actionable_production
 from scanner import ScannerEngine
 
 
@@ -18,6 +19,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Professional VSA Swing Scanner")
     parser.add_argument("symbol", nargs="?", default="SRF.NS")
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument(
+        "--full-replay",
+        action="store_true",
+        help="Use the original full replay scanner instead of the incremental production path.",
+    )
     args = parser.parse_args()
     if args.limit <= 0:
         raise ValueError("limit must be greater than zero")
@@ -36,8 +42,16 @@ def main() -> None:
     metrics = MetricsEngine().calculate(weekly)
     print("✓ Metrics completed")
     print("\nRunning actionable scanner...")
-    candidates = ScannerEngine().scan_actionable(metrics)
-    print(f"✓ Scanner completed: {len(candidates)} actionable candidates")
+    if args.full_replay:
+        candidates = ScannerEngine().scan_actionable(metrics)
+        scanner_mode = "full replay"
+    else:
+        candidates = scan_actionable_production(metrics, symbol=symbol)
+        scanner_mode = "incremental"
+    print(
+        f"✓ Scanner completed ({scanner_mode}): "
+        f"{len(candidates)} actionable candidates"
+    )
     print("\nACTIONABLE CANDIDATES")
     print("=" * 60)
     for rank, candidate in enumerate(candidates[: args.limit], start=1):

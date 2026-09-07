@@ -15,6 +15,7 @@ from typing import Any
 
 from data import completed_weekly_only, daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
+from production_scanner import scan_actionable_production
 from scanner import ScannerEngine
 
 DEFAULT_SYMBOLS = ("SRF.NS",)
@@ -57,10 +58,18 @@ def _latest_daily_key(daily: Any) -> Any:
     return daily.index[-1]
 
 
-def _scan_from_daily(symbol: str, daily: Any) -> dict[str, Any]:
+def _scan_from_daily(
+    symbol: str,
+    daily: Any,
+    *,
+    use_incremental: bool = True,
+) -> dict[str, Any]:
     weekly = completed_weekly_only(daily_to_weekly(daily))
     metrics = MetricsEngine().calculate(weekly)
-    candidates = ScannerEngine().scan_actionable(metrics)
+    if use_incremental:
+        candidates = scan_actionable_production(metrics, symbol=symbol)
+    else:
+        candidates = ScannerEngine().scan_actionable(metrics)
 
     if candidates:
         return _candidate_payload(symbol, candidates[0])
@@ -93,10 +102,10 @@ def _scan_from_daily(symbol: str, daily: Any) -> dict[str, Any]:
     }
 
 
-def scan_symbol(symbol: str) -> dict[str, Any]:
+def scan_symbol(symbol: str, *, use_incremental: bool = True) -> dict[str, Any]:
     """Evaluate one symbol through the existing production scanner path."""
     daily = download_data(symbol, refresh=False)
-    return _scan_from_daily(symbol, daily)
+    return _scan_from_daily(symbol, daily, use_incremental=use_incremental)
 
 
 def _observation_signature(observation: dict[str, Any]) -> tuple[Any, ...]:
@@ -132,16 +141,27 @@ def _print_observation(observation: dict[str, Any], as_json: bool) -> None:
     print(f"Reason         : {observation['reason']}")
 
 
-def run_once(symbols: tuple[str, ...], as_json: bool) -> list[dict[str, Any]]:
+def run_once(
+    symbols: tuple[str, ...],
+    as_json: bool,
+    *,
+    use_incremental: bool = True,
+) -> list[dict[str, Any]]:
     observations = []
     for symbol in symbols:
-        observation = scan_symbol(symbol)
+        observation = scan_symbol(symbol, use_incremental=use_incremental)
         observations.append(observation)
         _print_observation(observation, as_json)
     return observations
 
 
-def run_live(symbols: tuple[str, ...], interval_seconds: int, as_json: bool) -> None:
+def run_live(
+    symbols: tuple[str, ...],
+    interval_seconds: int,
+    as_json: bool,
+    *,
+    use_incremental: bool = True,
+) -> None:
     """Poll source data and rescan only when a new source bar appears."""
     states = {symbol: _LiveSymbolState() for symbol in symbols}
 
@@ -152,7 +172,11 @@ def run_live(symbols: tuple[str, ...], interval_seconds: int, as_json: bool) -> 
             daily_key = _latest_daily_key(daily)
 
             if state.observation is None or state.latest_daily_key != daily_key:
-                observation = _scan_from_daily(symbol, daily)
+                observation = _scan_from_daily(
+                    symbol,
+                    daily,
+                    use_incremental=use_incremental,
+                )
                 state.latest_daily_key = daily_key
                 state.observation = observation
                 _print_observation(observation, as_json)
@@ -166,6 +190,11 @@ def main() -> None:
     parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL_SECONDS)
     parser.add_argument("--once", action="store_true", help="Run one observation cycle and exit")
     parser.add_argument("--json", action="store_true", help="Print observations as JSON")
+    parser.add_argument(
+        "--full-replay",
+        action="store_true",
+        help="Use the original full replay scanner instead of the incremental production path.",
+    )
     args = parser.parse_args()
 
     if not args.symbols:
@@ -174,10 +203,11 @@ def main() -> None:
         raise ValueError("interval must be greater than zero")
 
     symbols = tuple(dict.fromkeys(args.symbols))
+    use_incremental = not args.full_replay
     if args.once:
-        run_once(symbols, args.json)
+        run_once(symbols, args.json, use_incremental=use_incremental)
     else:
-        run_live(symbols, args.interval, args.json)
+        run_live(symbols, args.interval, args.json, use_incremental=use_incremental)
 
 
 if __name__ == "__main__":
