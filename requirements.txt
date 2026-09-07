@@ -4,3 +4,6 @@ numpy>=2.2.0
 yfinance>=0.2.61
 openpyxl>=3.1.5
 reportlab>=4.4.0
+fastapi>=0.116.0
+uvicorn[standard]>=0.35.0
+line-profiler>=5.0.0

@@ -1,0 +1,162 @@
+1. Overall Conversation Summary
+Project goal
+Build ProVSA, a Python desktop stock scanner for swing trading based on strict Volume Spread Analysis (VSA) methodology.
+The system is intended to evaluate real-market evidence, not merely detect textbook-perfect VSA patterns.
+Core architecture evolved around:
+market data/metrics
+swing detection and classification
+trend/context analysis
+professional swing scoring
+Smart Money scoring
+structural filtering
+scanner/report generation
+Architecture & methodology decisions
+Python was selected over C#.
+pandas, NumPy, yfinance, and the existing metrics/VSA infrastructure are used.
+Daily market data can be converted to weekly data for background analysis.
+VSA evidence was expanded into categories including:
+Supply
+Demand
+Effort
+Result
+Trend
+Phase
+Volume
+Spread
+Signal
+Trend/swing models and enums were progressively formalized.
+Swing detection uses reversal confirmation based on average spread and configured confirmation bars.
+Swing classification uses HH, HL, LH, and LL.
+Trend direction/state is derived from weighted recent swing structure.
+A key design principle throughout has been preserving meaningful imperfect real-market VSA evidence rather than forcing textbook conformity.
+Performance optimization phase
+
+We moved from scalar-per-swing Smart Money scoring toward genuine batch/vectorized Smart Money scoring:
+
+all swing metric arrays
+        ↓
+one vectorized/batched Smart Money calculation
+        ↓
+one SmartMoneyScore per swing
+        ↓
+StructureFilter reuses them
+Batched Smart Money scoring was implemented and validated against scalar scoring.
+Structural scoring was subsequently batched as well.
+Lazy construction was introduced so detailed Smart Money/structural component objects are created only for relevant structural survivors.
+History snapshot optimization
+ProfessionalScorer.prepare_history_snapshots() became a major optimization target.
+Initial reference implementation was expensive because every swing rebuilt historical windows.
+V1 introduced rolling deques plus sorted windows using bisect_left/insort_left.
+V1 became the accepted baseline after semantic equivalence testing.
+Several later optimizations were experimentally attempted and rejected because they either:
+regressed performance, or
+broke incremental equivalence.
+We therefore adopted a strict rule: every optimization must preserve the existing semantic tests before being kept.
+2. Latest Conversation & Project Details
+Latest optimization
+
+The profiler identified these major hotspots in prepare_history_snapshots():
+
+remove_before() — ~19.2%
+volumes = tuple(...) — ~9.4%
+spreads = tuple(...) — ~9.0%
+SwingHistorySnapshot(...) — ~16.6%
+spread-adjusted amplitude tuple construction — ~6.4%
+
+We first optimized the remove_before() hotspot by:
+
+removing the nested helper function;
+inlining the five expiration loops directly into the main swing loop;
+leaving the actual rolling-window data structures and semantics unchanged.
+
+That optimization was committed as:
+
+8e9d095e3646b0deb8c7232a814809d65da762de
+
+The user benchmarked it:
+
+swings:     5000
+repeats:    20
+lookback:   10
+time:       34.620 ms
+snapshots:  4,999
+
+Then the user ran the semantic tests:
+
+9 passed
+
+So that optimization was accepted.
+
+Profiler follow-up
+
+The user supplied profiler commit:
+
+fee55ebe03de5fe8f1181c047b10007573886ba5
+
+We inspected the current professional_scorer.py and identified tuple materialization as the next target.
+
+We then changed:
+
+volumes = tuple(value for _, value in history_volumes)
+
+to a supposedly cheaper equivalent construction.
+
+That change was committed as:
+
+d3302d3de68c3e8555a15665eb046e4bd2a27346
+
+Result
+
+The user benchmarked the new version:
+
+swings:     5000
+repeats:    20
+lookback:   10
+time:       47.295 ms
+snapshots:  4,999
+
+This is clearly worse than the previous accepted result of 34.620 ms.
+
+Therefore the latest d3302d3 change should be reverted.
+
+Important state distinction
+8e9d095... = accepted optimization.
+d3302d3... = rejected regression and should not remain in production.
+The user initially explicitly requested that this latest change be reverted and committed, but then asked for this project alignment summary instead. The revert is therefore currently a pending action item.
+3. Next Steps & Action Items
+ME — User
+After the latest regression is reverted, do not benchmark the rejected volumes optimization again.
+Continue providing benchmark/profiler output after each accepted optimization.
+
+For future history optimizations, continue validating with:
+
+python -m pytest tests/test_history_snapshot_optimization.py tests/test_incremental_equivalence.py -q
+
+Use:
+
+python benchmark_history_snapshots.py
+
+for performance comparison.
+
+Use:
+
+python profile_history_snapshots.py
+
+when we need to identify the next hotspot.
+
+YOU — AI
+Immediate: revert commit d3302d3de68c3e8555a15665eb046e4bd2a27346.
+Commit the revert through GitHub.
+Restore the previously accepted 8e9d095... implementation.
+Do not alter the accepted remove_before() optimization.
+After the revert, instruct the user to run the semantic tests and benchmark to confirm the baseline is restored.
+Once confirmed, proceed to the next profiler hotspot, rather than optimizing blindly.
+Candidate next targets:
+spreads tuple materialization
+SwingHistorySnapshot(...) construction
+spread-adjusted amplitude tuple construction
+Every candidate must be tested for semantic equivalence before acceptance.
+Pending Questions
+Has the d3302d3 regression been reverted? → Not yet.
+What is the restored post-revert benchmark? → Pending.
+Which remaining profiler hotspot gives the best safe optimization opportunity? → Determine from the restored profiler output after the revert.

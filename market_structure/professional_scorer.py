@@ -119,12 +119,15 @@ class ProfessionalScorer:
         history_sorted_durations: list[int] = []
 
         history_volumes: deque[tuple[int, float]] = deque()
-        history_spreads: deque[tuple[int, float]] = deque()
+        history_spread_indices: deque[int] = deque()
+        history_spreads: deque[float] = deque()
         history_sorted_volumes: list[float] = []
         history_sorted_spreads: list[float] = []
 
-        high_adjusted: deque[tuple[int, float]] = deque()
-        low_adjusted: deque[tuple[int, float]] = deque()
+        high_adjusted_indices: deque[int] = deque()
+        high_adjusted: deque[float] = deque()
+        low_adjusted_indices: deque[int] = deque()
+        low_adjusted: deque[float] = deque()
         sorted_high_adjusted: list[float] = []
         sorted_low_adjusted: list[float] = []
 
@@ -152,20 +155,23 @@ class ProfessionalScorer:
                     bisect_left(history_sorted_volumes, old_volume)
                 ]
 
-            while history_spreads and history_spreads[0][0] < start_index:
-                _, old_spread = history_spreads.popleft()
+            while history_spread_indices and history_spread_indices[0] < start_index:
+                history_spread_indices.popleft()
+                old_spread = history_spreads.popleft()
                 del history_sorted_spreads[
                     bisect_left(history_sorted_spreads, old_spread)
                 ]
 
-            while high_adjusted and high_adjusted[0][0] < start_index:
-                _, old_adjusted = high_adjusted.popleft()
+            while high_adjusted_indices and high_adjusted_indices[0] < start_index:
+                high_adjusted_indices.popleft()
+                old_adjusted = high_adjusted.popleft()
                 del sorted_high_adjusted[
                     bisect_left(sorted_high_adjusted, old_adjusted)
                 ]
 
-            while low_adjusted and low_adjusted[0][0] < start_index:
-                _, old_adjusted = low_adjusted.popleft()
+            while low_adjusted_indices and low_adjusted_indices[0] < start_index:
+                low_adjusted_indices.popleft()
+                old_adjusted = low_adjusted.popleft()
                 del sorted_low_adjusted[
                     bisect_left(sorted_low_adjusted, old_adjusted)
                 ]
@@ -179,36 +185,34 @@ class ProfessionalScorer:
             amplitudes = tuple(history_amplitudes)
             durations = tuple(history_durations)
             volumes = tuple(value for _, value in history_volumes)
-            spreads = tuple(value for _, value in history_spreads)
+            spreads = tuple(history_spreads)
 
             if is_high:
-                adjusted_window = high_adjusted
+                adjusted_values = high_adjusted
                 sorted_adjusted_window = sorted_high_adjusted
             else:
-                adjusted_window = low_adjusted
+                adjusted_values = low_adjusted
                 sorted_adjusted_window = sorted_low_adjusted
-            spread_adjusted_amplitudes = tuple(
-                value for _, value in adjusted_window
-            )
+            spread_adjusted_amplitudes = tuple(adjusted_values)
 
             snapshots[index] = SwingHistorySnapshot(
-                current_amplitude=pair_amplitude,
-                current_duration=pair_duration,
-                current_spread_adjusted_amplitude=(
+                pair_amplitude,
+                pair_duration,
+                (
                     pair_amplitude / avg_spread
                     if avg_spread_valid[metrics_index] and avg_spread > 0
                     else None
                 ),
-                amplitudes=amplitudes,
-                spread_adjusted_amplitudes=spread_adjusted_amplitudes,
-                durations=durations,
-                volumes=volumes,
-                spreads=spreads,
-                sorted_amplitudes=tuple(history_sorted_amplitudes),
-                sorted_spread_adjusted_amplitudes=tuple(sorted_adjusted_window),
-                sorted_durations=tuple(history_sorted_durations),
-                sorted_volumes=tuple(history_sorted_volumes),
-                sorted_spreads=tuple(history_sorted_spreads),
+                amplitudes,
+                spread_adjusted_amplitudes,
+                durations,
+                volumes,
+                spreads,
+                tuple(history_sorted_amplitudes),
+                tuple(sorted_adjusted_window),
+                tuple(history_sorted_durations),
+                tuple(history_sorted_volumes),
+                tuple(history_sorted_spreads),
             )
 
             if history_size == 0:
@@ -223,10 +227,12 @@ class ProfessionalScorer:
             if avg_spread_valid[metrics_index] and avg_spread > 0:
                 adjusted = pair_amplitude / avg_spread
                 if is_high:
-                    high_adjusted.append((index, adjusted))
+                    high_adjusted_indices.append(index)
+                    high_adjusted.append(adjusted)
                     insort_left(sorted_high_adjusted, adjusted)
                 else:
-                    low_adjusted.append((index, adjusted))
+                    low_adjusted_indices.append(index)
+                    low_adjusted.append(adjusted)
                     insort_left(sorted_low_adjusted, adjusted)
 
             if volume_valid[metrics_index]:
@@ -236,7 +242,8 @@ class ProfessionalScorer:
 
             if spread_valid[metrics_index]:
                 spread = float(spread_values[metrics_index])
-                history_spreads.append((index, spread))
+                history_spread_indices.append(index)
+                history_spreads.append(spread)
                 insort_left(history_sorted_spreads, spread)
 
         return tuple(snapshots)

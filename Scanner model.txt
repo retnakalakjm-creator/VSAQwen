@@ -1,0 +1,47 @@
+The most effective solution is to switch from a Full Historical Scan to an Incremental Scan (Delta Processing).
+Instead of re-processing years of data, you only process the newly added candlesticks and update a saved "state" of the market structure.
+
+State Persistence: Save the historical market structure (e.g., support/resistance levels, ongoing accumulation phases) to a local file or database.
+Lookback Windows: Limit the historical data load to only the maximum period
+Caching: Store computed VSA variables so they do not need to be recalculated.
+
+Save the State: At the end of a scan, save the last processed timestamp and the active market structure matrix.
+Fetch the Delta: On the next run, check the database for the last saved timestamp. Request only rows where Timestamp > Last_Saved_Timestamp.
+Seed the Window: Fetch a tiny historical buffer (e.g., last 100 bars) just to calculate rolling averages for the new bars.
+Append and Update: Apply your VSA logic to the new bars, append results to your database, and update the market structure state.
+
+Optimized Data Pipelines
+Storage: Use HDF5, Parquet, or a time-series database like TimescaleDB instead of heavy CSV files.
+Vectorization: Avoid loops (for index, row in df.iterrows()). Use NumPy or Pandas vectorization to calculate spread, close-location, and volume categories instantly.
+Parallel Execution: Use Python's multiprocessing to scan different tickers across different CPU cores simultaneously.
+
+ Need to switch from overwriting your files to an Append Mode strategy.
+Because VSA requires calculating a Volume Moving Average (usually 20–50 periods) and Spread averages, you cannot just download today's candle; you must also fetch a tiny lookback buffer to ensure your indicators remain accurate.
+
+The Lookback & Append Strategy
+Instead of downloading the entire history, your new script workflow should look like this:
+Check if CSV exists: If it doesn't, do a one-time historical download.
+Read the last row: Find the most recent date already saved in the CSV.
+Download with a buffer: Set the start date of yfinance to 50 days before that last saved date up to today.
+Drop duplicates and append: Calculate your VSA features on this new chunk, drop the overlapping lookback rows, and append only the brand-new rows to the CSV.
+
+Managing structural Swing Highs and Swing Lows (like market structure shifts or break of structure) across a watchlist introduces a specific challenge: a new swing high might only be confirmed 3 to 5 bars after it actually happens.
+If you cut your scan off exactly at your last saved date, you risk missing a swing point that was forming right on the edge of your last file update.
+To solve this smoothly, you must use a Truncate-and-Recalculate strategy combined with a Watchlist Loop.
+The Truncate-and-Recalculate Strategy
+Instead of appending strictly to the end of the file, you delete a small safety window (e.g., the last 20 rows) from your existing CSV, and recalculate everything from that point forward.
+This ensures that any lagging swing points or structural transitions are perfectly captured and updated without ever needing to re-scan your entire multi-year history.
+
+To scale your scanner to 50–100 stocks without facing major delays or getting blocked by yfinance, you need to run the scanning process in parallel and avoid calling yf.download() in a single-threaded loop.
+If you scan 100 stocks sequentially, network latency alone will make the process take minutes. By utilizing Python’s multiprocessing library, you can distribute the watchlist across all your computer's CPU cores, cutting the execution time down to just a few seconds.
+🚀 The Scaled Architecture
+Process Pooling: Instead of waiting for Ticker A to download and save before starting Ticker B, your computer will process 4 to 16 tickers at the exact same fraction of a second.
+Rate-Limit Prevention: yfinance can throttle your IP address if you flood it with requests. Splitting the downloads into an incremental strategy naturally reduces the data payload size per request, making your traffic look cleaner.
+
+Because you are scanning Weekly Charts, data sizes are tiny, but processing the data safely requires keeping a strict calendar anchor.
+A standard yfinance download for weekly data labels each candle by the start day of that week (Monday). If you run your scanner on a Wednesday or Friday, yfinance returns an incomplete, live-forming candle for the current week.
+To prevent this live, moving candle from polluting your historical structure files, your scanner should drop the live, unclosed week during saving but still check it to see if any VSA alerts are currently firing on the dashboard.
+
+ The Dashboard Engine Architecture
+The Historical Database (Closed Data): The script saves only closed, finalized weekly candles to your CSV files.
+The Live Snapshot (Real-time): When generating the summary dashboard, the script pulls the latest available live candle to check for an active Upthrust, Buying Climax, or Structural Break happening right now.
