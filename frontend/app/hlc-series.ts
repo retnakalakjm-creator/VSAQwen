@@ -17,6 +17,7 @@ export interface HLCData extends CustomData<Time> {
   low: number;
   close: number;
   direction: "up" | "down" | "flat";
+  highlight?: boolean;
   structural?: { label: string; price: number; isHigh: boolean; color: string };
 }
 
@@ -34,6 +35,7 @@ const defaultOptions: HLCSeriesOptions = {
 const UP_COLOR = "#16a34a";
 const DOWN_COLOR = "#dc2626";
 const FLAT_COLOR = "#64748b";
+const HIGHLIGHT_COLOR = "#2563eb";
 
 class HLCSeriesRenderer implements ICustomSeriesPaneRenderer {
   private data: PaneRendererCustomData<Time, HLCData> | null = null;
@@ -74,14 +76,14 @@ class HLCSeriesRenderer implements ICustomSeriesPaneRenderer {
       const lowY = low * verticalPixelRatio;
       const closeY = close * verticalPixelRatio;
 
-      // Use an explicit direction enum instead of the generic `color` field.
-      // Lightweight Charts may reserve common option names; direction remains
-      // application data and lets the renderer own the final HLC color.
-      context.strokeStyle = bar.originalData.direction === "up"
-        ? UP_COLOR
-        : bar.originalData.direction === "down"
-          ? DOWN_COLOR
-          : FLAT_COLOR;
+      context.lineWidth = lineWidth;
+      context.strokeStyle = bar.originalData.highlight
+        ? HIGHLIGHT_COLOR
+        : bar.originalData.direction === "up"
+          ? UP_COLOR
+          : bar.originalData.direction === "down"
+            ? DOWN_COLOR
+            : FLAT_COLOR;
       context.beginPath();
       context.moveTo(x, highY);
       context.lineTo(x, lowY);

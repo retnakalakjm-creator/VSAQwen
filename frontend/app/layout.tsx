@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./vsa-timeline.css";
 
 export const metadata: Metadata = {
   title: "ProVSA Command Centre",

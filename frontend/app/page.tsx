@@ -15,6 +15,14 @@ const UP_COLOR = "#16a34a";
 const DOWN_COLOR = "#dc2626";
 
 function pretty(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()); }
+function scoreLevel(value: number) { if (value >= 0.75) return "Very strong"; if (value >= 0.60) return "Strong"; if (value >= 0.45) return "Moderate"; if (value >= 0.25) return "Weak"; return "Very weak"; }
+function scoreMeaning(value: number, subject: string) { return `${scoreLevel(value)} ${subject.toLowerCase()} according to the model.`; }
+function directionWord(direction: string) { return direction.toLowerCase().includes("bull") || direction.toLowerCase().includes("demand") ? "bullish" : "bearish"; }
+function displayDate(value: string | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
 
 export default function Home() {
   const chartRef = useRef<HTMLDivElement>(null);
@@ -52,11 +60,20 @@ export default function Home() {
       const swing = structuralByBar.get(bar.bar_index);
       const isHigh = swing ? swing.type.toLowerCase().includes("high") : false;
       const direction: "up" | "down" | "flat" = index === 0 ? "flat" : bar.close > analysis.bars[index - 1].close ? "up" : bar.close < analysis.bars[index - 1].close ? "down" : "flat";
-      return { time: Math.floor(new Date(bar.week).getTime() / 1000) as Time, high: bar.high, low: bar.low, close: bar.close, direction, structural: swing ? { label: swing.label ?? swing.type, price: swing.price, isHigh, color: isHigh ? DOWN_COLOR : UP_COLOR } : undefined };
+      return {
+        time: Math.floor(new Date(bar.week).getTime() / 1000) as Time,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        direction,
+        highlight: selectedEvidence?.bar_index === bar.bar_index,
+        structural: swing ? { label: swing.label ?? swing.type, price: swing.price, isHigh, color: isHigh ? DOWN_COLOR : UP_COLOR } : undefined,
+      };
     }));
     const evidenceMarkers = analysis.evidence.map((item) => {
       const bullish = item.direction.toLowerCase().includes("bull") || item.direction.toLowerCase().includes("demand");
-      return { time: Math.floor(new Date(item.week).getTime() / 1000) as Time, position: bullish ? "belowBar" as const : "aboveBar" as const, shape: "circle" as const, color: bullish ? UP_COLOR : DOWN_COLOR, text: "" };
+      const selected = selectedEvidence?.bar_index === item.bar_index && selectedEvidence?.code === item.code;
+      return { time: Math.floor(new Date(item.week).getTime() / 1000) as Time, position: bullish ? "belowBar" as const : "aboveBar" as const, shape: "circle" as const, color: selected ? "#2563eb" : bullish ? UP_COLOR : DOWN_COLOR, text: "" };
     });
     createSeriesMarkers(series, evidenceMarkers);
     chart.subscribeClick((param) => {
@@ -68,10 +85,15 @@ export default function Home() {
       if (swings.length) setSelectedSwing(swings[swings.length - 1]);
     });
     chart.timeScale().fitContent();
+    if (selectedEvidence) {
+      const from = Math.max(0, selectedEvidence.bar_index - 28);
+      const to = Math.min(analysis.bars.length + 3, selectedEvidence.bar_index + 14);
+      chart.timeScale().setVisibleLogicalRange({ from, to });
+    }
     const resize = () => { if (chartRef.current) chart.applyOptions({ width: chartRef.current.clientWidth, height: chartRef.current.clientHeight }); };
     window.addEventListener("resize", resize);
     return () => { window.removeEventListener("resize", resize); chart.remove(); chartApiRef.current = null; };
-  }, [analysis]);
+  }, [analysis, selectedEvidence?.bar_index, selectedEvidence?.code]);
 
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const value = String(new FormData(event.currentTarget).get("symbol") ?? "").trim().toUpperCase(); if (value) setSymbol(value); }
   function fitChart() { chartApiRef.current?.timeScale().fitContent(); }
@@ -87,30 +109,42 @@ export default function Home() {
   const latestSwing = analysis?.structural_swings.at(-1);
   const readSwing = selectedSwing ?? latestSwing;
   const readIsSelected = Boolean(selectedSwing);
+  const displayedEvidence = selectedEvidence ?? analysis?.evidence.at(-1) ?? null;
+  const recentEvidence = analysis?.evidence.slice(-12) ?? [];
+  const evidenceCategories = Array.from(new Set(recentEvidence.map((item) => item.category)));
+
+  function evidenceDate(item: Evidence) {
+    return analysis?.bars.find((bar) => bar.bar_index === item.bar_index)?.week ?? item.week;
+  }
+  function confirmationDate(swing: Swing) {
+    return analysis?.bars.find((bar) => bar.bar_index === swing.confirmation_index)?.week ?? swing.week;
+  }
 
   return (
     <main className="command-centre">
       <aside className="sidebar"><div className="brand">ProVSA<span>Command Centre</span></div><nav className="nav">{['Scanner', 'Watchlist', 'Signals', 'Charts', 'Reports', 'Market Overview', 'Data', 'Settings'].map((item) => <button className={item === 'Charts' ? 'active' : ''} key={item}>{item}</button>)}</nav></aside>
       <section className="workspace">
         <header className="header"><div className="symbol-title"><h1>{analysis?.symbol ?? symbol}</h1><span className="timeframe-badge">{analysis?.timeframe ?? "1W"}</span>{latest && <span className={change >= 0 ? "price-change up" : "price-change down"}>{latest.close.toFixed(2)} {change >= 0 ? "+" : ""}{change.toFixed(2)} ({changePct.toFixed(2)}%)</span>}</div><form className="symbol-form" onSubmit={submit}><input name="symbol" defaultValue={symbol} aria-label="Symbol" /><button type="submit">Analyze</button></form></header>
-        <section className="chart-card"><div className="chart-header"><div className="layer-legend"><span className="chart-title">PRICE</span><span className="legend-item"><i className="legend-line price-line" />HLC</span><span className="legend-item"><i className="legend-dot structure-dot" />STRUCTURE</span><span className="legend-item"><i className="legend-dot evidence-dot" />VSA</span></div><div className="chart-tools"><button type="button" onClick={zoomOut} aria-label="Zoom out">−</button><button type="button" onClick={zoomIn} aria-label="Zoom in">+</button><button type="button" onClick={fitChart}>Fit</button><button type="button" onClick={latestChart}>Latest</button><span className="latest-date">{analysis?.latest_week ?? "Loading..."}</span></div></div>{error ? <div className="status">{error}</div> : <div className="chart-wrap" ref={chartRef} />}</section>
+        <section className="chart-card"><div className="chart-header"><div className="layer-legend"><span className="chart-title">PRICE</span><span className="legend-item"><i className="legend-line price-line" />HLC</span><span className="legend-item"><i className="legend-dot structure-dot" />STRUCTURE</span><span className="legend-item"><i className="legend-dot evidence-dot" />VSA</span></div><div className="chart-tools"><button type="button" onClick={zoomOut} aria-label="Zoom out">−</button><button type="button" onClick={zoomIn} aria-label="Zoom in">+</button><button type="button" onClick={fitChart}>Fit</button><button type="button" onClick={latestChart}>Latest</button><span className="latest-date">{analysis?.latest_week ? displayDate(analysis.latest_week) : "Loading..."}</span></div></div>{error ? <div className="status">{error}</div> : <div className="chart-wrap" ref={chartRef} />}</section>
         {analysis && <>
           <div className="bottom-grid">
-            <div className="panel trend"><h3>Trend</h3><strong>{pretty(analysis.trend.direction)}</strong><div className="panel-status">{pretty(analysis.trend.state)}</div><small>Strength {analysis.trend.strength.toFixed(2)} · Confidence {analysis.trend.confidence.toFixed(2)}</small></div>
+            <div className="panel trend"><h3>Trend</h3><strong>{pretty(analysis.trend.direction)}</strong><div className="panel-status">{pretty(analysis.trend.state)}</div><small>Strength {scoreLevel(analysis.trend.strength)} · Confidence {scoreLevel(analysis.trend.confidence)}</small></div>
             <div className="panel structure"><h3>Structure</h3><strong>{latestSwing?.label ?? "—"}</strong><div className="panel-status">{analysis.structural_swings.length} swings · {analysis.trend.swing_count} classified</div><small>Latest confirmed structural point</small></div>
             <div className="panel decision"><h3>Decision</h3><strong>{pretty(analysis.qualification.qualification)}</strong><div className="panel-status">{analysis.qualification.actionable ? "Actionable" : "Observation only"}</div><small>{analysis.qualification.reason}</small></div>
-            <div className="panel professional"><h3>Professional Flow</h3><strong>{analysis.professional.net_strength.toFixed(2)}</strong><div className="panel-status">Pressure {analysis.professional.net_pressure.toFixed(2)}</div><small>Confidence {analysis.professional.confidence.toFixed(2)}</small></div>
+            <div className="panel professional"><h3>Professional Flow</h3><strong>{scoreLevel(analysis.professional.net_strength)}</strong><div className="panel-status">{analysis.professional.net_strength >= 0 ? "Positive" : "Negative"} pressure</div><small>{scoreMeaning(analysis.professional.confidence, "confidence")}</small></div>
           </div>
           <section className="structure-workspace">
-            <div className="structure-sequence panel"><div className="workspace-heading"><div><span className="section-kicker">STRUCTURAL SEQUENCE</span><h2>Confirmed swing progression</h2></div><span>{recentSwings.length} latest points</span></div><div className="swing-track">{recentSwings.map((swing, index) => <button type="button" key={`${swing.bar_index}-${swing.type}`} className={`swing-node ${swing.type.toLowerCase().includes("high") ? "high" : "low"} ${selectedSwing?.bar_index === swing.bar_index ? "selected" : ""} ${latestSwing?.bar_index === swing.bar_index ? "latest" : ""}`} onClick={() => { setSelectedSwing(swing); setSelectedEvidence(null); }}><span>{swing.label ?? swing.type}</span><small>{swing.price.toFixed(0)}</small><em>{swing.grade}</em>{index < recentSwings.length - 1 && <b aria-hidden="true">→</b>}</button>)}</div></div>
-            <div className="structure-summary panel"><span className="section-kicker">{readIsSelected ? "SELECTED STRUCTURE" : "LATEST STRUCTURE"}</span><h2>{readSwing?.label ?? "No confirmed swing"}</h2>{readSwing ? <><p>Confirmed {readSwing.type.toLowerCase()} at <strong>{readSwing.price.toFixed(2)}</strong>. {readSwing.is_failed ? "This structural point is marked failed." : "This structural point is confirmed."}</p><div className="summary-grid"><span>Grade<strong>{readSwing.grade}</strong></span><span>Overall<strong>{readSwing.score.overall.toFixed(2)}</strong></span><span>Smart Money<strong>{readSwing.score.smart_money.toFixed(2)}</strong></span></div></> : <p>No confirmed structural swing is available.</p>}</div>
+            <div className="structure-sequence panel"><div className="workspace-heading"><div><span className="section-kicker">STRUCTURAL SEQUENCE</span><h2>Confirmed swing progression</h2></div><span>{recentSwings.length} latest points</span></div><div className="swing-track">{recentSwings.map((swing, index) => <button type="button" key={`${swing.bar_index}-${swing.type}`} className={`swing-node ${swing.type.toLowerCase().includes("high") ? "high" : "low"} ${selectedSwing?.bar_index === swing.bar_index ? "selected" : ""} ${latestSwing?.bar_index === swing.bar_index ? "latest" : ""}`} onClick={() => { setSelectedSwing(swing); setSelectedEvidence(null); }}><span>{swing.label ?? swing.type}</span><small>{swing.price.toFixed(0)}</small><em>{swing.grade}</em>{latestSwing?.bar_index === swing.bar_index && <i>LATEST</i>}{index < recentSwings.length - 1 && <b aria-hidden="true">→</b>}</button>)}</div></div>
+            <div className="structure-summary panel"><span className="section-kicker">{readIsSelected ? "SELECTED STRUCTURE" : "LATEST STRUCTURE"}</span><h2>{readSwing?.label ?? "No confirmed swing"}</h2>{readSwing ? <><p>Confirmed {readSwing.type.toLowerCase()} at <strong>{readSwing.price.toFixed(2)}</strong>. {readSwing.is_failed ? "This structural point is marked failed." : "This structural point is confirmed."}</p><div className="summary-grid"><span>Grade<strong>{readSwing.grade}</strong></span><span>Overall<strong>{readSwing.score.overall.toFixed(2)}</strong><small>{scoreMeaning(readSwing.score.overall, "overall evidence strength")}</small></span><span>Smart Money<strong>{readSwing.score.smart_money.toFixed(2)}</strong><small>{scoreMeaning(readSwing.score.smart_money, "Smart Money alignment")}</small></span></div></> : <p>No confirmed structural swing is available.</p>}</div>
           </section>
         </>}
       </section>
       <aside className="signals"><div className="signals-header"><div><span className="section-kicker">ANALYSIS</span><h2>VSA Evidence</h2></div><span className="signals-count">{analysis?.evidence.length ?? 0} observations</span></div>
-        {selectedSwing && <div className="evidence-detail swing-detail"><div className="detail-title"><strong>{(selectedSwing.label ?? selectedSwing.type).toUpperCase()}</strong><button onClick={() => setSelectedSwing(null)}>×</button></div><div className="detail-meta">{selectedSwing.type} · bar {selectedSwing.bar_index} · confirmed {selectedSwing.confirmation_index}</div><div className="detail-metrics">Price {selectedSwing.price.toFixed(2)} · Grade {selectedSwing.grade}</div><div className="score-grid"><span>Overall<strong>{selectedSwing.score.overall.toFixed(2)}</strong></span><span>Smart Money<strong>{selectedSwing.score.smart_money.toFixed(2)}</strong></span><span>Professional<strong>{selectedSwing.score.professional.toFixed(2)}</strong></span></div><small>{selectedSwing.is_failed ? "Failed structural swing" : "Confirmed structural swing"}</small></div>}
-        {selectedEvidence && <div className="evidence-detail"><div className="detail-title"><strong>{pretty(selectedEvidence.code)}</strong><button onClick={() => setSelectedEvidence(null)}>×</button></div><div className="detail-meta">{selectedEvidence.category} · {selectedEvidence.direction} · bar {selectedEvidence.bar_index}</div><div className="detail-metrics">Strength {selectedEvidence.strength.toFixed(2)} · Quality {selectedEvidence.quality.toFixed(2)}</div><p>{selectedEvidence.observation}</p><small>{selectedEvidence.description}</small></div>}
-        <div className="history-heading">RECENT EVIDENCE</div>{analysis?.evidence.slice(-12).reverse().map((item) => { const bullish = item.direction.toLowerCase().includes("bull") || item.direction.toLowerCase().includes("demand"); return <button className="signal" key={`${item.bar_index}-${item.code}`} onClick={() => setSelectedEvidence(item)}><div className="signal-top"><span className={bullish ? "dot up" : "dot down"} /><strong>{pretty(item.code)}</strong><span>{item.strength.toFixed(2)}</span></div><div className="signal-code">{item.category} · {item.direction} · bar {item.bar_index}</div></button>; })}{!analysis && <div className="status">Loading analysis...</div>}
+        {selectedSwing && <div className="evidence-detail swing-detail"><div className="detail-title"><strong>{(selectedSwing.label ?? selectedSwing.type).toUpperCase()}</strong><button onClick={() => setSelectedSwing(null)}>×</button></div><div className="detail-meta">Structural point · observed {displayDate(selectedSwing.week)} · confirmed {displayDate(confirmationDate(selectedSwing))}</div><div className="detail-metrics">Price {selectedSwing.price.toFixed(2)} · Grade {selectedSwing.grade}</div><div className="score-grid"><span>Overall<strong>{selectedSwing.score.overall.toFixed(2)}</strong><small>{scoreMeaning(selectedSwing.score.overall, "overall evidence strength")}</small></span><span>Smart Money<strong>{selectedSwing.score.smart_money.toFixed(2)}</strong><small>{scoreMeaning(selectedSwing.score.smart_money, "Smart Money alignment")}</small></span><span>Professional<strong>{selectedSwing.score.professional.toFixed(2)}</strong><small>{scoreMeaning(selectedSwing.score.professional, "professional participation")}</small></span></div><small>{selectedSwing.is_failed ? "Failed structural swing" : "Confirmed structural swing"}</small></div>}
+        {selectedEvidence && <div className="evidence-detail"><div className="detail-title"><strong>{pretty(selectedEvidence.code)}</strong><button onClick={() => setSelectedEvidence(null)}>×</button></div><div className="detail-meta">{selectedEvidence.category} · {directionWord(selectedEvidence.direction)} · observed {displayDate(evidenceDate(selectedEvidence))}</div><div className="detail-metrics">Observed bar {selectedEvidence.bar_index} · VSA strength: {scoreLevel(selectedEvidence.strength)} · Evidence quality: {scoreLevel(selectedEvidence.quality)}</div><h4>What the evidence says</h4><p>{selectedEvidence.observation}</p><small>{selectedEvidence.description}</small></div>}
+        {!selectedEvidence && displayedEvidence && <div className="evidence-detail latest-evidence"><span className="section-kicker">LATEST VSA OBSERVATION</span><h3>{pretty(displayedEvidence.code)}</h3><div className="detail-meta">{displayedEvidence.category} · {directionWord(displayedEvidence.direction)} · observed {displayDate(evidenceDate(displayedEvidence))}</div><h4>What the evidence says</h4><p>{displayedEvidence.observation}</p><div className="plain-score"><span>Strength</span><strong>{scoreLevel(displayedEvidence.strength)}</strong><small>{displayedEvidence.strength.toFixed(2)} model score</small></div></div>}
+        {analysis && recentEvidence.length > 0 && <div className="vsa-category-summary"><span className="section-kicker">EVENT MIX</span><div className="vsa-category-list">{evidenceCategories.map((category) => <span key={category}>{pretty(category)}</span>)}</div></div>}
+        <div className="history-heading">VSA EVENT TIMELINE</div>{recentEvidence.slice().reverse().map((item) => { const bullish = item.direction.toLowerCase().includes("bull") || item.direction.toLowerCase().includes("demand"); return <button type="button" className={`signal ${selectedEvidence?.bar_index === item.bar_index && selectedEvidence?.code === item.code ? "selected" : ""}`} key={`${item.bar_index}-${item.code}`} onClick={() => { setSelectedEvidence(item); setSelectedSwing(null); }}><div className="signal-top"><span className={bullish ? "dot up" : "dot down"} /><strong>{pretty(item.code)}</strong><span>{scoreLevel(item.strength)}</span></div><div className="signal-code">{displayDate(evidenceDate(item))} · {item.category} · {directionWord(item.direction)}</div><p>{item.observation}</p></button>; })}{!analysis && <div className="status">Loading analysis...</div>}
       </aside>
     </main>
   );
