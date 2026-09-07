@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 
-from data import daily_to_weekly, download_data
+from data import completed_weekly_only, daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
 from scanner import ScannerEngine
 
@@ -30,7 +30,7 @@ def main() -> None:
     daily = download_data(symbol)
     print(f"Daily bars  : {len(daily)}")
     print("\nConverting to weekly data...")
-    weekly = daily_to_weekly(daily)
+    weekly = completed_weekly_only(daily_to_weekly(daily))
     print(f"Weekly bars : {len(weekly)}")
     print("\nRunning Metrics Engine...")
     metrics = MetricsEngine().calculate(weekly)

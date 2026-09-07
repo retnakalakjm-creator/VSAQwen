@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import time as datetime_time
 from pathlib import Path
 
 import pandas as pd
@@ -16,6 +17,8 @@ CACHE_DIR.mkdir(exist_ok=True)
 CACHE_MAX_AGE_SECONDS = 15 * 60
 INCREMENTAL_PERIOD = "10d"
 METRIC_REPLAY_SEED_BARS = config.LOOKBACK_PERIOD * 2
+MARKET_TIMEZONE = "Asia/Kolkata"
+WEEKLY_BAR_CLOSE_TIME = "15:30"
 
 
 def _normalize_daily_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -146,6 +149,60 @@ def daily_to_weekly(df: pd.DataFrame) -> pd.DataFrame:
     return weekly[
         ["week_beginning", "open", "high", "low", "close", "volume"]
     ].reset_index(drop=True)
+
+
+def _local_timestamp(value: pd.Timestamp | str | None) -> pd.Timestamp:
+    if value is None:
+        return pd.Timestamp.now(tz=MARKET_TIMEZONE)
+
+    timestamp = pd.Timestamp(value)
+    if timestamp.tzinfo is None:
+        return timestamp.tz_localize(MARKET_TIMEZONE)
+    return timestamp.tz_convert(MARKET_TIMEZONE)
+
+
+def _parse_market_close_time(value: str) -> datetime_time:
+    parts = value.split(":")
+    if len(parts) not in (2, 3):
+        raise ValueError("market_close_time must use HH:MM or HH:MM:SS format")
+
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+        second = int(parts[2]) if len(parts) == 3 else 0
+        return datetime_time(hour=hour, minute=minute, second=second)
+    except ValueError as exc:
+        raise ValueError("market_close_time must use HH:MM or HH:MM:SS format") from exc
+
+
+def completed_weekly_only(
+    weekly: pd.DataFrame,
+    *,
+    now: pd.Timestamp | str | None = None,
+    market_close_time: str = WEEKLY_BAR_CLOSE_TIME,
+) -> pd.DataFrame:
+    """Return weekly bars that are known to be complete.
+
+    `daily_to_weekly` can produce a partial current-week bar during live scans.
+    Weekly VSA signals should only evaluate a bar after the exchange close of
+    that bar's weekly period.
+    """
+    if weekly.empty:
+        return weekly
+    if "week_beginning" not in weekly.columns:
+        raise ValueError("weekly data must contain week_beginning")
+
+    current = _local_timestamp(now)
+    last_week_beginning = pd.Timestamp(weekly["week_beginning"].iloc[-1])
+    week_end_date = last_week_beginning.to_period(WEEK_RULE).end_time.normalize()
+    close_time = _parse_market_close_time(market_close_time)
+    week_close = pd.Timestamp.combine(week_end_date.date(), close_time).tz_localize(
+        MARKET_TIMEZONE
+    )
+
+    if current <= week_close:
+        return weekly.iloc[:-1].copy()
+
+    return weekly
 
 
 def incremental_replay_window(

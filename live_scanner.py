@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from data import daily_to_weekly, download_data
+from data import completed_weekly_only, daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
 from scanner import ScannerEngine
 
@@ -58,7 +58,7 @@ def _latest_daily_key(daily: Any) -> Any:
 
 
 def _scan_from_daily(symbol: str, daily: Any) -> dict[str, Any]:
-    weekly = daily_to_weekly(daily)
+    weekly = completed_weekly_only(daily_to_weekly(daily))
     metrics = MetricsEngine().calculate(weekly)
     candidates = ScannerEngine().scan_actionable(metrics)
 
@@ -79,7 +79,7 @@ def _scan_from_daily(symbol: str, daily: Any) -> dict[str, Any]:
         "week": latest_week,
         "qualification": "UNQUALIFIED",
         "actionable": False,
-        "reason": "No actionable candidate on the latest available weekly bar.",
+        "reason": "No actionable candidate on the latest completed weekly bar.",
         "net_strength": 0.0,
         "net_pressure": 0.0,
         "confidence": 0.0,
