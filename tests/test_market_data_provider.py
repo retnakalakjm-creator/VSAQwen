@@ -6,13 +6,19 @@ import pytest
 import data
 from config import DEFAULT_PERIOD
 from market_data import (
+    DEFAULT_UPSTOX_ACCESS_TOKEN_ENV,
+    MARKET_DATA_PROVIDER_ENV,
     PROVIDER_UPSTOX,
     PROVIDER_YFINANCE,
+    UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV,
+    UPSTOX_API_BASE_URL_ENV,
+    UPSTOX_ENABLED_ENV,
     MarketDataProviderError,
     UpstoxMarketDataProvider,
     UpstoxProviderConfig,
     YFinanceMarketDataProvider,
     create_market_data_provider,
+    create_market_data_provider_from_env,
     resolve_market_data_provider,
 )
 
@@ -140,6 +146,16 @@ def test_create_provider_keeps_yfinance_as_default() -> None:
     assert create_market_data_provider(" yfinance ").name == PROVIDER_YFINANCE
 
 
+def test_env_provider_resolver_keeps_yfinance_as_default() -> None:
+    assert create_market_data_provider_from_env({}).name == PROVIDER_YFINANCE
+    assert create_market_data_provider_from_env({MARKET_DATA_PROVIDER_ENV: ""}).name == (
+        PROVIDER_YFINANCE
+    )
+    assert create_market_data_provider_from_env(
+        {MARKET_DATA_PROVIDER_ENV: " YFINANCE "}
+    ).name == PROVIDER_YFINANCE
+
+
 def test_upstox_provider_is_explicit_and_disabled_by_default() -> None:
     provider = create_market_data_provider(PROVIDER_UPSTOX)
 
@@ -154,6 +170,66 @@ def test_upstox_provider_is_explicit_and_disabled_by_default() -> None:
             interval="1d",
             auto_adjust=False,
         )
+
+
+def test_env_provider_resolver_selects_upstox_only_when_explicit() -> None:
+    provider = create_market_data_provider_from_env(
+        {
+            MARKET_DATA_PROVIDER_ENV: " upstox ",
+            UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV: "PROVSA_TEST_UPSTOX_TOKEN",
+            UPSTOX_API_BASE_URL_ENV: "https://example.test/upstox",
+        }
+    )
+
+    assert isinstance(provider, UpstoxMarketDataProvider)
+    assert provider.name == PROVIDER_UPSTOX
+    assert provider.config.enabled is False
+    assert provider.config.access_token_env == "PROVSA_TEST_UPSTOX_TOKEN"
+    assert provider.config.api_base_url == "https://example.test/upstox"
+
+    with pytest.raises(MarketDataProviderError, match="disabled"):
+        provider.download_daily(
+            "TEST.NS",
+            period="5y",
+            interval="1d",
+            auto_adjust=False,
+        )
+
+
+def test_env_provider_resolver_can_enable_upstox_scaffold_without_io() -> None:
+    provider = create_market_data_provider_from_env(
+        {
+            MARKET_DATA_PROVIDER_ENV: PROVIDER_UPSTOX,
+            UPSTOX_ENABLED_ENV: "true",
+        }
+    )
+
+    assert isinstance(provider, UpstoxMarketDataProvider)
+    assert provider.config.enabled is True
+    assert provider.config.access_token_env == DEFAULT_UPSTOX_ACCESS_TOKEN_ENV
+
+    with pytest.raises(NotImplementedError, match="not implemented"):
+        provider.download_daily(
+            "TEST.NS",
+            period="5y",
+            interval="1d",
+            auto_adjust=False,
+        )
+
+
+def test_env_provider_resolver_rejects_invalid_bool() -> None:
+    with pytest.raises(ValueError, match=UPSTOX_ENABLED_ENV):
+        create_market_data_provider_from_env(
+            {
+                MARKET_DATA_PROVIDER_ENV: PROVIDER_UPSTOX,
+                UPSTOX_ENABLED_ENV: "sometimes",
+            }
+        )
+
+
+def test_env_provider_resolver_rejects_unknown_provider_name() -> None:
+    with pytest.raises(ValueError, match="Unsupported market data provider"):
+        create_market_data_provider_from_env({MARKET_DATA_PROVIDER_ENV: "broker"})
 
 
 def test_upstox_config_references_env_token_without_storing_secret(monkeypatch) -> None:

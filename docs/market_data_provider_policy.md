@@ -17,6 +17,7 @@ UpstoxProviderConfig
 UpstoxMarketDataProvider
 DEFAULT_MARKET_DATA_PROVIDER
 create_market_data_provider
+create_market_data_provider_from_env
 resolve_market_data_provider
 ```
 
@@ -43,6 +44,31 @@ progress=False
 `data.download_data()` accepts an optional provider. When no provider is supplied, it resolves to the default yfinance-compatible provider.
 
 The yfinance path remains the only active default path.
+
+## Provider selection/config resolver boundary
+
+Provider selection is explicit and environment driven for future CLI/API entry points.
+
+```text
+MARKET_DATA_PROVIDER=yfinance
+MARKET_DATA_PROVIDER=upstox
+```
+
+When `MARKET_DATA_PROVIDER` is absent, blank, or set to `yfinance`, the resolver returns the yfinance provider.
+
+Upstox is selected only when `MARKET_DATA_PROVIDER=upstox` is set explicitly. Even then, the current implementation returns the disabled scaffold unless `UPSTOX_PROVIDER_ENABLED=true` is also set. Enabling the scaffold still does not make external calls because the read-only OHLCV adapter is not implemented yet.
+
+Upstox config environment variables:
+
+```text
+UPSTOX_PROVIDER_ENABLED=true|false
+UPSTOX_ACCESS_TOKEN_ENV=UPSTOX_ACCESS_TOKEN
+UPSTOX_API_BASE_URL=<optional read-only API base URL>
+```
+
+`UPSTOX_ACCESS_TOKEN_ENV` stores the name of the environment variable that contains a token. It must not contain the token value itself. Repository files, decision-context files, journal files, and frontend config must not store broker credentials.
+
+Invalid provider names and invalid boolean values should fail fast rather than silently changing market-data behavior.
 
 ## Upstox scaffold boundary
 
