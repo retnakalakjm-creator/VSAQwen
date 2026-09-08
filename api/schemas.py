@@ -95,6 +95,62 @@ class ProfessionalScoreDTO(BaseModel):
     confidence: float
 
 
+class DecisionContextEventDTO(BaseModel):
+    bar_index: int
+    week: str
+    code: str
+    category: str
+    direction: str
+    strength: float
+    quality: float
+    observation: str
+    description: str
+    role: str
+
+
+class StructuralSwingMemoryDTO(BaseModel):
+    pivot_bar_index: int
+    confirmation_bar_index: int
+    pivot_week: str
+    type: str
+    label: str | None
+    price: float
+    grade: str
+    is_failed: bool
+    score: float | None
+
+
+class VSAStorySummaryDTO(BaseModel):
+    headline: str
+    summary: str
+    confirmation_condition: str
+    invalidation_condition: str
+    what_to_expect_next: list[str]
+
+
+class DecisionContextDTO(BaseModel):
+    schema_version: int
+    symbol: str
+    timeframe: str
+    mode: str
+    latest_bar_index: int | None
+    latest_week: str | None
+    qualification: str
+    actionable: bool
+    decision: str
+    tradability: str
+    phase: str
+    bias: str
+    confidence: float
+    net_strength: float
+    net_pressure: float
+    reason: str
+    recent_events: list[DecisionContextEventDTO]
+    structural_swings: list[StructuralSwingMemoryDTO]
+    story: VSAStorySummaryDTO
+    evaluated_at_utc: str
+
+
 class AnalysisDTO(BaseModel):
     symbol: str
     timeframe: str
@@ -109,6 +165,7 @@ class AnalysisDTO(BaseModel):
     evidence: list[EvidenceDTO]
     qualification: QualificationDTO
     professional: ProfessionalScoreDTO
+    decision_context: DecisionContextDTO | None = None
 
 
 class HealthDTO(BaseModel):

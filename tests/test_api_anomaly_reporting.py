@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
+from decision_context import DecisionContextStore
 from engine.columns import (
     COL_CORPORATE_ACTION_ANOMALY,
     COL_PRICE_ANOMALY,
@@ -64,6 +65,9 @@ def _fake_candidate() -> SimpleNamespace:
         reason="Signal bar has a corporate-action anomaly flag.",
         signal_bar_anomaly=True,
         signal_bar_anomaly_reason="Signal bar has a corporate-action anomaly flag.",
+        bar_index=1,
+        week="2026-08-31 00:00:00",
+        execution_pending=False,
         professional=SimpleNamespace(
             trend=0.0,
             supply=0.0,
@@ -79,7 +83,10 @@ def _fake_candidate() -> SimpleNamespace:
     )
 
 
-def test_api_analysis_reports_bar_and_signal_anomaly_metadata(monkeypatch) -> None:
+def test_api_analysis_reports_bar_signal_and_decision_context_metadata(
+    monkeypatch,
+    tmp_path,
+) -> None:
     class FakeMetricsEngine:
         def calculate(self, weekly: pd.DataFrame) -> pd.DataFrame:
             assert list(weekly["week_beginning"]) == list(_weekly_frame()["week_beginning"])
@@ -97,7 +104,8 @@ def test_api_analysis_reports_bar_and_signal_anomaly_metadata(monkeypatch) -> No
     monkeypatch.setattr(service_module, "MetricsEngine", lambda: FakeMetricsEngine())
     monkeypatch.setattr(service_module, "ScannerEngine", lambda: FakeScannerEngine())
 
-    result = ProVSAService().analyze_symbol(" test.ns ")
+    store = DecisionContextStore(tmp_path)
+    result = ProVSAService(decision_context_store=store).analyze_symbol(" test.ns ")
 
     assert result.symbol == "TEST.NS"
     assert result.anomaly_bar_indices == [1]
@@ -112,6 +120,18 @@ def test_api_analysis_reports_bar_and_signal_anomaly_metadata(monkeypatch) -> No
     assert anomaly_bar.price_anomaly is True
     assert anomaly_bar.volume_anomaly is True
     assert anomaly_bar.corporate_action_anomaly is True
+
+    assert result.decision_context is not None
+    assert result.decision_context.symbol == "TEST.NS"
+    assert result.decision_context.timeframe == "1W"
+    assert result.decision_context.mode == "confirmed"
+    assert result.decision_context.tradability == "avoid"
+    assert result.decision_context.decision == "avoid"
+    assert result.decision_context.latest_bar_index == 1
+    assert result.decision_context.story.what_to_expect_next
+
+    loaded = store.load("TEST.NS", "1W")
+    assert loaded.to_dict() == result.decision_context.dict()
 
 
 def test_api_anomaly_helpers_default_safely_when_columns_are_missing() -> None:

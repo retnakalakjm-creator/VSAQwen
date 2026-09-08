@@ -87,13 +87,15 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This PR does not yet wire decision context into FastAPI, live scanner output, WebSockets, or the React/Next.js frontend.
+FastAPI analysis responses now include a `decision_context` object and save the same compact JSON context locally through `DecisionContextStore`.
+
+This API integration still uses the existing point-in-time scanner path. It does not yet switch FastAPI to the production incremental scanner path, add WebSockets, add developing-bar live mode, or render the story in the React/Next.js frontend.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Make FastAPI use the production incremental scanner path and return/save `DecisionContext`.
+1. Make FastAPI use the production incremental scanner path and return saved `DecisionContext` when no new completed bar exists.
 2. Add a VSA Story panel to the React/Next.js UI.
 3. Add click-through linking from story segments to chart events.
 4. Add a live validation journal comparing expected next behavior with later bars.

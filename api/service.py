@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from data import completed_weekly_only, daily_to_weekly, download_data
+from decision_context import DecisionContextStore, build_decision_context
 from engine.columns import (
     COL_CORPORATE_ACTION_ANOMALY,
     COL_PRICE_ANOMALY,
@@ -10,11 +11,12 @@ from engine.columns import (
     COL_VOLUME_ANOMALY,
 )
 from metrics_engine import MetricsEngine
-from scanner import ScannerCandidate, ScannerEngine
+from scanner import ScannerEngine
 
 from .schemas import (
     AnalysisDTO,
     BarDTO,
+    DecisionContextDTO,
     EvidenceDTO,
     HealthDTO,
     ProfessionalScoreDTO,
@@ -27,6 +29,15 @@ from .schemas import (
 
 class ProVSAService:
     """Thin API adapter over the existing authoritative ProVSA engine."""
+
+    def __init__(
+        self,
+        decision_context_store: DecisionContextStore | None = None,
+        *,
+        persist_decision_context: bool = True,
+    ) -> None:
+        self._decision_context_store = decision_context_store or DecisionContextStore()
+        self._persist_decision_context = persist_decision_context
 
     def analyze_symbol(self, symbol: str) -> AnalysisDTO:
         symbol = symbol.strip().upper()
@@ -41,6 +52,13 @@ class ProVSAService:
         target_index = len(metrics) - 1
         candidate = scanner.scan_to_index(metrics, target_index)
         trend = candidate.evidence.context.trend
+        decision_context = build_decision_context(
+            candidate,
+            symbol=symbol,
+            timeframe="1W",
+        )
+        if self._persist_decision_context:
+            self._decision_context_store.save(decision_context)
 
         labels = {
             (item.swing.type, item.swing.bar_index): item.label.value
@@ -91,6 +109,7 @@ class ProVSAService:
                 net_pressure=float(candidate.net_pressure),
                 confidence=float(candidate.confidence),
             ),
+            decision_context=DecisionContextDTO(**decision_context.to_dict()),
         )
 
     @staticmethod
