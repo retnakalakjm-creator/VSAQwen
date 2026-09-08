@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from data import completed_weekly_only, daily_to_weekly, download_data
-from decision_context import DecisionContextStore, build_decision_context
+from decision_context import DecisionContext, DecisionContextStore, build_decision_context
 from engine.columns import (
     COL_CORPORATE_ACTION_ANOMALY,
     COL_PRICE_ANOMALY,
@@ -30,6 +30,9 @@ from .schemas import (
 )
 
 
+DEFAULT_API_TIMEFRAME = "1W"
+
+
 class ProVSAService:
     """Thin API adapter over the existing authoritative ProVSA engine."""
 
@@ -49,15 +52,44 @@ class ProVSAService:
         self._persist_decision_context = persist_decision_context
 
     def analyze_symbol(self, symbol: str) -> AnalysisDTO:
-        symbol = symbol.strip().upper()
-        if not symbol:
-            raise ValueError("symbol is required")
+        symbol = self._normalize_symbol(symbol)
+        weekly = self._completed_weekly_for_symbol(symbol)
+        return self._analyze_symbol_from_weekly(symbol, weekly)
 
-        daily = download_data(symbol)
-        weekly = completed_weekly_only(daily_to_weekly(daily))
+    def decision_context_for_symbol(self, symbol: str) -> DecisionContextDTO:
+        """Return cached decision context when no new completed week exists.
+
+        This endpoint is intentionally narrower than full analysis. It checks the
+        latest completed weekly bar identity, returns the saved compact context
+        when it is still current, and only falls back to scanner analysis when
+        the context is missing, invalid, developing-mode, or stale.
+        """
+        symbol = self._normalize_symbol(symbol)
+        weekly = self._completed_weekly_for_symbol(symbol)
+        latest_week = self._latest_week(weekly)
+
+        cached = self._load_cached_decision_context(symbol)
+        if (
+            cached is not None
+            and cached.timeframe == DEFAULT_API_TIMEFRAME
+            and cached.mode.value == "confirmed"
+            and cached.latest_week == latest_week
+        ):
+            return self._decision_context_dto(cached)
+
+        analysis = self._analyze_symbol_from_weekly(symbol, weekly)
+        if analysis.decision_context is None:
+            raise ValueError("analysis did not produce a decision context")
+        return analysis.decision_context
+
+    def _analyze_symbol_from_weekly(
+        self,
+        symbol: str,
+        weekly: pd.DataFrame,
+    ) -> AnalysisDTO:
         metrics = MetricsEngine().calculate(weekly)
 
-        timeframe = "1W"
+        timeframe = DEFAULT_API_TIMEFRAME
         target_index = len(metrics) - 1
         candidate = scan_latest_candidate_production(
             metrics,
@@ -131,8 +163,38 @@ class ProVSAService:
                 net_pressure=float(candidate.net_pressure),
                 confidence=float(candidate.confidence),
             ),
-            decision_context=DecisionContextDTO(**decision_context.to_dict()),
+            decision_context=self._decision_context_dto(decision_context),
         )
+
+    def _completed_weekly_for_symbol(self, symbol: str) -> pd.DataFrame:
+        daily = download_data(symbol)
+        weekly = completed_weekly_only(daily_to_weekly(daily))
+        if weekly.empty:
+            raise ValueError("no completed weekly bars are available for symbol")
+        return weekly
+
+    def _load_cached_decision_context(self, symbol: str) -> DecisionContext | None:
+        try:
+            return self._decision_context_store.load(symbol, DEFAULT_API_TIMEFRAME)
+        except (FileNotFoundError, ValueError):
+            return None
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        normalized = symbol.strip().upper()
+        if not normalized:
+            raise ValueError("symbol is required")
+        return normalized
+
+    @staticmethod
+    def _latest_week(weekly: pd.DataFrame) -> str:
+        if weekly.empty:
+            raise ValueError("no completed weekly bars are available")
+        return str(weekly.iloc[len(weekly) - 1]["week_beginning"])
+
+    @staticmethod
+    def _decision_context_dto(context: DecisionContext) -> DecisionContextDTO:
+        return DecisionContextDTO(**context.to_dict())
 
     @staticmethod
     def _bar(row: pd.Series, index: int) -> BarDTO:

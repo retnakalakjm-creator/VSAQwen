@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .schemas import AnalysisDTO, HealthDTO
+from .schemas import AnalysisDTO, DecisionContextDTO, HealthDTO
 from .service import ProVSAService
 
 app = FastAPI(title="ProVSA API", version="1.0")
@@ -35,3 +35,13 @@ def symbol_analysis(symbol: str) -> AnalysisDTO:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Analysis failed") from exc
+
+
+@app.get("/api/symbols/{symbol}/decision-context", response_model=DecisionContextDTO)
+def symbol_decision_context(symbol: str) -> DecisionContextDTO:
+    try:
+        return _service.decision_context_for_symbol(symbol)
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Decision context failed") from exc
