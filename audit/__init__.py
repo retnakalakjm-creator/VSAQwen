@@ -10,4 +10,5 @@ Available modules:
 - ``audit.calibration``: grouped outcome summaries for evidence calibration.
 - ``audit.reports``: CSV report bundle exports for calibration review.
 - ``audit.runner``: historical full-replay scanner audit orchestration.
+- ``audit.stability``: confidence-aware calibration stability diagnostics.
 """
