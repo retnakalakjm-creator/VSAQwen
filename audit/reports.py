@@ -13,6 +13,7 @@ from typing import Iterable
 
 import pandas as pd
 
+from audit.bool_utils import coerce_bool_series
 from audit.calibration import (
     rank_calibration_summary,
     summarize_evidence_outcomes,
@@ -313,7 +314,7 @@ def _validate_report_arguments(
 def _safe_bool_count(frame: pd.DataFrame, column: str) -> int:
     if column not in frame.columns:
         return 0
-    return int(frame[column].fillna(False).astype(bool).sum())
+    return int(coerce_bool_series(frame[column]).sum())
 
 
 __all__ = [

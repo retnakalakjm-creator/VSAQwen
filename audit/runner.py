@@ -2,21 +2,29 @@
 
 This module connects the production full-replay scanner to the analysis-only
 audit utilities. It builds candidate outcome datasets and, optionally, writes
-calibration report bundles. It must not change production scanner decisions.
+calibration and VSA event diagnostic report bundles. It must not change
+production scanner decisions.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from audit.candidates import CandidateOutcomeRow, build_candidate_outcome_frame
+from audit.candidates import (
+    CANDIDATE_OUTCOME_COLUMNS,
+    build_candidate_outcome_frame,
+)
 from audit.reports import CalibrationReportPaths, write_calibration_report_bundle
 from audit.stability import DEFAULT_STABILITY_MIN_SAMPLES, DEFAULT_STABILITY_Z_SCORE
+from audit.vsa_event_diagnostics import (
+    VSAEventDiagnosticPaths,
+    write_vsa_event_diagnostic_bundle,
+)
 from data import completed_weekly_only, daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
 from scanner import ScannerEngine
@@ -25,7 +33,6 @@ from scanner import ScannerEngine
 DEFAULT_AUDIT_HORIZONS = (1, 2, 4, 8)
 DEFAULT_AUDIT_OUTPUT_DIR = Path("reports/calibration/latest")
 DEFAULT_DATASET_FILENAME = "candidate_outcomes.csv"
-CANDIDATE_OUTCOME_COLUMNS = tuple(field.name for field in fields(CandidateOutcomeRow))
 
 DailyLoader = Callable[[str], pd.DataFrame]
 WeeklyTransformer = Callable[[pd.DataFrame], pd.DataFrame]
@@ -56,6 +63,7 @@ class HistoricalAuditResult:
     frame: pd.DataFrame
     dataset_path: Path | None = None
     report_paths: CalibrationReportPaths | None = None
+    vsa_event_report_paths: VSAEventDiagnosticPaths | None = None
 
     @property
     def candidate_count(self) -> int:
@@ -77,6 +85,11 @@ class HistoricalAuditResult:
             "outcome_rows": self.outcome_rows,
             "dataset_path": None if self.dataset_path is None else str(self.dataset_path),
             "report_paths": None if self.report_paths is None else self.report_paths.as_dict(),
+            "vsa_event_report_paths": (
+                None
+                if self.vsa_event_report_paths is None
+                else self.vsa_event_report_paths.as_dict()
+            ),
         }
 
 
@@ -137,11 +150,14 @@ def run_historical_candidate_audit(
     output_dir: str | Path | None = None,
     write_dataset: bool = True,
     write_reports: bool = True,
+    write_vsa_event_reports: bool = True,
     report_min_samples: int = 30,
     report_top_n: int = 25,
     include_stability_reports: bool = True,
     stability_min_samples: int = DEFAULT_STABILITY_MIN_SAMPLES,
     stability_z_score: float = DEFAULT_STABILITY_Z_SCORE,
+    vsa_event_min_samples: int | None = None,
+    vsa_event_stability_min_samples: int | None = None,
     daily_loader: DailyLoader = download_data,
     weekly_transformer: WeeklyTransformer | None = None,
     metrics_calculator: MetricsCalculator | None = None,
@@ -159,6 +175,13 @@ def run_historical_candidate_audit(
         raise ValueError("stability_min_samples must be greater than zero")
     if stability_z_score <= 0:
         raise ValueError("stability_z_score must be greater than zero")
+    if vsa_event_min_samples is not None and vsa_event_min_samples <= 0:
+        raise ValueError("vsa_event_min_samples must be greater than zero")
+    if (
+        vsa_event_stability_min_samples is not None
+        and vsa_event_stability_min_samples <= 0
+    ):
+        raise ValueError("vsa_event_stability_min_samples must be greater than zero")
 
     symbol_results = tuple(
         run_symbol_candidate_audit(
@@ -177,6 +200,7 @@ def run_historical_candidate_audit(
     destination = None if output_dir is None else Path(output_dir)
     dataset_path: Path | None = None
     report_paths: CalibrationReportPaths | None = None
+    vsa_event_report_paths: VSAEventDiagnosticPaths | None = None
 
     if destination is not None and write_dataset:
         destination.mkdir(parents=True, exist_ok=True)
@@ -194,6 +218,23 @@ def run_historical_candidate_audit(
             stability_z_score=stability_z_score,
         )
 
+    if destination is not None and write_reports and write_vsa_event_reports:
+        vsa_event_report_paths = write_vsa_event_diagnostic_bundle(
+            frame,
+            destination,
+            min_samples=(
+                report_min_samples
+                if vsa_event_min_samples is None
+                else vsa_event_min_samples
+            ),
+            stability_min_samples=(
+                stability_min_samples
+                if vsa_event_stability_min_samples is None
+                else vsa_event_stability_min_samples
+            ),
+            stability_z_score=stability_z_score,
+        )
+
     return HistoricalAuditResult(
         symbols=normalized_symbols,
         horizons=normalized_horizons,
@@ -201,6 +242,7 @@ def run_historical_candidate_audit(
         frame=frame,
         dataset_path=dataset_path,
         report_paths=report_paths,
+        vsa_event_report_paths=vsa_event_report_paths,
     )
 
 

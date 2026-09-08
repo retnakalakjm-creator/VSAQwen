@@ -13,6 +13,8 @@ from typing import Any
 
 import pandas as pd
 
+from audit.bool_utils import coerce_bool_series
+
 
 DEFAULT_OUTCOME_FILTER_COLUMNS = ("outcome_available", "complete")
 DEFAULT_VALUE_COLUMN = "favorable_return"
@@ -54,9 +56,9 @@ def completed_scored_frame(
 
     mask = pd.Series(True, index=frame.index)
     if require_outcome:
-        mask &= frame["outcome_available"].fillna(False).astype(bool)
+        mask &= coerce_bool_series(frame["outcome_available"])
     if require_complete:
-        mask &= frame["complete"].fillna(False).astype(bool)
+        mask &= coerce_bool_series(frame["complete"])
     return frame.loc[mask].copy()
 
 
@@ -120,8 +122,10 @@ def summarize_outcomes(
                 side=_optional_str(_first_group_value(group, "side")),
                 sample_count=sample_count,
                 symbol_count=_symbol_count(group),
-                actionable_rate=float(group["actionable"].fillna(False).astype(bool).mean()),
-                anomaly_rate=float(group["signal_bar_anomaly"].fillna(False).astype(bool).mean()),
+                actionable_rate=float(coerce_bool_series(group["actionable"]).mean()),
+                anomaly_rate=float(
+                    coerce_bool_series(group["signal_bar_anomaly"]).mean()
+                ),
                 win_rate=float((values > 0.0).mean()),
                 avg_favorable_return=float(values.mean()),
                 median_favorable_return=float(values.median()),

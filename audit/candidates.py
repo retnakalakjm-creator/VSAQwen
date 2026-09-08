@@ -9,11 +9,12 @@ to decide actionability, ranking, qualification, or evidence weights.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from typing import Any
 
 import pandas as pd
 
+from audit.bool_utils import coerce_bool_value
 from audit.outcomes import (
     ForwardOutcome,
     OutcomeSide,
@@ -67,6 +68,9 @@ class CandidateOutcomeRow:
     complete: bool = False
 
 
+CANDIDATE_OUTCOME_COLUMNS = tuple(field.name for field in fields(CandidateOutcomeRow))
+
+
 def default_candidate_side(candidate: Any) -> OutcomeSide:
     """Infer validation side from scanner qualification.
 
@@ -77,9 +81,15 @@ def default_candidate_side(candidate: Any) -> OutcomeSide:
     qualification = _attribute(candidate, "qualification")
     qualification_text = _enum_text(qualification)
 
-    if qualification is PatternQualification.PERSISTENT_BULLISH or qualification_text == "persistent_bullish":
+    if (
+        qualification is PatternQualification.PERSISTENT_BULLISH
+        or qualification_text == "persistent_bullish"
+    ):
         return OutcomeSide.LONG
-    if qualification is PatternQualification.PERSISTENT_BEARISH or qualification_text == "persistent_bearish":
+    if (
+        qualification is PatternQualification.PERSISTENT_BEARISH
+        or qualification_text == "persistent_bearish"
+    ):
         return OutcomeSide.SHORT
     return OutcomeSide.NEUTRAL
 
@@ -134,7 +144,15 @@ def build_candidate_outcome_rows(
         if signal_bar_index is None:
             if include_unscored:
                 for horizon in normalized_horizons:
-                    rows.append(_candidate_row(candidate_id, candidate, horizon, symbol=symbol, side=side))
+                    rows.append(
+                        _candidate_row(
+                            candidate_id,
+                            candidate,
+                            horizon,
+                            symbol=symbol,
+                            side=side,
+                        )
+                    )
             continue
 
         for horizon in normalized_horizons:
@@ -168,7 +186,7 @@ def build_candidate_outcome_frame(
     side_resolver: CandidateSideResolver = default_candidate_side,
     include_unscored: bool = True,
 ) -> pd.DataFrame:
-    """Return candidate outcome rows as a pandas DataFrame."""
+    """Return candidate outcome rows as a schema-stable pandas DataFrame."""
     rows = build_candidate_outcome_rows(
         bars,
         candidates,
@@ -177,7 +195,10 @@ def build_candidate_outcome_frame(
         side_resolver=side_resolver,
         include_unscored=include_unscored,
     )
-    return pd.DataFrame(asdict(row) for row in rows)
+    return pd.DataFrame(
+        (asdict(row) for row in rows),
+        columns=CANDIDATE_OUTCOME_COLUMNS,
+    )
 
 
 def _candidate_row(
@@ -198,26 +219,50 @@ def _candidate_row(
         horizon_bars=horizon_bars,
         outcome_available=outcome is not None,
         symbol=candidate_symbol,
-        signal_bar_index=_optional_int(_first_present(candidate, "signal_bar_index", "bar_index")),
+        signal_bar_index=_optional_int(
+            _first_present(candidate, "signal_bar_index", "bar_index")
+        ),
         signal_week=_optional_str(_first_present(candidate, "signal_week", "week")),
-        execution_bar_index=_optional_int(_attribute(candidate, "execution_bar_index", default=None)),
-        execution_week=_optional_str(_attribute(candidate, "execution_week", default=None)),
-        actionable=bool(_attribute(candidate, "actionable", default=False)),
+        execution_bar_index=_optional_int(
+            _attribute(candidate, "execution_bar_index", default=None)
+        ),
+        execution_week=_optional_str(
+            _attribute(candidate, "execution_week", default=None)
+        ),
+        actionable=coerce_bool_value(_attribute(candidate, "actionable", default=False)),
         qualification=_enum_text(_attribute(candidate, "qualification", default="")),
         side=_side_text(normalized_side),
         confidence=_float_or_zero(_attribute(candidate, "confidence", default=0.0)),
         net_strength=_float_or_zero(_attribute(candidate, "net_strength", default=0.0)),
         net_pressure=_float_or_zero(_attribute(candidate, "net_pressure", default=0.0)),
-        scoring_bar_index=_optional_int(_attribute(candidate, "scoring_bar_index", default=None)),
-        scoring_evidence_age=_optional_int(_attribute(candidate, "scoring_evidence_age", default=None)),
-        used_fallback_evidence=bool(_attribute(candidate, "used_fallback_evidence", default=False)),
-        signal_bar_anomaly=bool(_attribute(candidate, "signal_bar_anomaly", default=False)),
-        signal_bar_anomaly_reason=_optional_str(_attribute(candidate, "signal_bar_anomaly_reason", default=None)),
+        scoring_bar_index=_optional_int(
+            _attribute(candidate, "scoring_bar_index", default=None)
+        ),
+        scoring_evidence_age=_optional_int(
+            _attribute(candidate, "scoring_evidence_age", default=None)
+        ),
+        used_fallback_evidence=coerce_bool_value(
+            _attribute(candidate, "used_fallback_evidence", default=False)
+        ),
+        signal_bar_anomaly=coerce_bool_value(
+            _attribute(candidate, "signal_bar_anomaly", default=False)
+        ),
+        signal_bar_anomaly_reason=_optional_str(
+            _attribute(candidate, "signal_bar_anomaly_reason", default=None)
+        ),
         reason=_optional_str(_attribute(candidate, "reason", default=None)),
-        target_bar_evidence_codes=_join_codes(_attribute(candidate, "target_bar_evidence_codes", default=())),
-        qualifying_evidence_codes=_join_codes(_attribute(candidate, "qualifying_evidence_codes", default=())),
-        scoring_evidence_codes=_join_codes(_attribute(candidate, "scoring_evidence_codes", default=())),
-        campaign_evidence_codes=_join_codes(_attribute(candidate, "campaign_evidence_codes", default=())),
+        target_bar_evidence_codes=_join_codes(
+            _attribute(candidate, "target_bar_evidence_codes", default=())
+        ),
+        qualifying_evidence_codes=_join_codes(
+            _attribute(candidate, "qualifying_evidence_codes", default=())
+        ),
+        scoring_evidence_codes=_join_codes(
+            _attribute(candidate, "scoring_evidence_codes", default=())
+        ),
+        campaign_evidence_codes=_join_codes(
+            _attribute(candidate, "campaign_evidence_codes", default=())
+        ),
         **outcome_values,
     )
 
@@ -322,6 +367,7 @@ def _join_codes(values: Any) -> str:
 
 
 __all__ = [
+    "CANDIDATE_OUTCOME_COLUMNS",
     "CandidateOutcomeRow",
     "CandidateSideResolver",
     "build_candidate_outcome_frame",

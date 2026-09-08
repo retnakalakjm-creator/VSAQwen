@@ -49,7 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-reports",
         action="store_true",
-        help="Do not write calibration report CSVs.",
+        help="Do not write calibration or VSA event diagnostic CSVs.",
+    )
+    parser.add_argument(
+        "--no-vsa-event-reports",
+        action="store_true",
+        help="Do not write VSA event diagnostic CSVs.",
     )
     parser.add_argument(
         "--no-stability-reports",
@@ -73,6 +78,21 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_STABILITY_Z_SCORE,
         help="Z-score used for stability confidence intervals.",
+    )
+    parser.add_argument(
+        "--vsa-event-min-samples",
+        type=int,
+        default=None,
+        help="Minimum sample count for VSA event groups. Defaults to --min-samples.",
+    )
+    parser.add_argument(
+        "--vsa-event-stability-min-samples",
+        type=int,
+        default=None,
+        help=(
+            "Minimum sample count for VSA event stability groups. "
+            "Defaults to --stability-min-samples."
+        ),
     )
     parser.add_argument(
         "--top-n",
@@ -99,11 +119,14 @@ def main(argv: list[str] | None = None) -> None:
         output_dir=args.output,
         write_dataset=not args.no_dataset,
         write_reports=not args.no_reports,
+        write_vsa_event_reports=not args.no_vsa_event_reports,
         report_min_samples=args.min_samples,
         report_top_n=args.top_n,
         include_stability_reports=not args.no_stability_reports,
         stability_min_samples=args.stability_min_samples,
         stability_z_score=args.stability_z_score,
+        vsa_event_min_samples=args.vsa_event_min_samples,
+        vsa_event_stability_min_samples=args.vsa_event_stability_min_samples,
         include_unscored=not args.drop_unscored,
     )
     print(json.dumps(result.summary(), indent=2, sort_keys=True))
