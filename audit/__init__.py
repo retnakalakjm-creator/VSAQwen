@@ -11,4 +11,5 @@ Available modules:
 - ``audit.reports``: CSV report bundle exports for calibration review.
 - ``audit.runner``: historical full-replay scanner audit orchestration.
 - ``audit.stability``: confidence-aware calibration stability diagnostics.
+- ``audit.vsa_events``: VSA event causality contract catalog.
 """
