@@ -6,8 +6,8 @@
 
 ```text
 production path                 = YES
-collector                       = evidence/demand.py::_collect_no_demand
-engine collection               = YES (via collect_demand)
+collector                       = evidence/supply.py::_collect_no_demand
+engine collection               = YES (via collect_supply)
 category                        = Supply
 VSA direction                   = Bearish
 registry/profile weight         = 1.00
@@ -176,7 +176,7 @@ The optimized replay established that the live scoring-map weight genuinely reac
 |---:|---:|---:|---:|---:|
 | 0.40 | 30 / 109 | 81 / 109 | 0.8422 | -0.3401 |
 | 0.50 | 28 / 109 | 65 / 109 | 0.8716 | -0.3519 |
-| **0.60** | **0 / 109** | **0 / 109** | **0.8972** | **-0.3621** |
+| **0.60** | **0 / 109** | **0 / 109** | 0.8972 | -0.3621 |
 | 0.70 | 28 / 109 | 69 / 109 | 0.9229 | -0.3724 |
 | 0.80 | 28 / 109 | 87 / 109 | 0.9486 | -0.3827 |
 | 1.00 | 28 / 109 | 108 / 109 | 1.0000 | -0.4032 |
