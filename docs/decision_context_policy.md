@@ -92,7 +92,13 @@ The API uses confirmed weekly bars for this official decision context. Developin
 
 ## Frontend integration boundary
 
-The React/Next.js chart page renders the confirmed `decision_context` embedded in the full analysis response as a VSA Story panel.
+The React/Next.js chart page preloads the confirmed compact context from:
+
+```text
+GET /api/symbols/{symbol}/decision-context
+```
+
+The page renders that VSA Story while the heavier full chart analysis request is still loading. When the full analysis response arrives, the embedded `decision_context` becomes the source for the same panel so the story stays synchronized with the chart payload.
 
 The panel is decision-support only. It shows:
 
@@ -109,7 +115,7 @@ recent smart-money evidence
 recent structural swing memory
 ```
 
-Recent story events can select matching chart evidence or structural swings when the matching bar exists in the full analysis payload.
+Recent story events can select matching chart evidence or structural swings when the matching bar exists in the full analysis payload. Before the full chart analysis payload arrives, story-event clicks are allowed but may not select a chart marker yet because chart bars/evidence are not loaded.
 
 The frontend panel does not call broker APIs, place orders, size positions, or change scanner interpretation rules.
 
@@ -128,7 +134,7 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, and the React/Next.js VSA Story panel. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, the React/Next.js VSA Story panel, and frontend preloading of that compact context. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 

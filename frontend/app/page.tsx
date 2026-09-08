@@ -20,10 +20,22 @@ function pretty(value: string) { return value.replaceAll("_", " ").replace(/\b\w
 function scoreLevel(value: number) { if (value >= 0.75) return "Very strong"; if (value >= 0.60) return "Strong"; if (value >= 0.45) return "Moderate"; if (value >= 0.25) return "Weak"; return "Very weak"; }
 function scoreMeaning(value: number, subject: string) { return `${scoreLevel(value)} ${subject.toLowerCase()} according to the model.`; }
 function directionWord(direction: string) { return direction.toLowerCase().includes("bull") || direction.toLowerCase().includes("demand") ? "bullish" : "bearish"; }
-function displayDate(value: string | undefined) {
+function displayDate(value: string | undefined | null) {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+async function fetchJson<T>(url: string, fallbackError: string): Promise<T> {
+  const response = await fetch(url);
+  if (response.ok) return (await response.json()) as T;
+  let detail = fallbackError;
+  try {
+    const body = (await response.json()) as { detail?: string };
+    if (body.detail) detail = body.detail;
+  } catch {
+    // Keep the fallback message when the backend did not return JSON.
+  }
+  throw new Error(detail);
 }
 
 export default function Home() {
@@ -31,17 +43,47 @@ export default function Home() {
   const chartApiRef = useRef<IChartApi | null>(null);
   const [symbol, setSymbol] = useState("SRF.NS");
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [decisionContextPreview, setDecisionContextPreview] = useState<DecisionContext | null>(null);
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [selectedSwing, setSelectedSwing] = useState<Swing | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    setSelectedEvidence(null); setSelectedSwing(null);
-    fetch(`${API}/api/symbols/${encodeURIComponent(symbol)}/analysis`)
-      .then((response) => response.ok ? response.json() : response.json().then((body) => Promise.reject(new Error(body.detail ?? "Analysis failed"))))
-      .then((data: Analysis) => { if (!cancelled) { setAnalysis(data); setError(""); } })
-      .catch((err: Error) => { if (!cancelled) setError(err.message); });
+    const encodedSymbol = encodeURIComponent(symbol);
+    setSelectedEvidence(null);
+    setSelectedSwing(null);
+    setAnalysis(null);
+    setDecisionContextPreview(null);
+    setError("");
+
+    async function loadSymbol() {
+      try {
+        const preview = await fetchJson<DecisionContext>(
+          `${API}/api/symbols/${encodedSymbol}/decision-context`,
+          "Decision context failed",
+        );
+        if (!cancelled) setDecisionContextPreview(preview);
+      } catch {
+        if (!cancelled) setDecisionContextPreview(null);
+      }
+
+      try {
+        const data = await fetchJson<Analysis>(
+          `${API}/api/symbols/${encodedSymbol}/analysis`,
+          "Analysis failed",
+        );
+        if (!cancelled) {
+          setAnalysis(data);
+          setDecisionContextPreview(data.decision_context ?? null);
+          setError("");
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Analysis failed");
+      }
+    }
+
+    void loadSymbol();
     return () => { cancelled = true; };
   }, [symbol]);
 
@@ -117,6 +159,7 @@ export default function Home() {
   function zoomIn() { zoomTimeScale(0.72); }
   function zoomOut() { zoomTimeScale(1.35); }
 
+  const decisionContext = analysis?.decision_context ?? decisionContextPreview;
   const latest = analysis?.bars.at(-1);
   const previous = analysis?.bars.at(-2);
   const change = latest && previous ? latest.close - previous.close : 0;
@@ -128,7 +171,6 @@ export default function Home() {
   const displayedEvidence = selectedEvidence ?? analysis?.evidence.at(-1) ?? null;
   const recentEvidence = analysis?.evidence.slice(-12) ?? [];
   const evidenceCategories = Array.from(new Set(recentEvidence.map((item) => item.category)));
-  const decisionContext = analysis?.decision_context ?? null;
 
   function evidenceDate(item: Evidence) {
     return analysis?.bars.find((bar) => bar.bar_index === item.bar_index)?.week ?? item.week;
@@ -155,8 +197,9 @@ export default function Home() {
     <main className="command-centre">
       <aside className="sidebar"><div className="brand">ProVSA<span>Command Centre</span></div><nav className="nav">{['Scanner', 'Watchlist', 'Signals', 'Charts', 'Reports', 'Market Overview', 'Data', 'Settings'].map((item) => <button className={item === 'Charts' ? 'active' : ''} key={item}>{item}</button>)}</nav></aside>
       <section className="workspace">
-        <header className="header"><div className="symbol-title"><h1>{analysis?.symbol ?? symbol}</h1><span className="timeframe-badge">{analysis?.timeframe ?? "1W"}</span>{latest && <span className={change >= 0 ? "price-change up" : "price-change down"}>{latest.close.toFixed(2)} {change >= 0 ? "+" : ""}{change.toFixed(2)} ({changePct.toFixed(2)}%)</span>}</div><form className="symbol-form" onSubmit={submit}><input name="symbol" defaultValue={symbol} aria-label="Symbol" /><button type="submit">Analyze</button></form></header>
-        <section className="chart-card"><div className="chart-header"><div className="layer-legend"><span className="chart-title">PRICE</span><span className="legend-item"><i className="legend-line price-line" />HLC</span><span className="legend-item"><i className="legend-dot structure-dot" />STRUCTURE</span><span className="legend-item"><i className="legend-dot evidence-dot" />VSA</span></div><div className="chart-tools"><button type="button" onClick={zoomOut} aria-label="Zoom out">−</button><button type="button" onClick={zoomIn} aria-label="Zoom in">+</button><button type="button" onClick={fitChart}>Fit</button><button type="button" onClick={latestChart}>Latest</button><span className="latest-date">{analysis?.latest_week ? displayDate(analysis.latest_week) : "Loading..."}</span></div></div>{error ? <div className="status">{error}</div> : <div className="chart-wrap" ref={chartRef} />}</section>
+        <header className="header"><div className="symbol-title"><h1>{analysis?.symbol ?? decisionContext?.symbol ?? symbol}</h1><span className="timeframe-badge">{analysis?.timeframe ?? decisionContext?.timeframe ?? "1W"}</span>{latest && <span className={change >= 0 ? "price-change up" : "price-change down"}>{latest.close.toFixed(2)} {change >= 0 ? "+" : ""}{change.toFixed(2)} ({changePct.toFixed(2)}%)</span>}</div><form className="symbol-form" onSubmit={submit}><input name="symbol" defaultValue={symbol} aria-label="Symbol" /><button type="submit">Analyze</button></form></header>
+        <section className="chart-card"><div className="chart-header"><div className="layer-legend"><span className="chart-title">PRICE</span><span className="legend-item"><i className="legend-line price-line" />HLC</span><span className="legend-item"><i className="legend-dot structure-dot" />STRUCTURE</span><span className="legend-item"><i className="legend-dot evidence-dot" />VSA</span></div><div className="chart-tools"><button type="button" onClick={zoomOut} aria-label="Zoom out">−</button><button type="button" onClick={zoomIn} aria-label="Zoom in">+</button><button type="button" onClick={fitChart}>Fit</button><button type="button" onClick={latestChart}>Latest</button><span className="latest-date">{analysis?.latest_week || decisionContext?.latest_week ? displayDate(analysis?.latest_week ?? decisionContext?.latest_week) : "Loading..."}</span></div></div>{error ? <div className="status">{error}</div> : <div className="chart-wrap" ref={chartRef} />}</section>
+        <DecisionContextPanel context={decisionContext} onSelectEvent={selectDecisionContextEvent} />
         {analysis && <>
           <div className="bottom-grid">
             <div className="panel trend"><h3>Trend</h3><strong>{pretty(analysis.trend.direction)}</strong><div className="panel-status">{pretty(analysis.trend.state)}</div><small>Strength {scoreLevel(analysis.trend.strength)} · Confidence {scoreLevel(analysis.trend.confidence)}</small></div>
@@ -164,7 +207,6 @@ export default function Home() {
             <div className="panel decision"><h3>Decision</h3><strong>{pretty(decisionContext?.tradability ?? analysis.qualification.qualification)}</strong><div className="panel-status">{decisionContext ? `${pretty(decisionContext.phase)} · ${pretty(decisionContext.bias)}` : analysis.qualification.actionable ? "Actionable" : "Observation only"}</div><small>{decisionContext?.story.headline ?? analysis.qualification.reason}</small></div>
             <div className="panel professional"><h3>Professional Flow</h3><strong>{scoreLevel(analysis.professional.net_strength)}</strong><div className="panel-status">{decisionContext ? `${pretty(decisionContext.bias)} bias` : analysis.professional.net_strength >= 0 ? "Positive" : "Negative"}</div><small>{scoreMeaning(analysis.professional.confidence, "confidence")}</small></div>
           </div>
-          <DecisionContextPanel context={decisionContext} onSelectEvent={selectDecisionContextEvent} />
           <section className="structure-workspace">
             <div className="structure-sequence panel"><div className="workspace-heading"><div><span className="section-kicker">STRUCTURAL SEQUENCE</span><h2>Confirmed swing progression</h2></div><span>{recentSwings.length} latest points</span></div><div className="swing-track">{recentSwings.map((swing, index) => <button type="button" key={`${swing.bar_index}-${swing.type}`} className={`swing-node ${swing.type.toLowerCase().includes("high") ? "high" : "low"} ${selectedSwing?.bar_index === swing.bar_index ? "selected" : ""} ${latestSwing?.bar_index === swing.bar_index ? "latest" : ""}`} onClick={() => { setSelectedSwing(swing); setSelectedEvidence(null); }}><span>{swing.label ?? swing.type}</span><small>{swing.price.toFixed(0)}</small><em>{swing.grade}</em>{latestSwing?.bar_index === swing.bar_index && <i>LATEST</i>}{index < recentSwings.length - 1 && <b aria-hidden="true">→</b>}</button>)}</div></div>
             <div className="structure-summary panel"><span className="section-kicker">{readIsSelected ? "SELECTED STRUCTURE" : "LATEST STRUCTURE"}</span><h2>{readSwing?.label ?? "No confirmed swing"}</h2>{readSwing ? <><p>Confirmed {readSwing.type.toLowerCase()} at <strong>{readSwing.price.toFixed(2)}</strong>. {readSwing.is_failed ? "This structural point is marked failed." : "This structural point is confirmed."}</p><div className="summary-grid"><span>Grade<strong>{readSwing.grade}</strong></span><span>Overall<strong>{readSwing.score.overall.toFixed(2)}</strong><small>{scoreMeaning(readSwing.score.overall, "overall evidence strength")}</small></span><span>Smart Money<strong>{readSwing.score.smart_money.toFixed(2)}</strong><small>{scoreMeaning(readSwing.score.smart_money, "Smart Money alignment")}</small></span></div></> : <p>No confirmed structural swing is available.</p>}</div>
