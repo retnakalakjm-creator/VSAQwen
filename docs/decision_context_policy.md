@@ -90,6 +90,29 @@ The fast path is intentionally narrower than the full analysis endpoint. It retu
 
 The API uses confirmed weekly bars for this official decision context. Developing/live-bar context remains future work and must be labeled separately when added.
 
+## Frontend integration boundary
+
+The React/Next.js chart page renders the confirmed `decision_context` embedded in the full analysis response as a VSA Story panel.
+
+The panel is decision-support only. It shows:
+
+```text
+phase
+tradability
+bias
+net pressure
+confidence
+confirmation condition
+invalidation condition
+what to expect next
+recent smart-money evidence
+recent structural swing memory
+```
+
+Recent story events can select matching chart evidence or structural swings when the matching bar exists in the full analysis payload.
+
+The frontend panel does not call broker APIs, place orders, size positions, or change scanner interpretation rules.
+
 ## Current implementation boundary
 
 `decision_context.py` adds:
@@ -105,15 +128,14 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, and a cached decision-context endpoint. It is not yet rendered in the React/Next.js frontend and does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, and the React/Next.js VSA Story panel. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Add a VSA Story panel to the React/Next.js UI.
-2. Add click-through linking from story segments to chart events.
-3. Add a live validation journal comparing expected next behavior with later bars.
-4. Add a market-data provider interface.
-5. Add an Upstox read-only provider later, without order placement.
-6. Add a developing-bar/live context mode, clearly separated from confirmed signals.
+1. Add deeper click-through linking from story segments to chart events.
+2. Add a live validation journal comparing expected next behavior with later bars.
+3. Add a market-data provider interface.
+4. Add an Upstox read-only provider later, without order placement.
+5. Add a developing-bar/live context mode, clearly separated from confirmed signals.

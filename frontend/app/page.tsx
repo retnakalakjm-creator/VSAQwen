@@ -3,12 +3,14 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ColorType, createChart, createSeriesMarkers } from "lightweight-charts";
 import type { IChartApi, Time } from "lightweight-charts";
+import { DecisionContextPanel } from "./decision-context-panel";
+import type { DecisionContext, DecisionContextEvent } from "./decision-context-panel";
 import { HLCSeries } from "./hlc-series";
 
 type Bar = { bar_index: number; week: string; open: number; high: number; low: number; close: number; volume: number };
 type Swing = { bar_index: number; confirmation_index: number; week: string; type: string; label: string | null; price: number; grade: string; is_failed: boolean; score: { overall: number; smart_money: number; professional: number } };
 type Evidence = { code: string; category: string; direction: string; strength: number; quality: number; bar_index: number; week: string; observation: string; description: string };
-type Analysis = { symbol: string; timeframe: string; latest_week: string; bars: Bar[]; trend: { direction: string; state: string; strength: number; confidence: number; swing_count: number }; structural_swings: Swing[]; evidence: Evidence[]; qualification: { qualification: string; actionable: boolean; reason: string }; professional: { net_strength: number; net_pressure: number; confidence: number } };
+type Analysis = { symbol: string; timeframe: string; latest_week: string; bars: Bar[]; trend: { direction: string; state: string; strength: number; confidence: number; swing_count: number }; structural_swings: Swing[]; evidence: Evidence[]; qualification: { qualification: string; actionable: boolean; reason: string }; professional: { net_strength: number; net_pressure: number; confidence: number }; decision_context?: DecisionContext | null };
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const UP_COLOR = "#16a34a";
@@ -98,8 +100,22 @@ export default function Home() {
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const value = String(new FormData(event.currentTarget).get("symbol") ?? "").trim().toUpperCase(); if (value) setSymbol(value); }
   function fitChart() { chartApiRef.current?.timeScale().fitContent(); }
   function latestChart() { chartApiRef.current?.timeScale().scrollToRealTime(); }
-  function zoomIn() { chartApiRef.current?.timeScale().zoomIn(); }
-  function zoomOut() { chartApiRef.current?.timeScale().zoomOut(); }
+  function zoomTimeScale(multiplier: number) {
+    const timeScale = chartApiRef.current?.timeScale();
+    if (!timeScale) return;
+    const range = timeScale.getVisibleLogicalRange();
+    if (!range) {
+      timeScale.fitContent();
+      return;
+    }
+    const from = Number(range.from);
+    const to = Number(range.to);
+    const center = (from + to) / 2;
+    const halfWidth = Math.max(4, ((to - from) * multiplier) / 2);
+    timeScale.setVisibleLogicalRange({ from: center - halfWidth, to: center + halfWidth });
+  }
+  function zoomIn() { zoomTimeScale(0.72); }
+  function zoomOut() { zoomTimeScale(1.35); }
 
   const latest = analysis?.bars.at(-1);
   const previous = analysis?.bars.at(-2);
@@ -112,12 +128,27 @@ export default function Home() {
   const displayedEvidence = selectedEvidence ?? analysis?.evidence.at(-1) ?? null;
   const recentEvidence = analysis?.evidence.slice(-12) ?? [];
   const evidenceCategories = Array.from(new Set(recentEvidence.map((item) => item.category)));
+  const decisionContext = analysis?.decision_context ?? null;
 
   function evidenceDate(item: Evidence) {
     return analysis?.bars.find((bar) => bar.bar_index === item.bar_index)?.week ?? item.week;
   }
   function confirmationDate(swing: Swing) {
     return analysis?.bars.find((bar) => bar.bar_index === swing.confirmation_index)?.week ?? swing.week;
+  }
+  function selectDecisionContextEvent(event: DecisionContextEvent) {
+    const exactEvidence = analysis?.evidence.find((item) => item.bar_index === event.bar_index && item.code === event.code);
+    const sameBarEvidence = analysis?.evidence.find((item) => item.bar_index === event.bar_index);
+    const sameBarSwing = analysis?.structural_swings.find((item) => item.bar_index === event.bar_index || item.confirmation_index === event.bar_index);
+    if (exactEvidence || sameBarEvidence) {
+      setSelectedEvidence(exactEvidence ?? sameBarEvidence ?? null);
+      setSelectedSwing(null);
+      return;
+    }
+    if (sameBarSwing) {
+      setSelectedSwing(sameBarSwing);
+      setSelectedEvidence(null);
+    }
   }
 
   return (
@@ -130,9 +161,10 @@ export default function Home() {
           <div className="bottom-grid">
             <div className="panel trend"><h3>Trend</h3><strong>{pretty(analysis.trend.direction)}</strong><div className="panel-status">{pretty(analysis.trend.state)}</div><small>Strength {scoreLevel(analysis.trend.strength)} · Confidence {scoreLevel(analysis.trend.confidence)}</small></div>
             <div className="panel structure"><h3>Structure</h3><strong>{latestSwing?.label ?? "—"}</strong><div className="panel-status">{analysis.structural_swings.length} swings · {analysis.trend.swing_count} classified</div><small>Latest confirmed structural point</small></div>
-            <div className="panel decision"><h3>Decision</h3><strong>{pretty(analysis.qualification.qualification)}</strong><div className="panel-status">{analysis.qualification.actionable ? "Actionable" : "Observation only"}</div><small>{analysis.qualification.reason}</small></div>
-            <div className="panel professional"><h3>Professional Flow</h3><strong>{scoreLevel(analysis.professional.net_strength)}</strong><div className="panel-status">{analysis.professional.net_strength >= 0 ? "Positive" : "Negative"} pressure</div><small>{scoreMeaning(analysis.professional.confidence, "confidence")}</small></div>
+            <div className="panel decision"><h3>Decision</h3><strong>{pretty(decisionContext?.tradability ?? analysis.qualification.qualification)}</strong><div className="panel-status">{decisionContext ? `${pretty(decisionContext.phase)} · ${pretty(decisionContext.bias)}` : analysis.qualification.actionable ? "Actionable" : "Observation only"}</div><small>{decisionContext?.story.headline ?? analysis.qualification.reason}</small></div>
+            <div className="panel professional"><h3>Professional Flow</h3><strong>{scoreLevel(analysis.professional.net_strength)}</strong><div className="panel-status">{decisionContext ? `${pretty(decisionContext.bias)} bias` : analysis.professional.net_strength >= 0 ? "Positive" : "Negative"}</div><small>{scoreMeaning(analysis.professional.confidence, "confidence")}</small></div>
           </div>
+          <DecisionContextPanel context={decisionContext} onSelectEvent={selectDecisionContextEvent} />
           <section className="structure-workspace">
             <div className="structure-sequence panel"><div className="workspace-heading"><div><span className="section-kicker">STRUCTURAL SEQUENCE</span><h2>Confirmed swing progression</h2></div><span>{recentSwings.length} latest points</span></div><div className="swing-track">{recentSwings.map((swing, index) => <button type="button" key={`${swing.bar_index}-${swing.type}`} className={`swing-node ${swing.type.toLowerCase().includes("high") ? "high" : "low"} ${selectedSwing?.bar_index === swing.bar_index ? "selected" : ""} ${latestSwing?.bar_index === swing.bar_index ? "latest" : ""}`} onClick={() => { setSelectedSwing(swing); setSelectedEvidence(null); }}><span>{swing.label ?? swing.type}</span><small>{swing.price.toFixed(0)}</small><em>{swing.grade}</em>{latestSwing?.bar_index === swing.bar_index && <i>LATEST</i>}{index < recentSwings.length - 1 && <b aria-hidden="true">→</b>}</button>)}</div></div>
             <div className="structure-summary panel"><span className="section-kicker">{readIsSelected ? "SELECTED STRUCTURE" : "LATEST STRUCTURE"}</span><h2>{readSwing?.label ?? "No confirmed swing"}</h2>{readSwing ? <><p>Confirmed {readSwing.type.toLowerCase()} at <strong>{readSwing.price.toFixed(2)}</strong>. {readSwing.is_failed ? "This structural point is marked failed." : "This structural point is confirmed."}</p><div className="summary-grid"><span>Grade<strong>{readSwing.grade}</strong></span><span>Overall<strong>{readSwing.score.overall.toFixed(2)}</strong><small>{scoreMeaning(readSwing.score.overall, "overall evidence strength")}</small></span><span>Smart Money<strong>{readSwing.score.smart_money.toFixed(2)}</strong><small>{scoreMeaning(readSwing.score.smart_money, "Smart Money alignment")}</small></span></div></> : <p>No confirmed structural swing is available.</p>}</div>
