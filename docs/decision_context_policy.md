@@ -97,6 +97,8 @@ GET /api/symbols/{symbol}/decision-journal/evaluations
 
 The journal list endpoint returns saved compact expectation snapshots. The evaluation endpoint compares those snapshots with completed weekly bars. Evaluation is read-only by default and only updates saved journal statuses when `persist_status=true` is explicitly passed.
 
+Journal evaluation payloads include source context week/bar metadata so UI clients can link a validation outcome back to the original story source bar without parsing opaque entry IDs.
+
 The fast path is intentionally narrower than the full analysis endpoint. It returns only the compact decision context, not full bars, all evidence, structural swings, or chart-ready analysis payloads.
 
 The API uses confirmed weekly bars for this official decision context and journal evaluation. Developing/live-bar context remains future work and must be labeled separately when added.
@@ -134,10 +136,13 @@ recent smart-money evidence
 recent structural swing memory
 journal outcome mix
 recent validation outcomes
+source context week/bar
 favorable/adverse post-story move percentages
 ```
 
 Recent story events can select matching chart evidence or structural swings when the matching bar exists in the full analysis payload. Before the full chart analysis payload arrives, story-event clicks are allowed but may not select a chart marker yet because chart bars/evidence are not loaded.
+
+Recent journal outcomes can also be selected. When chart analysis data is loaded, the page uses source context week/bar metadata to select matching source-bar evidence or structure; if no source-bar match exists, it can fall back to the first checked validation bar. This is only a UI navigation aid.
 
 The frontend panels do not call broker APIs, place orders, size positions, persist journal evaluation status, or change scanner interpretation rules.
 
@@ -177,13 +182,12 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, and frontend read-only journal outcome display. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, frontend read-only journal outcome display, and journal-to-chart/context click-through. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Add deeper click-through linking from story segments to chart events.
-2. Add a market-data provider interface.
-3. Add an Upstox read-only provider later, without order placement.
-4. Add a developing-bar/live context mode, clearly separated from confirmed signals.
+1. Add a market-data provider interface.
+2. Add an Upstox read-only provider later, without order placement.
+3. Add a developing-bar/live context mode, clearly separated from confirmed signals.

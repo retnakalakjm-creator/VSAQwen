@@ -6,7 +6,7 @@ import type { IChartApi, Time } from "lightweight-charts";
 import { DecisionContextPanel } from "./decision-context-panel";
 import type { DecisionContext, DecisionContextEvent } from "./decision-context-panel";
 import { DecisionJournalPanel } from "./decision-journal-panel";
-import type { DecisionJournalEvaluationResponse } from "./decision-journal-panel";
+import type { DecisionJournalEvaluation, DecisionJournalEvaluationResponse } from "./decision-journal-panel";
 import { HLCSeries } from "./hlc-series";
 
 type Bar = { bar_index: number; week: string; open: number; high: number; low: number; close: number; volume: number };
@@ -49,6 +49,7 @@ export default function Home() {
   const [journalResponse, setJournalResponse] = useState<DecisionJournalEvaluationResponse | null>(null);
   const [journalError, setJournalError] = useState("");
   const [journalLoading, setJournalLoading] = useState(false);
+  const [selectedJournalEntryId, setSelectedJournalEntryId] = useState("");
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [selectedSwing, setSelectedSwing] = useState<Swing | null>(null);
   const [error, setError] = useState("");
@@ -58,6 +59,7 @@ export default function Home() {
     const encodedSymbol = encodeURIComponent(symbol);
     setSelectedEvidence(null);
     setSelectedSwing(null);
+    setSelectedJournalEntryId("");
     setAnalysis(null);
     setDecisionContextPreview(null);
     setJournalResponse(null);
@@ -223,6 +225,38 @@ export default function Home() {
       setSelectedEvidence(null);
     }
   }
+  function selectBarContext(barIndex: number | null | undefined) {
+    if (barIndex === null || barIndex === undefined) return false;
+
+    const exactEvidence = analysis?.evidence.find((item) => item.bar_index === barIndex);
+    if (exactEvidence) {
+      setSelectedEvidence(exactEvidence);
+      setSelectedSwing(null);
+      return true;
+    }
+
+    const sameBarSwing = analysis?.structural_swings.find((item) => item.bar_index === barIndex || item.confirmation_index === barIndex);
+    if (sameBarSwing) {
+      setSelectedSwing(sameBarSwing);
+      setSelectedEvidence(null);
+      return true;
+    }
+
+    const storyEvent = decisionContext?.recent_events.find((item) => item.bar_index === barIndex);
+    if (storyEvent) {
+      selectDecisionContextEvent(storyEvent);
+      return true;
+    }
+
+    return false;
+  }
+  function selectJournalEvaluation(evaluation: DecisionJournalEvaluation) {
+    setSelectedJournalEntryId(evaluation.entry_id);
+    if (selectBarContext(evaluation.source_context_bar_index)) return;
+
+    const firstCheckedBar = analysis?.bars.find((bar) => bar.week === evaluation.first_checked_week);
+    if (firstCheckedBar) selectBarContext(firstCheckedBar.bar_index);
+  }
 
   return (
     <main className="command-centre">
@@ -231,7 +265,7 @@ export default function Home() {
         <header className="header"><div className="symbol-title"><h1>{analysis?.symbol ?? decisionContext?.symbol ?? symbol}</h1><span className="timeframe-badge">{analysis?.timeframe ?? decisionContext?.timeframe ?? "1W"}</span>{latest && <span className={change >= 0 ? "price-change up" : "price-change down"}>{latest.close.toFixed(2)} {change >= 0 ? "+" : ""}{change.toFixed(2)} ({changePct.toFixed(2)}%)</span>}</div><form className="symbol-form" onSubmit={submit}><input name="symbol" defaultValue={symbol} aria-label="Symbol" /><button type="submit">Analyze</button></form></header>
         <section className="chart-card"><div className="chart-header"><div className="layer-legend"><span className="chart-title">PRICE</span><span className="legend-item"><i className="legend-line price-line" />HLC</span><span className="legend-item"><i className="legend-dot structure-dot" />STRUCTURE</span><span className="legend-item"><i className="legend-dot evidence-dot" />VSA</span></div><div className="chart-tools"><button type="button" onClick={zoomOut} aria-label="Zoom out">−</button><button type="button" onClick={zoomIn} aria-label="Zoom in">+</button><button type="button" onClick={fitChart}>Fit</button><button type="button" onClick={latestChart}>Latest</button><span className="latest-date">{analysis?.latest_week || decisionContext?.latest_week ? displayDate(analysis?.latest_week ?? decisionContext?.latest_week) : "Loading..."}</span></div></div>{error ? <div className="status">{error}</div> : <div className="chart-wrap" ref={chartRef} />}</section>
         <DecisionContextPanel context={decisionContext} onSelectEvent={selectDecisionContextEvent} />
-        <DecisionJournalPanel response={journalResponse} error={journalError} isLoading={journalLoading} />
+        <DecisionJournalPanel response={journalResponse} error={journalError} isLoading={journalLoading} selectedEntryId={selectedJournalEntryId} onSelectEvaluation={selectJournalEvaluation} />
         {analysis && <>
           <div className="bottom-grid">
             <div className="panel trend"><h3>Trend</h3><strong>{pretty(analysis.trend.direction)}</strong><div className="panel-status">{pretty(analysis.trend.state)}</div><small>Strength {scoreLevel(analysis.trend.strength)} · Confidence {scoreLevel(analysis.trend.confidence)}</small></div>

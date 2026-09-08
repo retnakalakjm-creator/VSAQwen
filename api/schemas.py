@@ -187,6 +187,8 @@ class DecisionJournalEvaluationDTO(BaseModel):
     entry_id: str
     symbol: str
     timeframe: str
+    source_context_week: str | None
+    source_context_bar_index: int | None
     outcome: str
     checked_bars: int
     first_checked_week: str | None

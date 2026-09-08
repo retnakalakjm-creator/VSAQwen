@@ -108,6 +108,8 @@ def test_decision_journal_evaluation_is_read_only_by_default(
 
     evaluation = result.evaluations[0]
     assert evaluation.entry_id == "TEST.NS__1W__2026-08-24__0"
+    assert evaluation.source_context_week == OLD_WEEK
+    assert evaluation.source_context_bar_index == 0
     assert evaluation.outcome == "confirmed"
     assert evaluation.checked_bars == 1
     assert evaluation.first_checked_week == LATEST_WEEK

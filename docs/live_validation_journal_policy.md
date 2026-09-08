@@ -91,6 +91,8 @@ The list endpoint returns saved compact journal entries only. It does not run sc
 
 The evaluation endpoint compares saved journal entries with completed weekly bars and returns `DecisionJournalEvaluation` payloads. Evaluation is read-only by default so viewing the journal does not mutate saved status.
 
+Evaluation payloads include the source context week and bar index from the original journal entry. This lets the local UI link an outcome back to the story source bar without parsing the deterministic entry ID.
+
 To explicitly save evaluation outcomes back into the journal, callers must pass:
 
 ```text
@@ -120,10 +122,13 @@ latest outcome
 journal count
 validation horizon
 latest completed week
+source context week and bar
 outcome mix
 recent evaluation notes
 favorable/adverse move percentages
 ```
+
+Recent journal outcomes are clickable. When chart analysis data is available, clicking an outcome selects matching evidence or structure on the original source context bar. If no source-bar match is available, the page falls back to the first checked bar when possible. Before chart analysis is loaded, the journal row can still be selected while waiting for chart-backed context.
 
 This display is explanatory only. It does not change scanner interpretation, make trading decisions, place orders, or persist evaluation status.
 
@@ -174,7 +179,7 @@ The store uses atomic JSON writes and deterministic entry IDs so the same contex
 
 `api.service.ProVSAService` can receive an injected `DecisionJournalStore` and persistence flag for tests/local customization. It can list saved journal entries and evaluate them against completed weekly bars.
 
-`frontend/app/decision-journal-panel.tsx` renders read-only evaluation outcomes in the local Command Centre UI.
+`frontend/app/decision-journal-panel.tsx` renders read-only evaluation outcomes in the local Command Centre UI and supports click-through from each outcome to the related chart/story context.
 
 ## Future integration path
 

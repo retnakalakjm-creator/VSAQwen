@@ -138,14 +138,14 @@ class ProVSAService:
         )
         journal_bars = self._journal_bars(weekly)
 
-        evaluations: list[DecisionJournalEvaluation] = []
+        evaluations: list[tuple[DecisionJournalEntry, DecisionJournalEvaluation]] = []
         for entry in entries:
             evaluation = evaluate_journal_entry(
                 entry,
                 journal_bars,
                 horizon_bars=horizon_bars,
             )
-            evaluations.append(evaluation)
+            evaluations.append((entry, evaluation))
             if persist_status and entry.status.value != evaluation.outcome.value:
                 self._decision_journal_store.update_status(
                     entry,
@@ -159,8 +159,8 @@ class ProVSAService:
             latest_week=self._latest_week(weekly),
             persist_status=persist_status,
             evaluations=[
-                self._decision_journal_evaluation_dto(evaluation)
-                for evaluation in evaluations
+                self._decision_journal_evaluation_dto(entry, evaluation)
+                for entry, evaluation in evaluations
             ],
         )
 
@@ -289,9 +289,13 @@ class ProVSAService:
 
     @staticmethod
     def _decision_journal_evaluation_dto(
+        entry: DecisionJournalEntry,
         evaluation: DecisionJournalEvaluation,
     ) -> DecisionJournalEvaluationDTO:
-        return DecisionJournalEvaluationDTO(**evaluation.to_dict())
+        payload = evaluation.to_dict()
+        payload["source_context_week"] = entry.source_context_week
+        payload["source_context_bar_index"] = entry.source_context_bar_index
+        return DecisionJournalEvaluationDTO(**payload)
 
     @staticmethod
     def _journal_bars(weekly: pd.DataFrame) -> list[dict[str, object]]:

@@ -2,6 +2,8 @@ export type DecisionJournalEvaluation = {
   entry_id: string;
   symbol: string;
   timeframe: string;
+  source_context_week: string | null;
+  source_context_bar_index: number | null;
   outcome: string;
   checked_bars: number;
   first_checked_week: string | null;
@@ -26,6 +28,8 @@ type DecisionJournalPanelProps = {
   response: DecisionJournalEvaluationResponse | null | undefined;
   error?: string;
   isLoading?: boolean;
+  selectedEntryId?: string;
+  onSelectEvaluation?: (evaluation: DecisionJournalEvaluation) => void;
 };
 
 function pretty(value: string | null | undefined) {
@@ -66,6 +70,8 @@ export function DecisionJournalPanel({
   response,
   error = "",
   isLoading = false,
+  selectedEntryId = "",
+  onSelectEvaluation,
 }: DecisionJournalPanelProps) {
   const evaluations = response?.evaluations ?? [];
   const latest = evaluations.at(-1) ?? null;
@@ -97,11 +103,18 @@ export function DecisionJournalPanel({
           </span>
         </div>
         {latest && (
-          <div className="plain-score">
-            <span>Latest Move</span>
-            <strong>{formatPercent(latest.favorable_move_pct)}</strong>
-            <small>Adverse {formatPercent(latest.adverse_move_pct)}</small>
-          </div>
+          <>
+            <div className="plain-score">
+              <span>Latest Source</span>
+              <strong>{displayDate(latest.source_context_week)}</strong>
+              <small>Source bar {latest.source_context_bar_index ?? "—"}</small>
+            </div>
+            <div className="plain-score">
+              <span>Latest Move</span>
+              <strong>{formatPercent(latest.favorable_move_pct)}</strong>
+              <small>Adverse {formatPercent(latest.adverse_move_pct)}</small>
+            </div>
+          </>
         )}
       </div>
 
@@ -137,22 +150,33 @@ export function DecisionJournalPanel({
         {recent.length === 0 ? (
           <p>{isLoading ? "Loading saved outcomes..." : "Run analysis over time to build validation history."}</p>
         ) : (
-          recent.map((item) => (
-            <div className="signal" key={item.entry_id}>
-              <div className="signal-top">
-                <span className={outcomeClass(item.outcome)} />
-                <strong>{pretty(item.outcome)}</strong>
-                <span>{item.checked_bars} bars</span>
-              </div>
-              <div className="signal-code">
-                {displayDate(item.first_checked_week)} → {displayDate(item.last_checked_week)} · {item.confirmation_hit ? "confirmation hit" : "no confirmation"} · {item.invalidation_hit ? "invalidation hit" : "no invalidation"}
-              </div>
-              <p>{item.notes}</p>
-              <small>
-                Favorable {formatPercent(item.favorable_move_pct)} · Adverse {formatPercent(item.adverse_move_pct)}
-              </small>
-            </div>
-          ))
+          recent.map((item) => {
+            const selected = selectedEntryId === item.entry_id;
+            return (
+              <button
+                type="button"
+                className={`signal ${selected ? "selected" : ""}`}
+                key={item.entry_id}
+                onClick={() => onSelectEvaluation?.(item)}
+              >
+                <div className="signal-top">
+                  <span className={outcomeClass(item.outcome)} />
+                  <strong>{pretty(item.outcome)}</strong>
+                  <span>{item.checked_bars} bars</span>
+                </div>
+                <div className="signal-code">
+                  Source {displayDate(item.source_context_week)} · bar {item.source_context_bar_index ?? "—"}
+                </div>
+                <div className="signal-code">
+                  Checked {displayDate(item.first_checked_week)} → {displayDate(item.last_checked_week)} · {item.confirmation_hit ? "confirmation hit" : "no confirmation"} · {item.invalidation_hit ? "invalidation hit" : "no invalidation"}
+                </div>
+                <p>{item.notes}</p>
+                <small>
+                  Favorable {formatPercent(item.favorable_move_pct)} · Adverse {formatPercent(item.adverse_move_pct)}
+                </small>
+              </button>
+            );
+          })
         )}
       </div>
     </section>
