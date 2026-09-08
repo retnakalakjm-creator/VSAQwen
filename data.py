@@ -11,6 +11,7 @@ import yfinance as yf
 
 import config
 from config import CACHE_DIR, DEFAULT_PERIOD, MIN_DAILY_BARS, WEEK_RULE
+from market_data import MarketDataProvider
 from scanner_state import ScannerState
 
 CACHE_DIR.mkdir(exist_ok=True)
@@ -25,6 +26,37 @@ CACHE_FORMAT_VERSION = 1
 CACHE_INTERVAL = "1d"
 CACHE_FORMAT_PARQUET = "parquet"
 CACHE_FORMAT_CSV = "csv"
+
+
+class _DataModuleYFinanceProvider:
+    """Default provider that preserves the historical `data.yf` test seam."""
+
+    name = "yfinance"
+
+    def download_daily(
+        self,
+        symbol: str,
+        *,
+        period: str,
+        interval: str,
+        auto_adjust: bool,
+    ) -> pd.DataFrame:
+        return yf.download(
+            tickers=symbol,
+            period=period,
+            interval=interval,
+            auto_adjust=auto_adjust,
+            progress=False,
+        )
+
+
+DEFAULT_DATA_PROVIDER = _DataModuleYFinanceProvider()
+
+
+def _resolve_market_data_provider(
+    provider: MarketDataProvider | None = None,
+) -> MarketDataProvider:
+    return DEFAULT_DATA_PROVIDER if provider is None else provider
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,26 +295,31 @@ def _read_cached_data(symbol: str) -> tuple[pd.DataFrame, Path, str] | None:
     return None
 
 
-def _download_history(symbol: str) -> pd.DataFrame:
+def _download_history(
+    symbol: str,
+    provider: MarketDataProvider,
+) -> pd.DataFrame:
     return _normalize_daily_data(
-        yf.download(
-            tickers=symbol,
+        provider.download_daily(
+            symbol,
             period=DEFAULT_PERIOD,
             interval=CACHE_INTERVAL,
             auto_adjust=False,
-            progress=False,
         )
     )
 
 
-def _refresh_recent(symbol: str, cached: pd.DataFrame) -> pd.DataFrame:
+def _refresh_recent(
+    symbol: str,
+    cached: pd.DataFrame,
+    provider: MarketDataProvider,
+) -> pd.DataFrame:
     """Refresh only the recent window and merge it into cached history."""
-    recent = yf.download(
-        tickers=symbol,
+    recent = provider.download_daily(
+        symbol,
         period=INCREMENTAL_PERIOD,
         interval=CACHE_INTERVAL,
         auto_adjust=False,
-        progress=False,
     )
     if recent.empty:
         return cached
@@ -298,8 +335,10 @@ def download_data(
     symbol: str,
     refresh: bool = False,
     cache_max_age: int = CACHE_MAX_AGE_SECONDS,
+    provider: MarketDataProvider | None = None,
 ) -> pd.DataFrame:
     """Load historical data once and incrementally refresh recent bars."""
+    market_data_provider = _resolve_market_data_provider(provider)
     cached_result = _read_cached_data(symbol)
 
     if cached_result is not None:
@@ -317,7 +356,7 @@ def download_data(
 
         # Do not re-download years of history during a live scan.
         try:
-            merged = _refresh_recent(symbol, cached)
+            merged = _refresh_recent(symbol, cached, market_data_provider)
             validate_data(merged)
             _write_cached_data(symbol, merged, source="incremental_refresh")
             return merged
@@ -333,7 +372,7 @@ def download_data(
             return cached
 
     # First use only: build the historical baseline.
-    df = _download_history(symbol)
+    df = _download_history(symbol, market_data_provider)
     validate_data(df)
     _write_cached_data(symbol, df, source="historical_download")
     return df

@@ -167,6 +167,16 @@ The journal must not be treated as a trading backtest, strategy profitability re
 
 See `docs/live_validation_journal_policy.md` for the detailed journal policy.
 
+## Market data provider boundary
+
+`market_data.py` defines the read-only provider contract used by `data.download_data()`.
+
+The default provider remains yfinance. The provider layer only retrieves raw daily OHLCV payloads; `data.py` still owns normalization, validation, caching, daily-to-weekly resampling, and completed weekly bar filtering.
+
+Future providers must not bypass confirmed-bar rules or add broker/order scope.
+
+See `docs/market_data_provider_policy.md` for the detailed provider boundary.
+
 ## Current implementation boundary
 
 `decision_context.py` adds:
@@ -182,12 +192,11 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, frontend read-only journal outcome display, and journal-to-chart/context click-through. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, frontend read-only journal outcome display, journal-to-chart/context click-through, and a read-only market-data provider interface. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Add a market-data provider interface.
-2. Add an Upstox read-only provider later, without order placement.
-3. Add a developing-bar/live context mode, clearly separated from confirmed signals.
+1. Add an Upstox read-only provider later, without order placement.
+2. Add a developing-bar/live context mode, clearly separated from confirmed signals.
