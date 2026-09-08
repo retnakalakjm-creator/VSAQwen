@@ -5,9 +5,11 @@ from dataclasses import replace
 import pandas as pd
 import config
 
+from engine.columns import COL_CORPORATE_ACTION_ANOMALY
 from evidence.engine import EvidenceEngine
+from market_structure.incremental_trend import IncrementalTrendAnalyzer
 from market_structure.progression import calculate_professional_progression
-from market_structure.structure_filter import StructureFilter
+from market_structure.swing_engine import SwingEngine
 from models import Evidence, EvidenceCode, EvidenceCategory, EvidenceDirection
 from scanner import ScannerCandidate, ScannerEngine
 from scanner_state import ScannerState, StructuralEventState, SCANNER_STATE_SCHEMA_VERSION
@@ -20,17 +22,7 @@ class IncrementalScannerEngine:
 
     def __init__(self) -> None:
         self._scanner = ScannerEngine()
-
-    @staticmethod
-    def _resume_trend(metrics: pd.DataFrame, state: ScannerState):
-        analyzer = TrendAnalyzer()
-        analyzer._reset(metrics)
-        swings = list(analyzer._swing_engine.calculate_from_state(metrics, state))
-        structural = StructureFilter().filter(swings, metrics)
-        analyzer._classified_swings = analyzer._classify_swings(structural)
-        analyzer._structural_swings = structural
-        analyzer._create_structure()
-        return analyzer._build_result()
+        self._trend = IncrementalTrendAnalyzer()
 
     @staticmethod
     def _events_to_evidence(metrics: pd.DataFrame, events: tuple[StructuralEventState, ...]) -> tuple[Evidence, ...]:
@@ -63,15 +55,50 @@ class IncrementalScannerEngine:
             captured[(evidence.week_beginning, code)] = StructuralEventState.from_evidence(evidence)
         return tuple(captured[key] for key in sorted(captured, key=lambda value: (value[0], str(value[1]))))
 
+    @staticmethod
+    def _signal_bar_anomaly(metrics: pd.DataFrame, index: int | None) -> bool:
+        if index is None or index < 0 or index >= len(metrics):
+            return False
+        if COL_CORPORATE_ACTION_ANOMALY not in metrics.columns:
+            return False
+
+        value = metrics.iloc[index].get(COL_CORPORATE_ACTION_ANOMALY, False)
+        if value is None:
+            return False
+        try:
+            if pd.isna(value):
+                return False
+        except (TypeError, ValueError):
+            return False
+        return bool(value)
+
+    @staticmethod
+    def _snapshot_swing_state(
+        metrics: pd.DataFrame,
+        *,
+        target_index: int,
+        symbol: str,
+        timeframe: str,
+    ) -> ScannerState:
+        prefix = metrics.iloc[: target_index + 1].copy()
+        swing_engine = SwingEngine()
+        swing_engine.calculate(prefix)
+        return swing_engine.snapshot_state(symbol=symbol, timeframe=timeframe)
+
     def snapshot(self, metrics: pd.DataFrame, *, target_index: int, symbol: str, timeframe: str) -> ScannerState:
         if target_index < self._scanner.MIN_REPLAY_BARS:
             raise ValueError(f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}")
         if target_index >= len(metrics):
             raise IndexError("target_index is outside metrics")
+
         prefix = metrics.iloc[: target_index + 1].copy()
-        analyzer = TrendAnalyzer()
-        trend = analyzer.analyze(prefix)
-        swing_state = analyzer._swing_engine.snapshot_state(symbol=symbol, timeframe=timeframe)
+        trend = TrendAnalyzer().analyze(prefix)
+        swing_state = self._snapshot_swing_state(
+            metrics,
+            target_index=target_index,
+            symbol=symbol,
+            timeframe=timeframe,
+        )
         return replace(
             swing_state,
             schema_version=SCANNER_STATE_SCHEMA_VERSION,
@@ -89,7 +116,7 @@ class IncrementalScannerEngine:
                 f"ScannerState checkpoint bar is not present in current metrics: {state.last_closed_bar}"
             )
 
-        trend = self._resume_trend(metrics, state)
+        trend = self._trend.analyze_from_state(metrics, state)
         evidence = EvidenceEngine().collect(metrics=metrics, trend=trend, structural_swings=tuple(trend.structure.structural_swings))
 
         new_events = self._capture_events(trend.structure.structural_swings, metrics)
@@ -106,6 +133,7 @@ class IncrementalScannerEngine:
         ordered_events = tuple(events[key] for key in sorted(events, key=lambda value: (value[0], str(value[1]))))
 
         target_index = len(metrics) - 1
+        signal_bar_anomaly = self._signal_bar_anomaly(metrics, target_index)
         history = [
             EvidenceResult(
                 context=evidence.context,
@@ -119,5 +147,8 @@ class IncrementalScannerEngine:
             history=history,
             bar_index=target_index,
             week=str(metrics.iloc[target_index]["week_beginning"]),
-            signal_bar_anomaly=self._scanner._signal_bar_anomaly(metrics, target_index),
+            signal_bar_anomaly=signal_bar_anomaly,
         )
+
+
+__all__ = ["IncrementalScannerEngine"]
