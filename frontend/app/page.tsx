@@ -5,6 +5,8 @@ import { ColorType, createChart, createSeriesMarkers } from "lightweight-charts"
 import type { IChartApi, Time } from "lightweight-charts";
 import { DecisionContextPanel } from "./decision-context-panel";
 import type { DecisionContext, DecisionContextEvent } from "./decision-context-panel";
+import { DecisionJournalPanel } from "./decision-journal-panel";
+import type { DecisionJournalEvaluationResponse } from "./decision-journal-panel";
 import { HLCSeries } from "./hlc-series";
 
 type Bar = { bar_index: number; week: string; open: number; high: number; low: number; close: number; volume: number };
@@ -44,6 +46,9 @@ export default function Home() {
   const [symbol, setSymbol] = useState("SRF.NS");
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [decisionContextPreview, setDecisionContextPreview] = useState<DecisionContext | null>(null);
+  const [journalResponse, setJournalResponse] = useState<DecisionJournalEvaluationResponse | null>(null);
+  const [journalError, setJournalError] = useState("");
+  const [journalLoading, setJournalLoading] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [selectedSwing, setSelectedSwing] = useState<Swing | null>(null);
   const [error, setError] = useState("");
@@ -55,9 +60,34 @@ export default function Home() {
     setSelectedSwing(null);
     setAnalysis(null);
     setDecisionContextPreview(null);
+    setJournalResponse(null);
+    setJournalError("");
+    setJournalLoading(true);
     setError("");
 
+    async function loadJournal() {
+      try {
+        const journal = await fetchJson<DecisionJournalEvaluationResponse>(
+          `${API}/api/symbols/${encodedSymbol}/decision-journal/evaluations`,
+          "Decision journal failed",
+        );
+        if (!cancelled) {
+          setJournalResponse(journal);
+          setJournalError("");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setJournalResponse(null);
+          setJournalError(err instanceof Error ? err.message : "Decision journal failed");
+        }
+      } finally {
+        if (!cancelled) setJournalLoading(false);
+      }
+    }
+
     async function loadSymbol() {
+      void loadJournal();
+
       try {
         const preview = await fetchJson<DecisionContext>(
           `${API}/api/symbols/${encodedSymbol}/decision-context`,
@@ -78,6 +108,7 @@ export default function Home() {
           setDecisionContextPreview(data.decision_context ?? null);
           setError("");
         }
+        void loadJournal();
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Analysis failed");
       }
@@ -200,6 +231,7 @@ export default function Home() {
         <header className="header"><div className="symbol-title"><h1>{analysis?.symbol ?? decisionContext?.symbol ?? symbol}</h1><span className="timeframe-badge">{analysis?.timeframe ?? decisionContext?.timeframe ?? "1W"}</span>{latest && <span className={change >= 0 ? "price-change up" : "price-change down"}>{latest.close.toFixed(2)} {change >= 0 ? "+" : ""}{change.toFixed(2)} ({changePct.toFixed(2)}%)</span>}</div><form className="symbol-form" onSubmit={submit}><input name="symbol" defaultValue={symbol} aria-label="Symbol" /><button type="submit">Analyze</button></form></header>
         <section className="chart-card"><div className="chart-header"><div className="layer-legend"><span className="chart-title">PRICE</span><span className="legend-item"><i className="legend-line price-line" />HLC</span><span className="legend-item"><i className="legend-dot structure-dot" />STRUCTURE</span><span className="legend-item"><i className="legend-dot evidence-dot" />VSA</span></div><div className="chart-tools"><button type="button" onClick={zoomOut} aria-label="Zoom out">−</button><button type="button" onClick={zoomIn} aria-label="Zoom in">+</button><button type="button" onClick={fitChart}>Fit</button><button type="button" onClick={latestChart}>Latest</button><span className="latest-date">{analysis?.latest_week || decisionContext?.latest_week ? displayDate(analysis?.latest_week ?? decisionContext?.latest_week) : "Loading..."}</span></div></div>{error ? <div className="status">{error}</div> : <div className="chart-wrap" ref={chartRef} />}</section>
         <DecisionContextPanel context={decisionContext} onSelectEvent={selectDecisionContextEvent} />
+        <DecisionJournalPanel response={journalResponse} error={journalError} isLoading={journalLoading} />
         {analysis && <>
           <div className="bottom-grid">
             <div className="panel trend"><h3>Trend</h3><strong>{pretty(analysis.trend.direction)}</strong><div className="panel-status">{pretty(analysis.trend.state)}</div><small>Strength {scoreLevel(analysis.trend.strength)} · Confidence {scoreLevel(analysis.trend.confidence)}</small></div>

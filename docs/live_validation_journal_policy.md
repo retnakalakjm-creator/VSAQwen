@@ -99,6 +99,34 @@ persist_status=true
 
 The evaluation endpoint accepts `horizon_bars`; invalid values such as zero or negative horizons are rejected.
 
+## Frontend display behavior
+
+The React/Next.js chart page renders a read-only decision-journal panel below the VSA Story panel.
+
+The page calls:
+
+```text
+GET /api/symbols/{symbol}/decision-journal/evaluations
+```
+
+It does not pass `persist_status=true`, so simply opening the UI does not update saved journal statuses.
+
+The frontend may fetch journal evaluations when the symbol loads and then refresh them after full analysis completes, because full analysis can create or update the latest journal entry.
+
+The panel shows:
+
+```text
+latest outcome
+journal count
+validation horizon
+latest completed week
+outcome mix
+recent evaluation notes
+favorable/adverse move percentages
+```
+
+This display is explanatory only. It does not change scanner interpretation, make trading decisions, place orders, or persist evaluation status.
+
 ## Financial correctness boundary
 
 The journal is analysis-only.
@@ -144,14 +172,16 @@ state/decision_journal/
 
 The store uses atomic JSON writes and deterministic entry IDs so the same context can be safely upserted instead of duplicated.
 
-`api.service.ProVSAService` can receive an injected `DecisionJournalStore` and persistence flag for tests/local customization. It can now list saved journal entries and evaluate them against completed weekly bars.
+`api.service.ProVSAService` can receive an injected `DecisionJournalStore` and persistence flag for tests/local customization. It can list saved journal entries and evaluate them against completed weekly bars.
+
+`frontend/app/decision-journal-panel.tsx` renders read-only evaluation outcomes in the local Command Centre UI.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Render journal entries and evaluation outcomes in the React/Next.js VSA Story panel.
-2. Add developing/live-bar validation later, clearly separated from confirmed weekly signals.
-3. Add market-data provider abstractions before any Upstox read-only data source is introduced.
+1. Add developing/live-bar validation later, clearly separated from confirmed weekly signals.
+2. Add market-data provider abstractions before any Upstox read-only data source is introduced.
+3. Add optional manual notes/tags for human review, still without broker/order scope.
 
 No broker order scope should be added to this feature.

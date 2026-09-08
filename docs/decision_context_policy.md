@@ -111,7 +111,15 @@ GET /api/symbols/{symbol}/decision-context
 
 The page renders that VSA Story while the heavier full chart analysis request is still loading. When the full analysis response arrives, the embedded `decision_context` becomes the source for the same panel so the story stays synchronized with the chart payload.
 
-The panel is decision-support only. It shows:
+The page also loads read-only decision-journal evaluations from:
+
+```text
+GET /api/symbols/{symbol}/decision-journal/evaluations
+```
+
+The UI does not pass `persist_status=true`, so viewing journal outcomes does not mutate saved journal status. It may refresh the journal panel after full analysis completes because full analysis can create or update the latest compact journal entry.
+
+The VSA Story and journal panels are decision-support only. They show:
 
 ```text
 phase
@@ -124,11 +132,14 @@ invalidation condition
 what to expect next
 recent smart-money evidence
 recent structural swing memory
+journal outcome mix
+recent validation outcomes
+favorable/adverse post-story move percentages
 ```
 
 Recent story events can select matching chart evidence or structural swings when the matching bar exists in the full analysis payload. Before the full chart analysis payload arrives, story-event clicks are allowed but may not select a chart marker yet because chart bars/evidence are not loaded.
 
-The frontend panel does not call broker APIs, place orders, size positions, or change scanner interpretation rules.
+The frontend panels do not call broker APIs, place orders, size positions, persist journal evaluation status, or change scanner interpretation rules.
 
 ## Live validation journal boundary
 
@@ -166,14 +177,13 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, and frontend preloading of that compact context. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, and frontend read-only journal outcome display. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
 1. Add deeper click-through linking from story segments to chart events.
-2. Render journal entries and evaluation outcomes in the frontend.
-3. Add a market-data provider interface.
-4. Add an Upstox read-only provider later, without order placement.
-5. Add a developing-bar/live context mode, clearly separated from confirmed signals.
+2. Add a market-data provider interface.
+3. Add an Upstox read-only provider later, without order placement.
+4. Add a developing-bar/live context mode, clearly separated from confirmed signals.
