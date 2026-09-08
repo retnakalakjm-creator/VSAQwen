@@ -13,4 +13,5 @@ Available modules:
 - ``audit.stability``: confidence-aware calibration stability diagnostics.
 - ``audit.vsa_events``: VSA event causality contract catalog.
 - ``audit.vsa_event_diagnostics``: VSA event outcome diagnostic summaries.
+- ``audit.proposals``: reviewable Milestone 4 calibration proposal tables.
 """
