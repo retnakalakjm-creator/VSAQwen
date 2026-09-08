@@ -12,4 +12,5 @@ Available modules:
 - ``audit.runner``: historical full-replay scanner audit orchestration.
 - ``audit.stability``: confidence-aware calibration stability diagnostics.
 - ``audit.vsa_events``: VSA event causality contract catalog.
+- ``audit.vsa_event_diagnostics``: VSA event outcome diagnostic summaries.
 """
