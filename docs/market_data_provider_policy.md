@@ -73,6 +73,16 @@ UPSTOX_SYMBOL_MAP=RELIANCE.NS=NSE_EQ|INE002A01018,TCS.NS=NSE_EQ|INE467B01029
 
 Invalid provider names, invalid boolean values, and malformed symbol-map entries should fail fast rather than silently changing market-data behavior.
 
+## API runtime selection boundary
+
+The FastAPI runtime creates `ProVSAService` through a small service factory that calls `create_market_data_provider_from_env()` once at the application boundary.
+
+`ProVSAService` accepts an optional `market_data_provider`. When a provider is injected, service-level symbol analysis, compact decision-context refreshes, and decision-journal evaluations download daily data through `data.download_data(symbol, provider=provider)`.
+
+When no provider is injected, the service intentionally preserves the legacy `data.download_data(symbol)` path so existing tests, local scripts, and the yfinance default behavior remain unchanged.
+
+This runtime wiring must remain outside scanner, metrics, VSA detector, scoring, qualification, actionability, and journal-evaluation logic. Provider selection changes where raw daily OHLCV is retrieved from; it must not change how confirmed weekly decisions are calculated.
+
 ## Upstox read-only OHLCV boundary
 
 `UpstoxMarketDataProvider` is a read-only daily OHLCV adapter for Upstox historical candles.
@@ -167,7 +177,8 @@ Developing/live-bar data can be added later, but it must be labeled separately f
 1. Keep yfinance as the default provider.
 2. Add provider-specific tests before enabling any alternate provider.
 3. Add Upstox symbol mapping for read-only daily OHLCV data.
-4. Add rate-limit/backoff handling and explicit stale-cache fallback tests.
-5. Add developing/live data mode only after confirmed weekly behavior is unchanged.
+4. Add API/runtime provider injection only at the outer service boundary.
+5. Add rate-limit/backoff handling and explicit stale-cache fallback tests.
+6. Add developing/live data mode only after confirmed weekly behavior is unchanged.
 
 No broker order scope should be added to this feature.

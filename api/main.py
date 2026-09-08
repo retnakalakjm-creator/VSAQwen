@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from decision_journal import DEFAULT_VALIDATION_HORIZON_BARS
+from market_data import create_market_data_provider_from_env
 
 from .schemas import (
     AnalysisDTO,
@@ -27,7 +28,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_service = ProVSAService()
+
+def create_service() -> ProVSAService:
+    """Create the API service with runtime market-data provider selection."""
+    return ProVSAService(
+        market_data_provider=create_market_data_provider_from_env(),
+    )
+
+
+_service = create_service()
 
 
 @app.get("/api/health", response_model=HealthDTO)

@@ -20,6 +20,7 @@ from engine.columns import (
     COL_PRICE_GAP_RATIO,
     COL_VOLUME_ANOMALY,
 )
+from market_data import MarketDataProvider
 from metrics_engine import MetricsEngine
 from production_scanner import scan_latest_candidate_production
 from scanner_state import ScannerStateStore
@@ -58,6 +59,7 @@ class ProVSAService:
         allow_full_replay_fallback: bool = True,
         persist_decision_context: bool = True,
         persist_decision_journal: bool | None = None,
+        market_data_provider: MarketDataProvider | None = None,
     ) -> None:
         self._decision_context_store = decision_context_store or DecisionContextStore()
         self._decision_journal_store = decision_journal_store or DecisionJournalStore()
@@ -70,6 +72,7 @@ class ProVSAService:
             if persist_decision_journal is None
             else persist_decision_journal
         )
+        self._market_data_provider = market_data_provider
 
     def analyze_symbol(self, symbol: str) -> AnalysisDTO:
         symbol = self._normalize_symbol(symbol)
@@ -254,11 +257,17 @@ class ProVSAService:
             self._decision_journal_store.upsert(create_journal_entry(context))
 
     def _completed_weekly_for_symbol(self, symbol: str) -> pd.DataFrame:
-        daily = download_data(symbol)
+        daily = self._download_daily_data_for_symbol(symbol)
         weekly = completed_weekly_only(daily_to_weekly(daily))
         if weekly.empty:
             raise ValueError("no completed weekly bars are available for symbol")
         return weekly
+
+    def _download_daily_data_for_symbol(self, symbol: str) -> pd.DataFrame:
+        """Download daily bars through the configured runtime provider, if any."""
+        if self._market_data_provider is None:
+            return download_data(symbol)
+        return download_data(symbol, provider=self._market_data_provider)
 
     def _load_cached_decision_context(self, symbol: str) -> DecisionContext | None:
         try:
