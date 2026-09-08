@@ -55,3 +55,12 @@ Recommended calibration workflow:
    horizon.
 4. Propose weight or gating changes in separate production PRs only after the
    evidence is reviewed.
+
+## Test-suite boundary
+
+Fast deterministic regression tests stay in the default `pytest` path. Historical
+research scripts, long-running audit checks, and stale robustness reports are
+quarantined from default pytest collection by `tests/conftest.py`.
+
+Run those archived checks explicitly by filename only when doing calibration
+research.
