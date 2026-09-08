@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class BarDTO(BaseModel):
@@ -11,6 +11,10 @@ class BarDTO(BaseModel):
     low: float
     close: float
     volume: float
+    price_gap_ratio: float | None = None
+    price_anomaly: bool = False
+    volume_anomaly: bool = False
+    corporate_action_anomaly: bool = False
 
 
 class SwingScoreDTO(BaseModel):
@@ -97,6 +101,9 @@ class AnalysisDTO(BaseModel):
     latest_bar_index: int
     latest_week: str
     bars: list[BarDTO]
+    anomaly_bar_indices: list[int] = Field(default_factory=list)
+    signal_bar_anomaly: bool = False
+    signal_bar_anomaly_reason: str | None = None
     trend: TrendDTO
     structural_swings: list[StructuralSwingDTO]
     evidence: list[EvidenceDTO]

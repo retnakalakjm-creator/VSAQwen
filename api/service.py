@@ -3,6 +3,12 @@ from __future__ import annotations
 import pandas as pd
 
 from data import completed_weekly_only, daily_to_weekly, download_data
+from engine.columns import (
+    COL_CORPORATE_ACTION_ANOMALY,
+    COL_PRICE_ANOMALY,
+    COL_PRICE_GAP_RATIO,
+    COL_VOLUME_ANOMALY,
+)
 from metrics_engine import MetricsEngine
 from scanner import ScannerCandidate, ScannerEngine
 
@@ -46,8 +52,11 @@ class ProVSAService:
             symbol=symbol,
             timeframe="1W",
             latest_bar_index=target_index,
-            latest_week=str(weekly.iloc[target_index]["week_beginning"]),
-            bars=[self._bar(row, index) for index, (_, row) in enumerate(weekly.iterrows())],
+            latest_week=str(metrics.iloc[target_index]["week_beginning"]),
+            bars=[self._bar(row, index) for index, (_, row) in enumerate(metrics.iterrows())],
+            anomaly_bar_indices=self._anomaly_bar_indices(metrics),
+            signal_bar_anomaly=bool(getattr(candidate, "signal_bar_anomaly", False)),
+            signal_bar_anomaly_reason=getattr(candidate, "signal_bar_anomaly_reason", None),
             trend=TrendDTO(
                 direction=trend.direction.value,
                 state=trend.state.value,
@@ -60,7 +69,7 @@ class ProVSAService:
                 ll_count=trend.ll_count,
             ),
             structural_swings=[
-                self._structural_swing(item, labels, weekly)
+                self._structural_swing(item, labels, metrics)
                 for item in trend.structural_swings
             ],
             evidence=[self._evidence(item) for item in candidate.evidence.evidence],
@@ -94,6 +103,13 @@ class ProVSAService:
             low=float(row["low"]),
             close=float(row["close"]),
             volume=float(row["volume"]),
+            price_gap_ratio=ProVSAService._optional_float(row, COL_PRICE_GAP_RATIO),
+            price_anomaly=ProVSAService._bool_flag(row, COL_PRICE_ANOMALY),
+            volume_anomaly=ProVSAService._bool_flag(row, COL_VOLUME_ANOMALY),
+            corporate_action_anomaly=ProVSAService._bool_flag(
+                row,
+                COL_CORPORATE_ACTION_ANOMALY,
+            ),
         )
 
     @staticmethod
@@ -101,6 +117,34 @@ class ProVSAService:
         if index < 0 or index >= len(bars):
             raise IndexError("swing index is outside weekly bars")
         return str(bars.iloc[index]["week_beginning"])
+
+    @staticmethod
+    def _optional_float(row: pd.Series, column: str) -> float | None:
+        if column not in row:
+            return None
+        value = row[column]
+        if pd.isna(value):
+            return None
+        return float(value)
+
+    @staticmethod
+    def _bool_flag(row: pd.Series, column: str) -> bool:
+        if column not in row:
+            return False
+        value = row[column]
+        if pd.isna(value):
+            return False
+        return bool(value)
+
+    @staticmethod
+    def _anomaly_bar_indices(metrics: pd.DataFrame) -> list[int]:
+        if COL_CORPORATE_ACTION_ANOMALY not in metrics:
+            return []
+        return [
+            index
+            for index, value in enumerate(metrics[COL_CORPORATE_ACTION_ANOMALY])
+            if not pd.isna(value) and bool(value)
+        ]
 
     @staticmethod
     def _evidence(item) -> EvidenceDTO:
