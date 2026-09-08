@@ -1,0 +1,119 @@
+# Live Validation Journal Policy
+
+## Purpose
+
+The live validation journal is a compact decision-support record that connects a saved VSA story with what later bars actually did.
+
+It answers a practical question for the local ProVSA Command Centre:
+
+```text
+The scanner expected this behavior.
+What happened after that?
+Was the story confirmed, invalidated, mixed, or still pending?
+```
+
+This is not a trading journal, not an order log, and not a full historical event database.
+
+## What the journal stores
+
+Each journal entry is created from one `DecisionContext` and stores only the decision-relevant expectation:
+
+```text
+symbol / timeframe
+source context week and bar index
+phase
+bias
+tradability
+decision label
+confidence
+net pressure
+headline and summary
+confirmation condition
+invalidation condition
+expected next behavior
+latest compact support / resistance references from structural swing memory
+```
+
+The journal intentionally does not persist all historical VSA events, all bars, all candidates, tick data, broker credentials, orders, positions, or trade execution requests.
+
+## Validation model
+
+`evaluate_journal_entry()` compares one journal entry with later OHLCV bars after the source context bar.
+
+The default validation horizon is 8 bars.
+
+Outcomes are deliberately conservative:
+
+```text
+confirmed
+invalidated
+mixed
+pending
+observation_only
+no_data
+```
+
+For bullish contexts, confirmation means a later close clears the compact resistance/reference level; invalidation means a later close loses the compact support/reference level.
+
+For bearish contexts, confirmation means a later close breaks the compact support/reference level; invalidation means a later close recovers above the compact resistance/reference level.
+
+If both confirmation and invalidation occur inside the checked window, the result is `mixed` and must be reviewed manually.
+
+Mixed, neutral, and avoid contexts are tracked as `observation_only` because they should not be treated as directional setup validation.
+
+## Financial correctness boundary
+
+The journal is analysis-only.
+
+It does not change:
+
+```text
+scanner execution logic
+VSA detectors
+scoring weights
+thresholds
+ranking
+qualification
+actionability
+API analysis output
+frontend decisions
+broker integration
+order placement
+position sizing
+```
+
+The validation outcome is a study aid for improving market reading. It must not be interpreted as a backtest result or used as automatic trading logic.
+
+## Current implementation
+
+`decision_journal.py` adds:
+
+```text
+BarObservation
+DecisionJournalEntry
+DecisionJournalEvaluation
+DecisionJournalStore
+ValidationOutcome
+create_journal_entry
+evaluate_journal_entry
+```
+
+`DecisionJournalStore` persists compact journal files under:
+
+```text
+state/decision_journal/
+```
+
+The store uses atomic JSON writes and deterministic entry IDs so the same context can be safely upserted instead of duplicated.
+
+## Future integration path
+
+Recommended follow-up PRs:
+
+1. Wire journal-entry creation into FastAPI after confirmed `DecisionContext` creation.
+2. Add an API endpoint to list/evaluate journal entries for a symbol.
+3. Render journal outcomes in the React/Next.js VSA Story panel.
+4. Add developing/live-bar validation later, clearly separated from confirmed weekly signals.
+5. Add market-data provider abstractions before any Upstox read-only data source is introduced.
+
+No broker order scope should be added to this feature.

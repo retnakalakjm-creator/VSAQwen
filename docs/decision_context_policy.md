@@ -119,6 +119,27 @@ Recent story events can select matching chart evidence or structural swings when
 
 The frontend panel does not call broker APIs, place orders, size positions, or change scanner interpretation rules.
 
+## Live validation journal boundary
+
+`decision_journal.py` adds the foundation for comparing a saved confirmed `DecisionContext` with later bars.
+
+The journal stores a compact expectation snapshot, including the story headline, expected next behavior, confirmation/invalidation notes, bias, tradability, and compact support/resistance references from recent structural swing memory.
+
+Validation outcomes are analysis-only labels:
+
+```text
+confirmed
+invalidated
+mixed
+pending
+observation_only
+no_data
+```
+
+The journal must not be treated as a trading backtest, strategy profitability report, execution log, or automated decision engine. It is a study aid for reviewing whether the VSA story behaved as expected.
+
+See `docs/live_validation_journal_policy.md` for the detailed journal policy.
+
 ## Current implementation boundary
 
 `decision_context.py` adds:
@@ -134,14 +155,15 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, the React/Next.js VSA Story panel, and frontend preloading of that compact context. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, the React/Next.js VSA Story panel, frontend preloading of that compact context, and the analysis-only live validation journal foundation. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
 1. Add deeper click-through linking from story segments to chart events.
-2. Add a live validation journal comparing expected next behavior with later bars.
-3. Add a market-data provider interface.
-4. Add an Upstox read-only provider later, without order placement.
-5. Add a developing-bar/live context mode, clearly separated from confirmed signals.
+2. Wire journal-entry creation into FastAPI after confirmed `DecisionContext` creation.
+3. Add journal list/evaluation endpoints and frontend display.
+4. Add a market-data provider interface.
+5. Add an Upstox read-only provider later, without order placement.
+6. Add a developing-bar/live context mode, clearly separated from confirmed signals.
