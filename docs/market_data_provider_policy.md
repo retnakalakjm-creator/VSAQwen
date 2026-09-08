@@ -65,13 +65,15 @@ UPSTOX_PROVIDER_ENABLED=true|false
 UPSTOX_ACCESS_TOKEN_ENV=UPSTOX_ACCESS_TOKEN
 UPSTOX_API_BASE_URL=<optional read-only API base URL>
 UPSTOX_SYMBOL_MAP=RELIANCE.NS=NSE_EQ|INE002A01018,TCS.NS=NSE_EQ|INE467B01029
+UPSTOX_MAX_RETRIES=2
+UPSTOX_RETRY_BACKOFF_SECONDS=0.5
 ```
 
 `UPSTOX_ACCESS_TOKEN_ENV` stores the name of the environment variable that contains a token. It must not contain the token value itself. Repository files, decision-context files, journal files, and frontend config must not store broker credentials.
 
 `UPSTOX_SYMBOL_MAP` stores local-symbol to Upstox-instrument-key mappings. The map is configuration only; it must not include credentials, order identifiers, account identifiers, or position data.
 
-Invalid provider names, invalid boolean values, and malformed symbol-map entries should fail fast rather than silently changing market-data behavior.
+Invalid provider names, invalid boolean values, malformed symbol-map entries, negative retry counts, and negative backoff values should fail fast rather than silently changing market-data behavior.
 
 ## API runtime selection boundary
 
@@ -116,6 +118,16 @@ Volume
 ```
 
 `data.py` still owns canonical normalization to lowercase columns, validation, caching, weekly resampling, and completed weekly bar filtering.
+
+## Rate-limit, retry, and stale-cache boundary
+
+Provider transport failures are classified before they reach the scanner. HTTP 429 responses are surfaced as rate-limit errors, while non-429 HTTP and URL failures are surfaced as transport errors.
+
+Upstox retry behavior is bounded by `UPSTOX_MAX_RETRIES` and `UPSTOX_RETRY_BACKOFF_SECONDS`. Retries apply only to provider transport/rate-limit failures and must remain outside scanner loops.
+
+If a cached dataset already exists and an incremental refresh fails, `data.download_data()` returns the validated stale cache and records the failure reason in the cache metadata sidecar. This keeps the local UI usable during temporary provider/rate-limit outages without silently rewriting scanner rules.
+
+First-time historical downloads still fail if the provider cannot return enough valid data, because no safe cache baseline exists yet.
 
 ## Ownership boundary
 

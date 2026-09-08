@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import time as time_module
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Callable, Mapping, Protocol
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -18,13 +20,18 @@ UPSTOX_ENABLED_ENV = "UPSTOX_PROVIDER_ENABLED"
 UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV = "UPSTOX_ACCESS_TOKEN_ENV"
 UPSTOX_API_BASE_URL_ENV = "UPSTOX_API_BASE_URL"
 UPSTOX_SYMBOL_MAP_ENV = "UPSTOX_SYMBOL_MAP"
+UPSTOX_MAX_RETRIES_ENV = "UPSTOX_MAX_RETRIES"
+UPSTOX_RETRY_BACKOFF_SECONDS_ENV = "UPSTOX_RETRY_BACKOFF_SECONDS"
 DEFAULT_UPSTOX_ACCESS_TOKEN_ENV = "UPSTOX_ACCESS_TOKEN"
 DEFAULT_UPSTOX_API_BASE_URL = "https://api.upstox.com"
 DEFAULT_UPSTOX_MAX_HISTORY_DAYS = 3650
+DEFAULT_UPSTOX_MAX_RETRIES = 2
+DEFAULT_UPSTOX_RETRY_BACKOFF_SECONDS = 0.5
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off", ""})
 HttpGet = Callable[[str, Mapping[str, str]], bytes]
+Sleep = Callable[[float], None]
 
 
 class MarketDataProvider(Protocol):
@@ -50,6 +57,14 @@ class MarketDataProvider(Protocol):
 
 class MarketDataProviderError(RuntimeError):
     """Raised when a configured market-data provider cannot serve data safely."""
+
+
+class MarketDataRateLimitError(MarketDataProviderError):
+    """Raised when a provider reports a temporary rate-limit condition."""
+
+
+class MarketDataTransportError(MarketDataProviderError):
+    """Raised when provider transport fails before a valid payload is returned."""
 
 
 class UnsupportedMarketDataProviderError(ValueError):
@@ -82,8 +97,16 @@ class YFinanceMarketDataProvider:
 
 def _default_http_get(url: str, headers: Mapping[str, str]) -> bytes:
     request = Request(url, headers=dict(headers), method="GET")
-    with urlopen(request, timeout=30) as response:  # noqa: S310 - explicit user-configured market-data URL.
-        return response.read()
+    try:
+        with urlopen(request, timeout=30) as response:  # noqa: S310 - explicit user-configured market-data URL.
+            return response.read()
+    except HTTPError as exc:
+        message = f"Upstox HTTP {exc.code}: {exc.reason}"
+        if exc.code == 429:
+            raise MarketDataRateLimitError(f"Upstox rate limit exceeded: {message}") from exc
+        raise MarketDataTransportError(message) from exc
+    except URLError as exc:
+        raise MarketDataTransportError(f"Upstox transport error: {exc.reason}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +122,16 @@ class UpstoxProviderConfig:
     access_token_env: str = DEFAULT_UPSTOX_ACCESS_TOKEN_ENV
     api_base_url: str | None = None
     symbol_map: Mapping[str, str] = field(default_factory=dict)
+    max_retries: int = DEFAULT_UPSTOX_MAX_RETRIES
+    retry_backoff_seconds: float = DEFAULT_UPSTOX_RETRY_BACKOFF_SECONDS
     http_get: HttpGet = field(default=_default_http_get, repr=False, compare=False)
+    sleep: Sleep = field(default=time_module.sleep, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.max_retries < 0:
+            raise ValueError("max_retries must be greater than or equal to zero")
+        if self.retry_backoff_seconds < 0:
+            raise ValueError("retry_backoff_seconds must be greater than or equal to zero")
 
     def access_token(self) -> str | None:
         """Return a token from the environment, if configured externally."""
@@ -179,7 +211,14 @@ class UpstoxMarketDataProvider:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}",
         }
-        payload = self.config.http_get(url, headers)
+        payload = _http_get_with_retries(
+            self.config.http_get,
+            url,
+            headers,
+            max_retries=self.config.max_retries,
+            backoff_seconds=self.config.retry_backoff_seconds,
+            sleep=self.config.sleep,
+        )
         return _upstox_candles_to_frame(payload)
 
 
@@ -207,6 +246,32 @@ def _env_bool(env: Mapping[str, str], name: str, *, default: bool = False) -> bo
         f"{name} must be one of: "
         "1, true, yes, on, 0, false, no, off"
     )
+
+
+def _env_int(env: Mapping[str, str], name: str, *, default: int) -> int:
+    raw = _env_value(env, name)
+    if raw == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if value < 0:
+        raise ValueError(f"{name} must be greater than or equal to zero")
+    return value
+
+
+def _env_float(env: Mapping[str, str], name: str, *, default: float) -> float:
+    raw = _env_value(env, name)
+    if raw == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if value < 0:
+        raise ValueError(f"{name} must be greater than or equal to zero")
+    return value
 
 
 def _parse_symbol_map(value: str) -> dict[str, str]:
@@ -269,6 +334,27 @@ def _upstox_historical_daily_url(
         f"{base_url}/v3/historical-candle/"
         f"{encoded_key}/days/1/{to_date.isoformat()}/{from_date.isoformat()}"
     )
+
+
+def _http_get_with_retries(
+    http_get: HttpGet,
+    url: str,
+    headers: Mapping[str, str],
+    *,
+    max_retries: int,
+    backoff_seconds: float,
+    sleep: Sleep,
+) -> bytes:
+    """Call a provider HTTP function with bounded retry for transient failures."""
+    for attempt in range(max_retries + 1):
+        try:
+            return http_get(url, headers)
+        except (MarketDataRateLimitError, MarketDataTransportError):
+            if attempt >= max_retries:
+                raise
+            if backoff_seconds > 0:
+                sleep(backoff_seconds * (2**attempt))
+    raise AssertionError("unreachable retry state")
 
 
 def _upstox_candles_to_frame(payload: bytes | str | Mapping[str, object]) -> pd.DataFrame:
@@ -353,6 +439,16 @@ def create_market_data_provider_from_env(
         access_token_env=token_env,
         api_base_url=api_base_url,
         symbol_map=symbol_map,
+        max_retries=_env_int(
+            source,
+            UPSTOX_MAX_RETRIES_ENV,
+            default=DEFAULT_UPSTOX_MAX_RETRIES,
+        ),
+        retry_backoff_seconds=_env_float(
+            source,
+            UPSTOX_RETRY_BACKOFF_SECONDS_ENV,
+            default=DEFAULT_UPSTOX_RETRY_BACKOFF_SECONDS,
+        ),
     )
     return create_market_data_provider(
         PROVIDER_UPSTOX,
@@ -371,14 +467,20 @@ __all__ = [
     "DEFAULT_MARKET_DATA_PROVIDER",
     "DEFAULT_UPSTOX_ACCESS_TOKEN_ENV",
     "DEFAULT_UPSTOX_API_BASE_URL",
+    "DEFAULT_UPSTOX_MAX_RETRIES",
+    "DEFAULT_UPSTOX_RETRY_BACKOFF_SECONDS",
     "MARKET_DATA_PROVIDER_ENV",
     "MarketDataProvider",
     "MarketDataProviderError",
+    "MarketDataRateLimitError",
+    "MarketDataTransportError",
     "PROVIDER_UPSTOX",
     "PROVIDER_YFINANCE",
     "UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV",
     "UPSTOX_API_BASE_URL_ENV",
     "UPSTOX_ENABLED_ENV",
+    "UPSTOX_MAX_RETRIES_ENV",
+    "UPSTOX_RETRY_BACKOFF_SECONDS_ENV",
     "UPSTOX_SYMBOL_MAP_ENV",
     "UnsupportedMarketDataProviderError",
     "UpstoxMarketDataProvider",

@@ -10,14 +10,19 @@ from config import DEFAULT_PERIOD
 from market_data import (
     DEFAULT_UPSTOX_ACCESS_TOKEN_ENV,
     DEFAULT_UPSTOX_API_BASE_URL,
+    DEFAULT_UPSTOX_MAX_RETRIES,
+    DEFAULT_UPSTOX_RETRY_BACKOFF_SECONDS,
     MARKET_DATA_PROVIDER_ENV,
     PROVIDER_UPSTOX,
     PROVIDER_YFINANCE,
     UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV,
     UPSTOX_API_BASE_URL_ENV,
     UPSTOX_ENABLED_ENV,
+    UPSTOX_MAX_RETRIES_ENV,
+    UPSTOX_RETRY_BACKOFF_SECONDS_ENV,
     UPSTOX_SYMBOL_MAP_ENV,
     MarketDataProviderError,
+    MarketDataRateLimitError,
     UpstoxMarketDataProvider,
     UpstoxProviderConfig,
     YFinanceMarketDataProvider,
@@ -65,6 +70,49 @@ class FakeHttpGet:
         return json.dumps(self.payload).encode("utf-8")
 
 
+class FlakyHttpGet:
+    def __init__(self, outcomes: list[dict[str, object] | Exception]) -> None:
+        self._outcomes = list(outcomes)
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(self, url: str, headers: dict[str, str]) -> bytes:
+        self.calls.append({"url": url, "headers": headers})
+        if not self._outcomes:
+            raise AssertionError("HTTP fake was called more times than expected")
+        outcome = self._outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return json.dumps(outcome).encode("utf-8")
+
+
+class InitialThenRateLimitedProvider:
+    name = "rate_limited"
+
+    def __init__(self, initial: pd.DataFrame) -> None:
+        self.initial = initial
+        self.calls: list[dict[str, object]] = []
+
+    def download_daily(
+        self,
+        symbol: str,
+        *,
+        period: str,
+        interval: str,
+        auto_adjust: bool,
+    ) -> pd.DataFrame:
+        self.calls.append(
+            {
+                "symbol": symbol,
+                "period": period,
+                "interval": interval,
+                "auto_adjust": auto_adjust,
+            }
+        )
+        if period == DEFAULT_PERIOD:
+            return self.initial
+        raise MarketDataRateLimitError("rate limit during incremental refresh")
+
+
 def _raw_daily_frame(
     start: str,
     periods: int,
@@ -83,6 +131,18 @@ def _raw_daily_frame(
         },
         index=index,
     )
+
+
+def _upstox_payload() -> dict[str, object]:
+    return {
+        "status": "success",
+        "data": {
+            "candles": [
+                ["2025-01-03T00:00:00+05:30", 103.0, 108.0, 101.0, 106.0, 3000],
+                ["2025-01-02T00:00:00+05:30", 100.0, 105.0, 99.0, 104.0, 2000],
+            ]
+        },
+    }
 
 
 def test_download_data_uses_injected_provider_for_initial_history(
@@ -148,6 +208,28 @@ def test_download_data_uses_injected_provider_for_incremental_refresh(
     assert metadata.format == data.CACHE_FORMAT_CSV
 
 
+def test_download_data_records_stale_cache_when_provider_rate_limited(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(data, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(data, "_parquet_engine_available", lambda: False)
+    initial = _raw_daily_frame("2025-01-01", data.MIN_DAILY_BARS + 5)
+    provider = InitialThenRateLimitedProvider(initial)
+
+    cached = data.download_data("TEST.NS", provider=provider)
+    refreshed = data.download_data("TEST.NS", refresh=True, provider=provider)
+
+    assert refreshed.equals(cached)
+    assert provider.calls[1]["period"] == data.INCREMENTAL_PERIOD
+
+    metadata = data.read_cache_metadata("TEST.NS")
+    assert metadata is not None
+    assert metadata.source == "stale_cache"
+    assert metadata.stale_reason is not None
+    assert "rate limit" in metadata.stale_reason
+
+
 def test_default_provider_remains_yfinance() -> None:
     provider = resolve_market_data_provider()
 
@@ -193,6 +275,8 @@ def test_env_provider_resolver_selects_upstox_only_when_explicit() -> None:
             UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV: "PROVSA_TEST_UPSTOX_TOKEN",
             UPSTOX_API_BASE_URL_ENV: "https://example.test/upstox",
             UPSTOX_SYMBOL_MAP_ENV: "TEST.NS=NSE_EQ|INE000000000",
+            UPSTOX_MAX_RETRIES_ENV: "3",
+            UPSTOX_RETRY_BACKOFF_SECONDS_ENV: "0.25",
         }
     )
 
@@ -202,6 +286,8 @@ def test_env_provider_resolver_selects_upstox_only_when_explicit() -> None:
     assert provider.config.access_token_env == "PROVSA_TEST_UPSTOX_TOKEN"
     assert provider.config.api_base_url == "https://example.test/upstox"
     assert provider.config.symbol_map["TEST.NS"] == "NSE_EQ|INE000000000"
+    assert provider.config.max_retries == 3
+    assert provider.config.retry_backoff_seconds == 0.25
 
     with pytest.raises(MarketDataProviderError, match="disabled"):
         provider.download_daily(
@@ -223,6 +309,8 @@ def test_env_provider_resolver_can_enable_upstox_without_io_when_token_missing()
     assert isinstance(provider, UpstoxMarketDataProvider)
     assert provider.config.enabled is True
     assert provider.config.access_token_env == DEFAULT_UPSTOX_ACCESS_TOKEN_ENV
+    assert provider.config.max_retries == DEFAULT_UPSTOX_MAX_RETRIES
+    assert provider.config.retry_backoff_seconds == DEFAULT_UPSTOX_RETRY_BACKOFF_SECONDS
 
     with pytest.raises(MarketDataProviderError, match="access token is missing"):
         provider.download_daily(
@@ -235,17 +323,7 @@ def test_env_provider_resolver_can_enable_upstox_without_io_when_token_missing()
 
 def test_upstox_provider_downloads_daily_ohlcv_read_only(monkeypatch) -> None:
     monkeypatch.setenv("PROVSA_TEST_UPSTOX_TOKEN", "token-from-env")
-    http_get = FakeHttpGet(
-        {
-            "status": "success",
-            "data": {
-                "candles": [
-                    ["2025-01-03T00:00:00+05:30", 103.0, 108.0, 101.0, 106.0, 3000],
-                    ["2025-01-02T00:00:00+05:30", 100.0, 105.0, 99.0, 104.0, 2000],
-                ]
-            },
-        }
-    )
+    http_get = FakeHttpGet(_upstox_payload())
     provider = UpstoxMarketDataProvider(
         UpstoxProviderConfig(
             enabled=True,
@@ -272,6 +350,67 @@ def test_upstox_provider_downloads_daily_ohlcv_read_only(monkeypatch) -> None:
         "https://example.test/v3/historical-candle/NSE_EQ%7CINE000000000/days/1/"
     )
     assert call["headers"]["Authorization"] == "Bearer token-from-env"
+
+
+def test_upstox_provider_retries_rate_limit_then_downloads(monkeypatch) -> None:
+    monkeypatch.setenv("PROVSA_TEST_UPSTOX_TOKEN", "token-from-env")
+    http_get = FlakyHttpGet(
+        [
+            MarketDataRateLimitError("rate limit"),
+            _upstox_payload(),
+        ]
+    )
+    sleeps: list[float] = []
+    provider = UpstoxMarketDataProvider(
+        UpstoxProviderConfig(
+            enabled=True,
+            access_token_env="PROVSA_TEST_UPSTOX_TOKEN",
+            api_base_url="https://example.test",
+            max_retries=1,
+            retry_backoff_seconds=0.25,
+            http_get=http_get,
+            sleep=sleeps.append,
+        )
+    )
+
+    result = provider.download_daily(
+        "NSE_EQ|INE000000000",
+        period="10d",
+        interval="1d",
+        auto_adjust=False,
+    )
+
+    assert result.iloc[0]["Close"] == 104.0
+    assert len(http_get.calls) == 2
+    assert sleeps == [0.25]
+
+
+def test_upstox_provider_raises_after_retry_budget(monkeypatch) -> None:
+    monkeypatch.setenv("PROVSA_TEST_UPSTOX_TOKEN", "token-from-env")
+    http_get = FlakyHttpGet(
+        [
+            MarketDataRateLimitError("rate limit one"),
+            MarketDataRateLimitError("rate limit two"),
+        ]
+    )
+    provider = UpstoxMarketDataProvider(
+        UpstoxProviderConfig(
+            enabled=True,
+            access_token_env="PROVSA_TEST_UPSTOX_TOKEN",
+            max_retries=1,
+            retry_backoff_seconds=0.0,
+            http_get=http_get,
+        )
+    )
+
+    with pytest.raises(MarketDataRateLimitError, match="rate limit two"):
+        provider.download_daily(
+            "NSE_EQ|INE000000000",
+            period="10d",
+            interval="1d",
+            auto_adjust=False,
+        )
+    assert len(http_get.calls) == 2
 
 
 def test_upstox_provider_supports_symbol_map(monkeypatch) -> None:
@@ -353,6 +492,24 @@ def test_env_provider_resolver_rejects_invalid_bool() -> None:
             {
                 MARKET_DATA_PROVIDER_ENV: PROVIDER_UPSTOX,
                 UPSTOX_ENABLED_ENV: "sometimes",
+            }
+        )
+
+
+def test_env_provider_resolver_rejects_invalid_retry_config() -> None:
+    with pytest.raises(ValueError, match=UPSTOX_MAX_RETRIES_ENV):
+        create_market_data_provider_from_env(
+            {
+                MARKET_DATA_PROVIDER_ENV: PROVIDER_UPSTOX,
+                UPSTOX_MAX_RETRIES_ENV: "many",
+            }
+        )
+
+    with pytest.raises(ValueError, match=UPSTOX_RETRY_BACKOFF_SECONDS_ENV):
+        create_market_data_provider_from_env(
+            {
+                MARKET_DATA_PROVIDER_ENV: PROVIDER_UPSTOX,
+                UPSTOX_RETRY_BACKOFF_SECONDS_ENV: "-1",
             }
         )
 
