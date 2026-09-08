@@ -72,6 +72,14 @@ Confirmed mode should use only completed weekly bars and may support the officia
 
 Developing mode may use incomplete/live data in the future, but it must be labeled as developing context only. Developing observations can warn the user that demand/supply may be forming, but they must not be treated as confirmed VSA signals.
 
+## API integration boundary
+
+FastAPI analysis builds and returns `decision_context` in the `AnalysisDTO` response and saves the same compact JSON context locally through `DecisionContextStore`.
+
+FastAPI analysis also routes latest-symbol scanning through `production_scanner.scan_latest_candidate_production()`. That path bootstraps with a full point-in-time scan when no valid scanner state exists, then resumes from persisted scanner state on later calls. A guarded full-replay fallback remains enabled by default when scanner state is missing, invalid, or incompatible.
+
+The API uses confirmed weekly bars for this official decision context. Developing/live-bar context remains future work and must be labeled separately when added.
+
 ## Current implementation boundary
 
 `decision_context.py` adds:
@@ -87,17 +95,15 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-FastAPI analysis responses now include a `decision_context` object and save the same compact JSON context locally through `DecisionContextStore`.
-
-This API integration still uses the existing point-in-time scanner path. It does not yet switch FastAPI to the production incremental scanner path, add WebSockets, add developing-bar live mode, or render the story in the React/Next.js frontend.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, and the production incremental scanner path. It is not yet rendered in the React/Next.js frontend and does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Make FastAPI use the production incremental scanner path and return saved `DecisionContext` when no new completed bar exists.
-2. Add a VSA Story panel to the React/Next.js UI.
-3. Add click-through linking from story segments to chart events.
-4. Add a live validation journal comparing expected next behavior with later bars.
-5. Add a market-data provider interface.
-6. Add an Upstox read-only provider later, without order placement.
+1. Add a VSA Story panel to the React/Next.js UI.
+2. Add click-through linking from story segments to chart events.
+3. Add a live validation journal comparing expected next behavior with later bars.
+4. Add a market-data provider interface.
+5. Add an Upstox read-only provider later, without order placement.
+6. Add a developing-bar/live context mode, clearly separated from confirmed signals.

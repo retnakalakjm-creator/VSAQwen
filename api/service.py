@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
 from data import completed_weekly_only, daily_to_weekly, download_data
@@ -11,7 +13,8 @@ from engine.columns import (
     COL_VOLUME_ANOMALY,
 )
 from metrics_engine import MetricsEngine
-from scanner import ScannerEngine
+from production_scanner import scan_latest_candidate_production
+from scanner_state import ScannerStateStore
 
 from .schemas import (
     AnalysisDTO,
@@ -33,10 +36,16 @@ class ProVSAService:
     def __init__(
         self,
         decision_context_store: DecisionContextStore | None = None,
+        scanner_state_store: ScannerStateStore | None = None,
         *,
+        scanner_state_root: str | Path = "state",
+        allow_full_replay_fallback: bool = True,
         persist_decision_context: bool = True,
     ) -> None:
         self._decision_context_store = decision_context_store or DecisionContextStore()
+        self._scanner_state_store = scanner_state_store
+        self._scanner_state_root = scanner_state_root
+        self._allow_full_replay_fallback = allow_full_replay_fallback
         self._persist_decision_context = persist_decision_context
 
     def analyze_symbol(self, symbol: str) -> AnalysisDTO:
@@ -48,14 +57,27 @@ class ProVSAService:
         weekly = completed_weekly_only(daily_to_weekly(daily))
         metrics = MetricsEngine().calculate(weekly)
 
-        scanner = ScannerEngine()
+        timeframe = "1W"
         target_index = len(metrics) - 1
-        candidate = scanner.scan_to_index(metrics, target_index)
+        candidate = scan_latest_candidate_production(
+            metrics,
+            symbol=symbol,
+            timeframe=timeframe,
+            state_store=self._scanner_state_store,
+            state_root=self._scanner_state_root,
+            allow_full_replay_fallback=self._allow_full_replay_fallback,
+        )
+        if candidate is None:
+            raise ValueError(
+                "not enough completed weekly bars to analyze symbol through "
+                "the production scanner path"
+            )
+
         trend = candidate.evidence.context.trend
         decision_context = build_decision_context(
             candidate,
             symbol=symbol,
-            timeframe="1W",
+            timeframe=timeframe,
         )
         if self._persist_decision_context:
             self._decision_context_store.save(decision_context)
@@ -68,7 +90,7 @@ class ProVSAService:
 
         return AnalysisDTO(
             symbol=symbol,
-            timeframe="1W",
+            timeframe=timeframe,
             latest_bar_index=target_index,
             latest_week=str(metrics.iloc[target_index]["week_beginning"]),
             bars=[self._bar(row, index) for index, (_, row) in enumerate(metrics.iterrows())],

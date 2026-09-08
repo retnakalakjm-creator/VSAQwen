@@ -11,6 +11,7 @@ from engine.columns import (
     COL_PRICE_GAP_RATIO,
     COL_VOLUME_ANOMALY,
 )
+from scanner_state import ScannerStateStore
 import api.service as service_module
 from api.service import ProVSAService
 
@@ -92,20 +93,56 @@ def test_api_analysis_reports_bar_signal_and_decision_context_metadata(
             assert list(weekly["week_beginning"]) == list(_weekly_frame()["week_beginning"])
             return _metrics_frame()
 
-    class FakeScannerEngine:
-        def scan_to_index(self, metrics: pd.DataFrame, target_index: int):
-            assert target_index == 1
-            assert bool(metrics.iloc[target_index][COL_CORPORATE_ACTION_ANOMALY])
-            return _fake_candidate()
+    scanner_store = ScannerStateStore(tmp_path / "scanner_state")
+    production_calls: list[dict[str, object]] = []
+
+    def fake_scan_latest_candidate_production(
+        metrics: pd.DataFrame,
+        *,
+        symbol: str,
+        timeframe: str,
+        state_store: ScannerStateStore | None,
+        state_root: str,
+        allow_full_replay_fallback: bool,
+    ):
+        production_calls.append(
+            {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "state_store": state_store,
+                "state_root": state_root,
+                "allow_full_replay_fallback": allow_full_replay_fallback,
+            }
+        )
+        assert len(metrics) == 2
+        assert bool(metrics.iloc[1][COL_CORPORATE_ACTION_ANOMALY])
+        return _fake_candidate()
 
     monkeypatch.setattr(service_module, "download_data", lambda symbol: pd.DataFrame())
     monkeypatch.setattr(service_module, "daily_to_weekly", lambda daily: _weekly_frame())
     monkeypatch.setattr(service_module, "completed_weekly_only", lambda weekly: weekly)
     monkeypatch.setattr(service_module, "MetricsEngine", lambda: FakeMetricsEngine())
-    monkeypatch.setattr(service_module, "ScannerEngine", lambda: FakeScannerEngine())
+    monkeypatch.setattr(
+        service_module,
+        "scan_latest_candidate_production",
+        fake_scan_latest_candidate_production,
+    )
 
-    store = DecisionContextStore(tmp_path)
-    result = ProVSAService(decision_context_store=store).analyze_symbol(" test.ns ")
+    store = DecisionContextStore(tmp_path / "decision_context")
+    result = ProVSAService(
+        decision_context_store=store,
+        scanner_state_store=scanner_store,
+    ).analyze_symbol(" test.ns ")
+
+    assert production_calls == [
+        {
+            "symbol": "TEST.NS",
+            "timeframe": "1W",
+            "state_store": scanner_store,
+            "state_root": "state",
+            "allow_full_replay_fallback": True,
+        }
+    ]
 
     assert result.symbol == "TEST.NS"
     assert result.anomaly_bar_indices == [1]
