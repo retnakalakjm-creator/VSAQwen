@@ -173,6 +173,8 @@ See `docs/live_validation_journal_policy.md` for the detailed journal policy.
 
 The default provider remains yfinance. The provider layer only retrieves raw daily OHLCV payloads; `data.py` still owns normalization, validation, caching, daily-to-weekly resampling, and completed weekly bar filtering.
 
+`UpstoxMarketDataProvider` is now present only as an explicit disabled scaffold. It does not download data yet, is not selected automatically, and must not add broker/order scope when completed.
+
 Future providers must not bypass confirmed-bar rules or add broker/order scope.
 
 See `docs/market_data_provider_policy.md` for the detailed provider boundary.
@@ -192,11 +194,11 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, frontend read-only journal outcome display, journal-to-chart/context click-through, and a read-only market-data provider interface. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, frontend read-only journal outcome display, journal-to-chart/context click-through, a read-only market-data provider interface, and a disabled Upstox provider scaffold. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Add an Upstox read-only provider later, without order placement.
+1. Implement read-only Upstox daily OHLCV mapping behind explicit provider tests, without order placement.
 2. Add a developing-bar/live context mode, clearly separated from confirmed signals.

@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 import data
 from config import DEFAULT_PERIOD
+from market_data import (
+    PROVIDER_UPSTOX,
+    PROVIDER_YFINANCE,
+    MarketDataProviderError,
+    UpstoxMarketDataProvider,
+    UpstoxProviderConfig,
+    YFinanceMarketDataProvider,
+    create_market_data_provider,
+    resolve_market_data_provider,
+)
 
 
 class FakeMarketDataProvider:
@@ -115,3 +126,45 @@ def test_download_data_uses_injected_provider_for_incremental_refresh(
     assert metadata is not None
     assert metadata.source == "incremental_refresh"
     assert metadata.format == data.CACHE_FORMAT_CSV
+
+
+def test_default_provider_remains_yfinance() -> None:
+    provider = resolve_market_data_provider()
+
+    assert isinstance(provider, YFinanceMarketDataProvider)
+    assert provider.name == PROVIDER_YFINANCE
+
+
+def test_create_provider_keeps_yfinance_as_default() -> None:
+    assert create_market_data_provider().name == PROVIDER_YFINANCE
+    assert create_market_data_provider(" yfinance ").name == PROVIDER_YFINANCE
+
+
+def test_upstox_provider_is_explicit_and_disabled_by_default() -> None:
+    provider = create_market_data_provider(PROVIDER_UPSTOX)
+
+    assert isinstance(provider, UpstoxMarketDataProvider)
+    assert provider.name == PROVIDER_UPSTOX
+    assert provider.config.enabled is False
+
+    with pytest.raises(MarketDataProviderError, match="disabled"):
+        provider.download_daily(
+            "TEST.NS",
+            period="5y",
+            interval="1d",
+            auto_adjust=False,
+        )
+
+
+def test_upstox_config_references_env_token_without_storing_secret(monkeypatch) -> None:
+    monkeypatch.setenv("PROVSA_TEST_UPSTOX_TOKEN", "  token-from-env  ")
+    config = UpstoxProviderConfig(access_token_env="PROVSA_TEST_UPSTOX_TOKEN")
+
+    assert config.access_token_env == "PROVSA_TEST_UPSTOX_TOKEN"
+    assert config.access_token() == "token-from-env"
+    assert "token-from-env" not in repr(config)
+
+
+def test_unknown_provider_name_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unsupported market data provider"):
+        create_market_data_provider("broker")
