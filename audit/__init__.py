@@ -7,4 +7,5 @@ Available modules:
 
 - ``audit.outcomes``: next-bar-execution forward outcome calculations.
 - ``audit.candidates``: flat candidate outcome dataset generation.
+- ``audit.calibration``: grouped outcome summaries for evidence calibration.
 """
