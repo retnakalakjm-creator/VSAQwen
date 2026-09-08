@@ -151,6 +151,62 @@ class DecisionContextDTO(BaseModel):
     evaluated_at_utc: str
 
 
+class DecisionJournalEntryDTO(BaseModel):
+    schema_version: int
+    entry_id: str
+    symbol: str
+    timeframe: str
+    source_context_week: str | None
+    source_context_bar_index: int | None
+    source_context_evaluated_at_utc: str
+    created_at_utc: str
+    phase: str
+    bias: str
+    tradability: str
+    decision: str
+    confidence: float
+    net_pressure: float
+    headline: str
+    summary: str
+    confirmation_condition: str
+    invalidation_condition: str
+    expected_next_behavior: list[str]
+    support_price: float | None
+    resistance_price: float | None
+    reference_price: float | None
+    status: str
+
+
+class DecisionJournalDTO(BaseModel):
+    symbol: str
+    timeframe: str
+    entries: list[DecisionJournalEntryDTO]
+
+
+class DecisionJournalEvaluationDTO(BaseModel):
+    entry_id: str
+    symbol: str
+    timeframe: str
+    outcome: str
+    checked_bars: int
+    first_checked_week: str | None
+    last_checked_week: str | None
+    confirmation_hit: bool
+    invalidation_hit: bool
+    favorable_move_pct: float | None
+    adverse_move_pct: float | None
+    notes: str
+
+
+class DecisionJournalEvaluationResponseDTO(BaseModel):
+    symbol: str
+    timeframe: str
+    horizon_bars: int
+    latest_week: str
+    persist_status: bool = False
+    evaluations: list[DecisionJournalEvaluationDTO]
+
+
 class AnalysisDTO(BaseModel):
     symbol: str
     timeframe: str

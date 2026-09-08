@@ -3,7 +3,15 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .schemas import AnalysisDTO, DecisionContextDTO, HealthDTO
+from decision_journal import DEFAULT_VALIDATION_HORIZON_BARS
+
+from .schemas import (
+    AnalysisDTO,
+    DecisionContextDTO,
+    DecisionJournalDTO,
+    DecisionJournalEvaluationResponseDTO,
+    HealthDTO,
+)
 from .service import ProVSAService
 
 app = FastAPI(title="ProVSA API", version="1.0")
@@ -45,3 +53,34 @@ def symbol_decision_context(symbol: str) -> DecisionContextDTO:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Decision context failed") from exc
+
+
+@app.get("/api/symbols/{symbol}/decision-journal", response_model=DecisionJournalDTO)
+def symbol_decision_journal(symbol: str) -> DecisionJournalDTO:
+    try:
+        return _service.decision_journal_for_symbol(symbol)
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Decision journal failed") from exc
+
+
+@app.get(
+    "/api/symbols/{symbol}/decision-journal/evaluations",
+    response_model=DecisionJournalEvaluationResponseDTO,
+)
+def symbol_decision_journal_evaluations(
+    symbol: str,
+    horizon_bars: int = DEFAULT_VALIDATION_HORIZON_BARS,
+    persist_status: bool = False,
+) -> DecisionJournalEvaluationResponseDTO:
+    try:
+        return _service.evaluate_decision_journal_for_symbol(
+            symbol,
+            horizon_bars=horizon_bars,
+            persist_status=persist_status,
+        )
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Decision journal evaluation failed") from exc

@@ -88,9 +88,18 @@ That endpoint checks the latest completed weekly bar identity. If the saved conf
 
 Freshly rebuilt confirmed contexts also upsert a compact `DecisionJournalEntry` through `DecisionJournalStore`. Cached decision-context responses do not create duplicate journal entries because no new analysis was performed.
 
+The API also exposes journal endpoints:
+
+```text
+GET /api/symbols/{symbol}/decision-journal
+GET /api/symbols/{symbol}/decision-journal/evaluations
+```
+
+The journal list endpoint returns saved compact expectation snapshots. The evaluation endpoint compares those snapshots with completed weekly bars. Evaluation is read-only by default and only updates saved journal statuses when `persist_status=true` is explicitly passed.
+
 The fast path is intentionally narrower than the full analysis endpoint. It returns only the compact decision context, not full bars, all evidence, structural swings, or chart-ready analysis payloads.
 
-The API uses confirmed weekly bars for this official decision context. Developing/live-bar context remains future work and must be labeled separately when added.
+The API uses confirmed weekly bars for this official decision context and journal evaluation. Developing/live-bar context remains future work and must be labeled separately when added.
 
 ## Frontend integration boundary
 
@@ -157,14 +166,14 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, the React/Next.js VSA Story panel, frontend preloading of that compact context, and analysis-only live validation journal entry creation for refreshed contexts. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, and frontend preloading of that compact context. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
 1. Add deeper click-through linking from story segments to chart events.
-2. Add journal list/evaluation endpoints and frontend display.
+2. Render journal entries and evaluation outcomes in the frontend.
 3. Add a market-data provider interface.
 4. Add an Upstox read-only provider later, without order placement.
 5. Add a developing-bar/live context mode, clearly separated from confirmed signals.

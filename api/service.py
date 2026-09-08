@@ -6,7 +6,14 @@ import pandas as pd
 
 from data import completed_weekly_only, daily_to_weekly, download_data
 from decision_context import DecisionContext, DecisionContextStore, build_decision_context
-from decision_journal import DecisionJournalStore, create_journal_entry
+from decision_journal import (
+    DEFAULT_VALIDATION_HORIZON_BARS,
+    DecisionJournalEntry,
+    DecisionJournalEvaluation,
+    DecisionJournalStore,
+    create_journal_entry,
+    evaluate_journal_entry,
+)
 from engine.columns import (
     COL_CORPORATE_ACTION_ANOMALY,
     COL_PRICE_ANOMALY,
@@ -21,6 +28,10 @@ from .schemas import (
     AnalysisDTO,
     BarDTO,
     DecisionContextDTO,
+    DecisionJournalDTO,
+    DecisionJournalEntryDTO,
+    DecisionJournalEvaluationDTO,
+    DecisionJournalEvaluationResponseDTO,
     EvidenceDTO,
     HealthDTO,
     ProfessionalScoreDTO,
@@ -90,6 +101,68 @@ class ProVSAService:
         if analysis.decision_context is None:
             raise ValueError("analysis did not produce a decision context")
         return analysis.decision_context
+
+    def decision_journal_for_symbol(self, symbol: str) -> DecisionJournalDTO:
+        """Return saved compact journal entries without running analysis."""
+        symbol = self._normalize_symbol(symbol)
+        entries = self._decision_journal_store.load_all(
+            symbol,
+            DEFAULT_API_TIMEFRAME,
+        )
+        return DecisionJournalDTO(
+            symbol=symbol,
+            timeframe=DEFAULT_API_TIMEFRAME,
+            entries=[self._decision_journal_entry_dto(entry) for entry in entries],
+        )
+
+    def evaluate_decision_journal_for_symbol(
+        self,
+        symbol: str,
+        *,
+        horizon_bars: int = DEFAULT_VALIDATION_HORIZON_BARS,
+        persist_status: bool = False,
+    ) -> DecisionJournalEvaluationResponseDTO:
+        """Evaluate saved journal entries against completed weekly bars.
+
+        Evaluation is read-only by default. `persist_status=True` explicitly
+        updates stored entry statuses from the evaluation outcomes.
+        """
+        if horizon_bars <= 0:
+            raise ValueError("horizon_bars must be greater than zero")
+
+        symbol = self._normalize_symbol(symbol)
+        weekly = self._completed_weekly_for_symbol(symbol)
+        entries = self._decision_journal_store.load_all(
+            symbol,
+            DEFAULT_API_TIMEFRAME,
+        )
+        journal_bars = self._journal_bars(weekly)
+
+        evaluations: list[DecisionJournalEvaluation] = []
+        for entry in entries:
+            evaluation = evaluate_journal_entry(
+                entry,
+                journal_bars,
+                horizon_bars=horizon_bars,
+            )
+            evaluations.append(evaluation)
+            if persist_status and entry.status.value != evaluation.outcome.value:
+                self._decision_journal_store.update_status(
+                    entry,
+                    evaluation.outcome,
+                )
+
+        return DecisionJournalEvaluationResponseDTO(
+            symbol=symbol,
+            timeframe=DEFAULT_API_TIMEFRAME,
+            horizon_bars=horizon_bars,
+            latest_week=self._latest_week(weekly),
+            persist_status=persist_status,
+            evaluations=[
+                self._decision_journal_evaluation_dto(evaluation)
+                for evaluation in evaluations
+            ],
+        )
 
     def _analyze_symbol_from_weekly(
         self,
@@ -209,6 +282,32 @@ class ProVSAService:
     @staticmethod
     def _decision_context_dto(context: DecisionContext) -> DecisionContextDTO:
         return DecisionContextDTO(**context.to_dict())
+
+    @staticmethod
+    def _decision_journal_entry_dto(entry: DecisionJournalEntry) -> DecisionJournalEntryDTO:
+        return DecisionJournalEntryDTO(**entry.to_dict())
+
+    @staticmethod
+    def _decision_journal_evaluation_dto(
+        evaluation: DecisionJournalEvaluation,
+    ) -> DecisionJournalEvaluationDTO:
+        return DecisionJournalEvaluationDTO(**evaluation.to_dict())
+
+    @staticmethod
+    def _journal_bars(weekly: pd.DataFrame) -> list[dict[str, object]]:
+        return [
+            {
+                "bar_index": index,
+                "week": str(row["week_beginning"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": None
+                if "volume" not in row or pd.isna(row["volume"])
+                else float(row["volume"]),
+            }
+            for index, (_, row) in enumerate(weekly.iterrows())
+        ]
 
     @staticmethod
     def _bar(row: pd.Series, index: int) -> BarDTO:

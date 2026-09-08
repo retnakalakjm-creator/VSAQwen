@@ -63,7 +63,7 @@ Mixed, neutral, and avoid contexts are tracked as `observation_only` because the
 
 ## API persistence behavior
 
-FastAPI now creates or updates a compact journal entry whenever a confirmed `DecisionContext` is freshly rebuilt through the API analysis path.
+FastAPI creates or updates a compact journal entry whenever a confirmed `DecisionContext` is freshly rebuilt through the API analysis path.
 
 This includes:
 
@@ -77,6 +77,27 @@ A fresh cached decision-context response does not create a new journal entry bec
 The service uses `DecisionJournalStore.upsert()` so the same source context identity updates the existing journal entry instead of creating duplicates.
 
 Journal persistence is enabled by default in the local API service and can be disabled or redirected in tests by passing `persist_decision_journal=False` or a temporary `DecisionJournalStore`.
+
+## API list and evaluation behavior
+
+FastAPI exposes journal read/evaluation endpoints:
+
+```text
+GET /api/symbols/{symbol}/decision-journal
+GET /api/symbols/{symbol}/decision-journal/evaluations
+```
+
+The list endpoint returns saved compact journal entries only. It does not run scanner analysis and does not download fresh chart payloads beyond normal API routing.
+
+The evaluation endpoint compares saved journal entries with completed weekly bars and returns `DecisionJournalEvaluation` payloads. Evaluation is read-only by default so viewing the journal does not mutate saved status.
+
+To explicitly save evaluation outcomes back into the journal, callers must pass:
+
+```text
+persist_status=true
+```
+
+The evaluation endpoint accepts `horizon_bars`; invalid values such as zero or negative horizons are rejected.
 
 ## Financial correctness boundary
 
@@ -123,15 +144,14 @@ state/decision_journal/
 
 The store uses atomic JSON writes and deterministic entry IDs so the same context can be safely upserted instead of duplicated.
 
-`api.service.ProVSAService` can also receive an injected `DecisionJournalStore` and persistence flag for tests/local customization.
+`api.service.ProVSAService` can receive an injected `DecisionJournalStore` and persistence flag for tests/local customization. It can now list saved journal entries and evaluate them against completed weekly bars.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Add an API endpoint to list/evaluate journal entries for a symbol.
-2. Render journal outcomes in the React/Next.js VSA Story panel.
-3. Add developing/live-bar validation later, clearly separated from confirmed weekly signals.
-4. Add market-data provider abstractions before any Upstox read-only data source is introduced.
+1. Render journal entries and evaluation outcomes in the React/Next.js VSA Story panel.
+2. Add developing/live-bar validation later, clearly separated from confirmed weekly signals.
+3. Add market-data provider abstractions before any Upstox read-only data source is introduced.
 
 No broker order scope should be added to this feature.
