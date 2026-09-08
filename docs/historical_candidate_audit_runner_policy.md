@@ -15,7 +15,8 @@ utilities added earlier in Milestone 3:
 4. run `ScannerEngine().scan(metrics)` point-in-time,
 5. build candidate outcome rows with `audit.candidates`,
 6. optionally write `candidate_outcomes.csv`, and
-7. optionally write the calibration CSV report bundle from `audit.reports`.
+7. optionally write the calibration and stability CSV report bundle from
+   `audit.reports`.
 
 The runner is analysis-only. It must not change production scanner scoring,
 actionability, qualification, ranking, API responses, or live scanner behavior.
@@ -38,6 +39,11 @@ The default horizons are:
 1, 2, 4, 8 bars after the execution bar
 ```
 
+Use `--min-samples` for raw calibration summary groups and
+`--stability-min-samples` for confidence-aware stability groups. Use
+`--no-stability-reports` only when the stability CSVs are intentionally not
+needed.
+
 ## Output files
 
 When dataset and report writing are enabled, the output directory contains:
@@ -49,10 +55,13 @@ evidence_summary.csv
 qualification_summary.csv
 top_positive_evidence.csv
 bottom_negative_evidence.csv
+evidence_stability.csv
+top_stable_positive_evidence.csv
+top_stable_negative_evidence.csv
 ```
 
 `candidate_outcomes.csv` is the primary raw audit artifact. The other files are
-summary views for calibration review.
+summary and confidence-aware stability views for calibration review.
 
 ## Execution timing
 
@@ -77,8 +86,9 @@ Before changing production weights or disabling evidence rules:
 2. filter to completed scored rows,
 3. require enough samples per evidence group,
 4. compare multiple horizons,
-5. inspect raw rows for data-quality or corporate-action anomalies, and
-6. create a separate production calibration PR.
+5. inspect raw rows for data-quality or corporate-action anomalies,
+6. review confidence intervals and stability grades, and
+7. create a separate production calibration PR.
 
 Do not treat a small positive or negative average return from one run as proof
 that a VSA concept works or fails.

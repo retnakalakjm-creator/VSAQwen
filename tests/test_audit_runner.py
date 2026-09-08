@@ -128,6 +128,7 @@ def test_run_historical_candidate_audit_writes_dataset_and_reports(tmp_path) -> 
         horizons=[1],
         output_dir=tmp_path / "calibration",
         report_min_samples=1,
+        stability_min_samples=1,
         daily_loader=_daily_loader,
         weekly_transformer=_weekly_transformer,
         metrics_calculator=_metrics_calculator,
@@ -141,11 +142,32 @@ def test_run_historical_candidate_audit_writes_dataset_and_reports(tmp_path) -> 
     assert result.dataset_path.exists()
     assert result.report_paths is not None
     assert result.report_paths.evidence_summary.exists()
+    assert result.report_paths.evidence_stability is not None
+    assert result.report_paths.evidence_stability.exists()
     assert result.report_paths.metadata.exists()
 
     dataset = pd.read_csv(result.dataset_path)
     assert len(dataset) == 4
     assert set(dataset["symbol"]) == {"AAA.NS", "BBB.NS"}
+
+
+def test_run_historical_candidate_audit_can_skip_stability_reports(tmp_path) -> None:
+    result = run_historical_candidate_audit(
+        ["AAA.NS"],
+        horizons=[1],
+        output_dir=tmp_path / "calibration",
+        report_min_samples=1,
+        include_stability_reports=False,
+        daily_loader=_daily_loader,
+        weekly_transformer=_weekly_transformer,
+        metrics_calculator=_metrics_calculator,
+        scanner_factory=FakeScanner,
+    )
+
+    assert result.report_paths is not None
+    assert result.report_paths.evidence_stability is None
+    assert result.report_paths.top_stable_positive_evidence is None
+    assert result.report_paths.top_stable_negative_evidence is None
 
 
 def test_run_historical_candidate_audit_preserves_empty_schema(tmp_path) -> None:
@@ -154,6 +176,7 @@ def test_run_historical_candidate_audit_preserves_empty_schema(tmp_path) -> None
         horizons=[1],
         output_dir=tmp_path / "calibration",
         report_min_samples=1,
+        stability_min_samples=1,
         daily_loader=_daily_loader,
         weekly_transformer=_weekly_transformer,
         metrics_calculator=_metrics_calculator,
@@ -167,6 +190,8 @@ def test_run_historical_candidate_audit_preserves_empty_schema(tmp_path) -> None
     assert result.dataset_path.exists()
     assert result.report_paths is not None
     assert result.report_paths.evidence_summary.exists()
+    assert result.report_paths.evidence_stability is not None
+    assert result.report_paths.evidence_stability.exists()
 
     dataset = pd.read_csv(result.dataset_path)
     assert list(dataset.columns) == list(CANDIDATE_OUTCOME_COLUMNS)
@@ -220,6 +245,13 @@ def test_runner_validates_symbols_and_horizons() -> None:
     else:
         raise AssertionError("zero horizon should fail")
 
+    try:
+        run_historical_candidate_audit(["AAA.NS"], stability_min_samples=0, daily_loader=_daily_loader)
+    except ValueError as exc:
+        assert "stability_min_samples" in str(exc)
+    else:
+        raise AssertionError("zero stability_min_samples should fail")
+
 
 def test_cli_parser_accepts_expected_arguments() -> None:
     args = build_parser().parse_args(
@@ -234,9 +266,14 @@ def test_cli_parser_accepts_expected_arguments() -> None:
             "reports/calibration/test",
             "--min-samples",
             "5",
+            "--stability-min-samples",
+            "7",
+            "--stability-z-score",
+            "1.64",
             "--top-n",
             "10",
             "--drop-unscored",
+            "--no-stability-reports",
         ]
     )
 
@@ -244,5 +281,8 @@ def test_cli_parser_accepts_expected_arguments() -> None:
     assert args.horizons == [1, 4, 8]
     assert args.output == Path("reports/calibration/test")
     assert args.min_samples == 5
+    assert args.stability_min_samples == 7
+    assert args.stability_z_score == 1.64
     assert args.top_n == 10
     assert args.drop_unscored is True
+    assert args.no_stability_reports is True

@@ -16,6 +16,7 @@ import pandas as pd
 
 from audit.candidates import CandidateOutcomeRow, build_candidate_outcome_frame
 from audit.reports import CalibrationReportPaths, write_calibration_report_bundle
+from audit.stability import DEFAULT_STABILITY_MIN_SAMPLES, DEFAULT_STABILITY_Z_SCORE
 from data import completed_weekly_only, daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
 from scanner import ScannerEngine
@@ -138,6 +139,9 @@ def run_historical_candidate_audit(
     write_reports: bool = True,
     report_min_samples: int = 30,
     report_top_n: int = 25,
+    include_stability_reports: bool = True,
+    stability_min_samples: int = DEFAULT_STABILITY_MIN_SAMPLES,
+    stability_z_score: float = DEFAULT_STABILITY_Z_SCORE,
     daily_loader: DailyLoader = download_data,
     weekly_transformer: WeeklyTransformer | None = None,
     metrics_calculator: MetricsCalculator | None = None,
@@ -151,6 +155,10 @@ def run_historical_candidate_audit(
         raise ValueError("report_min_samples must be greater than zero")
     if report_top_n <= 0:
         raise ValueError("report_top_n must be greater than zero")
+    if stability_min_samples <= 0:
+        raise ValueError("stability_min_samples must be greater than zero")
+    if stability_z_score <= 0:
+        raise ValueError("stability_z_score must be greater than zero")
 
     symbol_results = tuple(
         run_symbol_candidate_audit(
@@ -181,6 +189,9 @@ def run_historical_candidate_audit(
             destination,
             min_samples=report_min_samples,
             top_n=report_top_n,
+            include_stability=include_stability_reports,
+            stability_min_samples=stability_min_samples,
+            stability_z_score=stability_z_score,
         )
 
     return HistoricalAuditResult(

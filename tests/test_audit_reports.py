@@ -58,6 +58,32 @@ def test_build_calibration_report_tables_returns_standard_bundle() -> None:
         _frame(),
         min_samples=2,
         top_n=2,
+        stability_min_samples=2,
+    )
+
+    assert set(tables) == {
+        "evidence_summary",
+        "qualification_summary",
+        "top_positive_evidence",
+        "bottom_negative_evidence",
+        "evidence_stability",
+        "top_stable_positive_evidence",
+        "top_stable_negative_evidence",
+    }
+    assert list(tables["top_positive_evidence"]["group_key"])[0] == "stopping_volume|1|long"
+    assert list(tables["bottom_negative_evidence"]["group_key"])[0] == "upthrust|1|short"
+    assert len(tables["top_positive_evidence"]) == 2
+    assert "stability_grade" in tables["evidence_stability"].columns
+    assert "ignored_latest" not in "|".join(tables["evidence_summary"]["group_key"].astype(str))
+    assert "ignored_partial" not in "|".join(tables["evidence_summary"]["group_key"].astype(str))
+
+
+def test_build_calibration_report_tables_can_skip_stability() -> None:
+    tables = build_calibration_report_tables(
+        _frame(),
+        min_samples=2,
+        top_n=2,
+        include_stability=False,
     )
 
     assert set(tables) == {
@@ -66,11 +92,6 @@ def test_build_calibration_report_tables_returns_standard_bundle() -> None:
         "top_positive_evidence",
         "bottom_negative_evidence",
     }
-    assert list(tables["top_positive_evidence"]["group_key"])[0] == "stopping_volume|1|long"
-    assert list(tables["bottom_negative_evidence"]["group_key"])[0] == "upthrust|1|short"
-    assert len(tables["top_positive_evidence"]) == 2
-    assert "ignored_latest" not in "|".join(tables["evidence_summary"]["group_key"].astype(str))
-    assert "ignored_partial" not in "|".join(tables["evidence_summary"]["group_key"].astype(str))
 
 
 def test_write_calibration_report_bundle_writes_csv_files(tmp_path) -> None:
@@ -79,6 +100,7 @@ def test_write_calibration_report_bundle_writes_csv_files(tmp_path) -> None:
         tmp_path / "reports",
         min_samples=2,
         top_n=3,
+        stability_min_samples=2,
     )
 
     assert paths.output_dir.exists()
@@ -86,19 +108,46 @@ def test_write_calibration_report_bundle_writes_csv_files(tmp_path) -> None:
     assert paths.qualification_summary.exists()
     assert paths.top_positive_evidence.exists()
     assert paths.bottom_negative_evidence.exists()
+    assert paths.evidence_stability is not None
+    assert paths.evidence_stability.exists()
+    assert paths.top_stable_positive_evidence is not None
+    assert paths.top_stable_positive_evidence.exists()
+    assert paths.top_stable_negative_evidence is not None
+    assert paths.top_stable_negative_evidence.exists()
     assert paths.metadata.exists()
 
     evidence = pd.read_csv(paths.evidence_summary)
     top_positive = pd.read_csv(paths.top_positive_evidence)
     bottom_negative = pd.read_csv(paths.bottom_negative_evidence)
+    stability = pd.read_csv(paths.evidence_stability)
     metadata = pd.read_csv(paths.metadata)
     metadata_values = dict(zip(metadata["metric"], metadata["value"], strict=True))
 
     assert evidence["sample_count"].min() >= 2
     assert top_positive.loc[0, "group_key"] == "stopping_volume|1|long"
     assert bottom_negative.loc[0, "group_key"] == "upthrust|1|short"
+    assert "stability_grade" in stability.columns
     assert int(metadata_values["source_rows"]) == 8
     assert int(metadata_values["evidence_summary_rows"]) == len(evidence)
+    assert int(metadata_values["evidence_stability_rows"]) == len(stability)
+    assert int(metadata_values["stability_min_samples"]) == 2
+
+
+def test_write_calibration_report_bundle_can_skip_stability_files(tmp_path) -> None:
+    paths = write_calibration_report_bundle(
+        _frame(),
+        tmp_path / "reports",
+        min_samples=2,
+        include_stability=False,
+    )
+
+    assert paths.evidence_stability is None
+    assert paths.top_stable_positive_evidence is None
+    assert paths.top_stable_negative_evidence is None
+    metadata = pd.read_csv(paths.metadata)
+    metadata_values = dict(zip(metadata["metric"], metadata["value"], strict=True))
+    assert metadata_values["include_stability"] == "False"
+    assert "evidence_stability_rows" not in metadata_values
 
 
 def test_report_arguments_are_validated(tmp_path) -> None:
@@ -117,3 +166,17 @@ def test_report_arguments_are_validated(tmp_path) -> None:
         assert "top_n" in str(exc)
     else:
         raise AssertionError("top_n=0 should fail")
+
+    try:
+        write_calibration_report_bundle(frame, tmp_path, stability_min_samples=0)
+    except ValueError as exc:
+        assert "stability_min_samples" in str(exc)
+    else:
+        raise AssertionError("stability_min_samples=0 should fail")
+
+    try:
+        write_calibration_report_bundle(frame, tmp_path, stability_z_score=0.0)
+    except ValueError as exc:
+        assert "stability_z_score" in str(exc)
+    else:
+        raise AssertionError("stability_z_score=0 should fail")
