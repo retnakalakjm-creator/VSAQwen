@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
-from typing import Mapping, Protocol
+from datetime import date, timedelta
+from typing import Callable, Mapping, Protocol
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import yfinance as yf
@@ -13,10 +17,14 @@ MARKET_DATA_PROVIDER_ENV = "MARKET_DATA_PROVIDER"
 UPSTOX_ENABLED_ENV = "UPSTOX_PROVIDER_ENABLED"
 UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV = "UPSTOX_ACCESS_TOKEN_ENV"
 UPSTOX_API_BASE_URL_ENV = "UPSTOX_API_BASE_URL"
+UPSTOX_SYMBOL_MAP_ENV = "UPSTOX_SYMBOL_MAP"
 DEFAULT_UPSTOX_ACCESS_TOKEN_ENV = "UPSTOX_ACCESS_TOKEN"
+DEFAULT_UPSTOX_API_BASE_URL = "https://api.upstox.com"
+DEFAULT_UPSTOX_MAX_HISTORY_DAYS = 3650
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off", ""})
+HttpGet = Callable[[str, Mapping[str, str]], bytes]
 
 
 class MarketDataProvider(Protocol):
@@ -72,28 +80,64 @@ class YFinanceMarketDataProvider:
         )
 
 
+def _default_http_get(url: str, headers: Mapping[str, str]) -> bytes:
+    request = Request(url, headers=dict(headers), method="GET")
+    with urlopen(request, timeout=30) as response:  # noqa: S310 - explicit user-configured market-data URL.
+        return response.read()
+
+
 @dataclass(frozen=True, slots=True)
 class UpstoxProviderConfig:
-    """Configuration placeholder for a future read-only Upstox data adapter.
+    """Configuration for a read-only Upstox daily OHLCV adapter.
 
     Tokens are referenced by environment-variable name only. The config never
-    stores token values and this scaffold intentionally does not implement any
-    broker/order capability.
+    stores token values and this provider intentionally exposes no broker/order
+    capability.
     """
 
     enabled: bool = False
     access_token_env: str = DEFAULT_UPSTOX_ACCESS_TOKEN_ENV
     api_base_url: str | None = None
+    symbol_map: Mapping[str, str] = field(default_factory=dict)
+    http_get: HttpGet = field(default=_default_http_get, repr=False, compare=False)
 
     def access_token(self) -> str | None:
         """Return a token from the environment, if configured externally."""
         token = os.environ.get(self.access_token_env, "").strip()
         return token or None
 
+    def base_url(self) -> str:
+        """Return the configured Upstox API base URL without a trailing slash."""
+        return (self.api_base_url or DEFAULT_UPSTOX_API_BASE_URL).rstrip("/")
+
+    def instrument_key_for(self, symbol: str) -> str:
+        """Resolve a ProVSA symbol or explicit Upstox key to an instrument key."""
+        normalized_symbol = symbol.strip()
+        if not normalized_symbol:
+            raise MarketDataProviderError("symbol is required for Upstox market data")
+        if "|" in normalized_symbol:
+            return normalized_symbol
+
+        mapped = self.symbol_map.get(normalized_symbol) or self.symbol_map.get(
+            normalized_symbol.upper()
+        )
+        if mapped:
+            return mapped.strip()
+
+        raise MarketDataProviderError(
+            "Upstox requires an explicit instrument key such as "
+            "'NSE_EQ|INE002A01018' or a mapping in UPSTOX_SYMBOL_MAP. "
+            f"No mapping exists for {symbol!r}."
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class UpstoxMarketDataProvider:
-    """Disabled scaffold for a future read-only Upstox daily OHLCV adapter."""
+    """Read-only Upstox daily OHLCV adapter.
+
+    This provider retrieves historical daily candles only. It has no order,
+    position, account, quote-streaming, or broker mutation capability.
+    """
 
     config: UpstoxProviderConfig = field(default_factory=UpstoxProviderConfig)
     name: str = PROVIDER_UPSTOX
@@ -108,13 +152,35 @@ class UpstoxMarketDataProvider:
     ) -> pd.DataFrame:
         if not self.config.enabled:
             raise MarketDataProviderError(
-                "Upstox provider scaffold is disabled. Keep MARKET_DATA_PROVIDER "
-                "as 'yfinance' until a read-only OHLCV adapter is implemented."
+                "Upstox provider is disabled. Keep MARKET_DATA_PROVIDER as "
+                "'yfinance' unless read-only Upstox data is explicitly enabled."
             )
-        raise NotImplementedError(
-            "Upstox daily OHLCV downloads are not implemented yet. This scaffold "
-            "is read-only and must not place, modify, cancel, or size orders."
+        if auto_adjust:
+            raise MarketDataProviderError("Upstox daily OHLCV adapter returns raw data only")
+        if interval.strip().lower() not in {"1d", "1day", "day", "daily"}:
+            raise MarketDataProviderError("Upstox adapter currently supports daily candles only")
+
+        access_token = self.config.access_token()
+        if access_token is None:
+            raise MarketDataProviderError(
+                f"Upstox access token is missing from {self.config.access_token_env!r}"
+            )
+
+        instrument_key = self.config.instrument_key_for(symbol)
+        from_date, to_date = _date_range_for_period(period)
+        url = _upstox_historical_daily_url(
+            self.config.base_url(),
+            instrument_key,
+            from_date=from_date,
+            to_date=to_date,
         )
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}",
+        }
+        payload = self.config.http_get(url, headers)
+        return _upstox_candles_to_frame(payload)
 
 
 DEFAULT_MARKET_DATA_PROVIDER = YFinanceMarketDataProvider()
@@ -143,6 +209,104 @@ def _env_bool(env: Mapping[str, str], name: str, *, default: bool = False) -> bo
     )
 
 
+def _parse_symbol_map(value: str) -> dict[str, str]:
+    """Parse SYMBOL=UPSTOX_KEY pairs from an environment string."""
+    result: dict[str, str] = {}
+    for item in value.split(","):
+        entry = item.strip()
+        if not entry:
+            continue
+        if "=" not in entry:
+            raise ValueError(
+                f"{UPSTOX_SYMBOL_MAP_ENV} entries must use SYMBOL=INSTRUMENT_KEY format"
+            )
+        symbol, instrument_key = (part.strip() for part in entry.split("=", 1))
+        if not symbol or not instrument_key:
+            raise ValueError(
+                f"{UPSTOX_SYMBOL_MAP_ENV} entries must include both symbol and instrument key"
+            )
+        result[symbol] = instrument_key
+        result[symbol.upper()] = instrument_key
+    return result
+
+
+def _date_range_for_period(period: str, *, today: date | None = None) -> tuple[date, date]:
+    current = today or date.today()
+    normalized = period.strip().lower()
+    if normalized in {"", "max"}:
+        return current - timedelta(days=DEFAULT_UPSTOX_MAX_HISTORY_DAYS), current
+
+    try:
+        amount = int(normalized[:-1])
+    except ValueError as exc:
+        raise MarketDataProviderError(f"Unsupported Upstox period: {period!r}") from exc
+
+    suffix = normalized[-1]
+    if amount <= 0:
+        raise MarketDataProviderError(f"Unsupported Upstox period: {period!r}")
+    if suffix == "d":
+        delta = timedelta(days=amount)
+    elif suffix == "w":
+        delta = timedelta(weeks=amount)
+    elif suffix == "m":
+        delta = timedelta(days=amount * 30)
+    elif suffix == "y":
+        delta = timedelta(days=amount * 365)
+    else:
+        raise MarketDataProviderError(f"Unsupported Upstox period: {period!r}")
+    return current - delta, current
+
+
+def _upstox_historical_daily_url(
+    base_url: str,
+    instrument_key: str,
+    *,
+    from_date: date,
+    to_date: date,
+) -> str:
+    encoded_key = quote(instrument_key, safe="")
+    return (
+        f"{base_url}/v3/historical-candle/"
+        f"{encoded_key}/days/1/{to_date.isoformat()}/{from_date.isoformat()}"
+    )
+
+
+def _upstox_candles_to_frame(payload: bytes | str | Mapping[str, object]) -> pd.DataFrame:
+    if isinstance(payload, Mapping):
+        data = payload
+    else:
+        data = json.loads(payload)
+
+    candles = data.get("data", {})
+    if not isinstance(candles, Mapping):
+        raise MarketDataProviderError("Upstox response has invalid data payload")
+    rows = candles.get("candles", [])
+    if not isinstance(rows, list):
+        raise MarketDataProviderError("Upstox response has invalid candles payload")
+    if not rows:
+        return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+
+    parsed_rows: list[dict[str, float]] = []
+    timestamps: list[pd.Timestamp] = []
+    for row in rows:
+        if not isinstance(row, list | tuple) or len(row) < 6:
+            raise MarketDataProviderError("Upstox candle rows must contain timestamp/OHLCV")
+        timestamps.append(pd.Timestamp(row[0]))
+        parsed_rows.append(
+            {
+                "Open": float(row[1]),
+                "High": float(row[2]),
+                "Low": float(row[3]),
+                "Close": float(row[4]),
+                "Volume": float(row[5]),
+            }
+        )
+
+    frame = pd.DataFrame(parsed_rows, index=pd.to_datetime(timestamps))
+    frame.sort_index(inplace=True)
+    return frame
+
+
 def create_market_data_provider(
     provider_name: str | None = None,
     *,
@@ -168,8 +332,7 @@ def create_market_data_provider_from_env(
 
     `MARKET_DATA_PROVIDER` is intentionally the only selector. When it is absent
     or blank, yfinance remains the active provider. Selecting Upstox is explicit
-    and still returns only the disabled/read-only scaffold until a real OHLCV
-    adapter is implemented.
+    and still requires explicit enablement for read-only OHLCV retrieval.
     """
     source = os.environ if env is None else env
     provider_name = _env_value(source, MARKET_DATA_PROVIDER_ENV, PROVIDER_YFINANCE)
@@ -184,10 +347,12 @@ def create_market_data_provider_from_env(
         DEFAULT_UPSTOX_ACCESS_TOKEN_ENV,
     )
     api_base_url = _env_value(source, UPSTOX_API_BASE_URL_ENV) or None
+    symbol_map = _parse_symbol_map(_env_value(source, UPSTOX_SYMBOL_MAP_ENV))
     upstox_config = UpstoxProviderConfig(
         enabled=_env_bool(source, UPSTOX_ENABLED_ENV, default=False),
         access_token_env=token_env,
         api_base_url=api_base_url,
+        symbol_map=symbol_map,
     )
     return create_market_data_provider(
         PROVIDER_UPSTOX,
@@ -205,6 +370,7 @@ def resolve_market_data_provider(
 __all__ = [
     "DEFAULT_MARKET_DATA_PROVIDER",
     "DEFAULT_UPSTOX_ACCESS_TOKEN_ENV",
+    "DEFAULT_UPSTOX_API_BASE_URL",
     "MARKET_DATA_PROVIDER_ENV",
     "MarketDataProvider",
     "MarketDataProviderError",
@@ -213,6 +379,7 @@ __all__ = [
     "UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV",
     "UPSTOX_API_BASE_URL_ENV",
     "UPSTOX_ENABLED_ENV",
+    "UPSTOX_SYMBOL_MAP_ENV",
     "UnsupportedMarketDataProviderError",
     "UpstoxMarketDataProvider",
     "UpstoxProviderConfig",

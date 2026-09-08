@@ -56,7 +56,7 @@ MARKET_DATA_PROVIDER=upstox
 
 When `MARKET_DATA_PROVIDER` is absent, blank, or set to `yfinance`, the resolver returns the yfinance provider.
 
-Upstox is selected only when `MARKET_DATA_PROVIDER=upstox` is set explicitly. Even then, the current implementation returns the disabled scaffold unless `UPSTOX_PROVIDER_ENABLED=true` is also set. Enabling the scaffold still does not make external calls because the read-only OHLCV adapter is not implemented yet.
+Upstox is selected only when `MARKET_DATA_PROVIDER=upstox` is set explicitly. Even then, the implementation remains disabled unless `UPSTOX_PROVIDER_ENABLED=true` is also set.
 
 Upstox config environment variables:
 
@@ -64,15 +64,18 @@ Upstox config environment variables:
 UPSTOX_PROVIDER_ENABLED=true|false
 UPSTOX_ACCESS_TOKEN_ENV=UPSTOX_ACCESS_TOKEN
 UPSTOX_API_BASE_URL=<optional read-only API base URL>
+UPSTOX_SYMBOL_MAP=RELIANCE.NS=NSE_EQ|INE002A01018,TCS.NS=NSE_EQ|INE467B01029
 ```
 
 `UPSTOX_ACCESS_TOKEN_ENV` stores the name of the environment variable that contains a token. It must not contain the token value itself. Repository files, decision-context files, journal files, and frontend config must not store broker credentials.
 
-Invalid provider names and invalid boolean values should fail fast rather than silently changing market-data behavior.
+`UPSTOX_SYMBOL_MAP` stores local-symbol to Upstox-instrument-key mappings. The map is configuration only; it must not include credentials, order identifiers, account identifiers, or position data.
 
-## Upstox scaffold boundary
+Invalid provider names, invalid boolean values, and malformed symbol-map entries should fail fast rather than silently changing market-data behavior.
 
-`UpstoxMarketDataProvider` is an explicit scaffold for a future read-only daily OHLCV adapter.
+## Upstox read-only OHLCV boundary
+
+`UpstoxMarketDataProvider` is a read-only daily OHLCV adapter for Upstox historical candles.
 
 It is not selected automatically and is disabled by default.
 
@@ -80,11 +83,29 @@ It is not selected automatically and is disabled by default.
 create_market_data_provider("upstox")
 ```
 
-returns a scaffold instance, but calling `download_daily()` raises until a real read-only adapter is implemented and explicitly enabled.
+returns an Upstox provider instance, but calling `download_daily()` raises unless the provider is explicitly enabled and an access token is available through the configured environment-variable name.
 
-`UpstoxProviderConfig` references token values by environment-variable name only. It must not store access-token values, refresh-token values, API secrets, broker credentials, positions, orders, or account data in repository files, decision-context files, or journal files.
+The adapter supports only raw daily OHLCV retrieval. It does not support auto-adjusted data, intraday candles, live streaming, option chains, order placement, order modification, order cancellation, positions, funds, margins, holdings, or account APIs.
 
-The scaffold does not implement any endpoint calls yet. This is intentional so the project can establish the integration boundary before adding provider-specific mapping, rate limiting, pagination, symbol conversion, and response normalization tests.
+Symbols must be explicit Upstox instrument keys, such as:
+
+```text
+NSE_EQ|INE002A01018
+```
+
+or configured through `UPSTOX_SYMBOL_MAP`. The adapter must not guess or synthesize instrument keys from yfinance-style symbols because an incorrect mapping would silently contaminate scanner inputs.
+
+The adapter maps Upstox candle rows into the raw yfinance-compatible shape expected by `data.py`:
+
+```text
+Open
+High
+Low
+Close
+Volume
+```
+
+`data.py` still owns canonical normalization to lowercase columns, validation, caching, weekly resampling, and completed weekly bar filtering.
 
 ## Ownership boundary
 
@@ -129,7 +150,7 @@ The provider interface is architecture-only. It is not a trading feature.
 
 ## Future provider rules
 
-Future providers, including any Upstox read-only adapter, must respect the same boundary:
+Future providers, including any Upstox extensions, must respect the same boundary:
 
 ```text
 read market data only

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -7,12 +9,14 @@ import data
 from config import DEFAULT_PERIOD
 from market_data import (
     DEFAULT_UPSTOX_ACCESS_TOKEN_ENV,
+    DEFAULT_UPSTOX_API_BASE_URL,
     MARKET_DATA_PROVIDER_ENV,
     PROVIDER_UPSTOX,
     PROVIDER_YFINANCE,
     UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV,
     UPSTOX_API_BASE_URL_ENV,
     UPSTOX_ENABLED_ENV,
+    UPSTOX_SYMBOL_MAP_ENV,
     MarketDataProviderError,
     UpstoxMarketDataProvider,
     UpstoxProviderConfig,
@@ -49,6 +53,16 @@ class FakeMarketDataProvider:
         if not self._frames:
             raise AssertionError("Fake provider was called more times than expected")
         return self._frames.pop(0)
+
+
+class FakeHttpGet:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(self, url: str, headers: dict[str, str]) -> bytes:
+        self.calls.append({"url": url, "headers": headers})
+        return json.dumps(self.payload).encode("utf-8")
 
 
 def _raw_daily_frame(
@@ -178,6 +192,7 @@ def test_env_provider_resolver_selects_upstox_only_when_explicit() -> None:
             MARKET_DATA_PROVIDER_ENV: " upstox ",
             UPSTOX_ACCESS_TOKEN_ENV_VAR_ENV: "PROVSA_TEST_UPSTOX_TOKEN",
             UPSTOX_API_BASE_URL_ENV: "https://example.test/upstox",
+            UPSTOX_SYMBOL_MAP_ENV: "TEST.NS=NSE_EQ|INE000000000",
         }
     )
 
@@ -186,6 +201,7 @@ def test_env_provider_resolver_selects_upstox_only_when_explicit() -> None:
     assert provider.config.enabled is False
     assert provider.config.access_token_env == "PROVSA_TEST_UPSTOX_TOKEN"
     assert provider.config.api_base_url == "https://example.test/upstox"
+    assert provider.config.symbol_map["TEST.NS"] == "NSE_EQ|INE000000000"
 
     with pytest.raises(MarketDataProviderError, match="disabled"):
         provider.download_daily(
@@ -196,7 +212,7 @@ def test_env_provider_resolver_selects_upstox_only_when_explicit() -> None:
         )
 
 
-def test_env_provider_resolver_can_enable_upstox_scaffold_without_io() -> None:
+def test_env_provider_resolver_can_enable_upstox_without_io_when_token_missing() -> None:
     provider = create_market_data_provider_from_env(
         {
             MARKET_DATA_PROVIDER_ENV: PROVIDER_UPSTOX,
@@ -208,12 +224,126 @@ def test_env_provider_resolver_can_enable_upstox_scaffold_without_io() -> None:
     assert provider.config.enabled is True
     assert provider.config.access_token_env == DEFAULT_UPSTOX_ACCESS_TOKEN_ENV
 
-    with pytest.raises(NotImplementedError, match="not implemented"):
+    with pytest.raises(MarketDataProviderError, match="access token is missing"):
+        provider.download_daily(
+            "NSE_EQ|INE000000000",
+            period="5y",
+            interval="1d",
+            auto_adjust=False,
+        )
+
+
+def test_upstox_provider_downloads_daily_ohlcv_read_only(monkeypatch) -> None:
+    monkeypatch.setenv("PROVSA_TEST_UPSTOX_TOKEN", "token-from-env")
+    http_get = FakeHttpGet(
+        {
+            "status": "success",
+            "data": {
+                "candles": [
+                    ["2025-01-03T00:00:00+05:30", 103.0, 108.0, 101.0, 106.0, 3000],
+                    ["2025-01-02T00:00:00+05:30", 100.0, 105.0, 99.0, 104.0, 2000],
+                ]
+            },
+        }
+    )
+    provider = UpstoxMarketDataProvider(
+        UpstoxProviderConfig(
+            enabled=True,
+            access_token_env="PROVSA_TEST_UPSTOX_TOKEN",
+            api_base_url="https://example.test",
+            http_get=http_get,
+        )
+    )
+
+    result = provider.download_daily(
+        "NSE_EQ|INE000000000",
+        period="10d",
+        interval="1d",
+        auto_adjust=False,
+    )
+
+    assert list(result.columns) == ["Open", "High", "Low", "Close", "Volume"]
+    assert result.index.is_monotonic_increasing
+    assert result.iloc[0]["Close"] == 104.0
+    assert result.iloc[1]["Volume"] == 3000.0
+    assert len(http_get.calls) == 1
+    call = http_get.calls[0]
+    assert call["url"].startswith(
+        "https://example.test/v3/historical-candle/NSE_EQ%7CINE000000000/days/1/"
+    )
+    assert call["headers"]["Authorization"] == "Bearer token-from-env"
+
+
+def test_upstox_provider_supports_symbol_map(monkeypatch) -> None:
+    monkeypatch.setenv("PROVSA_TEST_UPSTOX_TOKEN", "token-from-env")
+    http_get = FakeHttpGet({"status": "success", "data": {"candles": []}})
+    provider = UpstoxMarketDataProvider(
+        UpstoxProviderConfig(
+            enabled=True,
+            access_token_env="PROVSA_TEST_UPSTOX_TOKEN",
+            symbol_map={"TEST.NS": "NSE_EQ|INE000000000"},
+            http_get=http_get,
+        )
+    )
+
+    result = provider.download_daily(
+        "test.ns",
+        period="1d",
+        interval="1d",
+        auto_adjust=False,
+    )
+
+    assert result.empty
+    assert http_get.calls[0]["url"].startswith(
+        f"{DEFAULT_UPSTOX_API_BASE_URL}/v3/historical-candle/NSE_EQ%7CINE000000000/days/1/"
+    )
+
+
+def test_upstox_provider_requires_explicit_instrument_key_or_mapping(monkeypatch) -> None:
+    monkeypatch.setenv("PROVSA_TEST_UPSTOX_TOKEN", "token-from-env")
+    provider = UpstoxMarketDataProvider(
+        UpstoxProviderConfig(enabled=True, access_token_env="PROVSA_TEST_UPSTOX_TOKEN")
+    )
+
+    with pytest.raises(MarketDataProviderError, match="requires an explicit instrument key"):
         provider.download_daily(
             "TEST.NS",
             period="5y",
             interval="1d",
             auto_adjust=False,
+        )
+
+
+def test_upstox_provider_rejects_non_daily_or_adjusted_requests(monkeypatch) -> None:
+    monkeypatch.setenv("PROVSA_TEST_UPSTOX_TOKEN", "token-from-env")
+    provider = UpstoxMarketDataProvider(
+        UpstoxProviderConfig(enabled=True, access_token_env="PROVSA_TEST_UPSTOX_TOKEN")
+    )
+
+    with pytest.raises(MarketDataProviderError, match="daily candles only"):
+        provider.download_daily(
+            "NSE_EQ|INE000000000",
+            period="5y",
+            interval="1h",
+            auto_adjust=False,
+        )
+
+    with pytest.raises(MarketDataProviderError, match="raw data only"):
+        provider.download_daily(
+            "NSE_EQ|INE000000000",
+            period="5y",
+            interval="1d",
+            auto_adjust=True,
+        )
+
+
+def test_env_provider_resolver_rejects_invalid_symbol_map() -> None:
+    with pytest.raises(ValueError, match=UPSTOX_SYMBOL_MAP_ENV):
+        create_market_data_provider_from_env(
+            {
+                MARKET_DATA_PROVIDER_ENV: PROVIDER_UPSTOX,
+                UPSTOX_SYMBOL_MAP_ENV: "BROKEN_ENTRY",
+            }
         )
 
 
