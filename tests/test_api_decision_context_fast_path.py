@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 import pandas as pd
 
 from decision_context import DecisionContextStore, build_decision_context
+from decision_journal import DecisionJournalStore
 from api import main as api_main
 import api.service as service_module
 from api.service import ProVSAService
@@ -116,9 +117,10 @@ def test_decision_context_fast_path_returns_current_cached_context_without_scann
         fail_if_scanned,
     )
 
-    result = ProVSAService(decision_context_store=store).decision_context_for_symbol(
-        " test.ns "
-    )
+    result = ProVSAService(
+        decision_context_store=store,
+        persist_decision_journal=False,
+    ).decision_context_for_symbol(" test.ns ")
 
     assert result.symbol == "TEST.NS"
     assert result.latest_week == LATEST_WEEK
@@ -130,6 +132,7 @@ def test_decision_context_fast_path_refreshes_stale_cached_context(
     tmp_path,
 ) -> None:
     store = DecisionContextStore(tmp_path / "decision_context")
+    journal_store = DecisionJournalStore(tmp_path / "decision_journal")
     stale = build_decision_context(
         _fake_candidate(bar_index=0, week=OLD_WEEK),
         symbol="TEST.NS",
@@ -166,9 +169,10 @@ def test_decision_context_fast_path_refreshes_stale_cached_context(
         fake_scan_latest_candidate_production,
     )
 
-    result = ProVSAService(decision_context_store=store).decision_context_for_symbol(
-        "TEST.NS"
-    )
+    result = ProVSAService(
+        decision_context_store=store,
+        decision_journal_store=journal_store,
+    ).decision_context_for_symbol("TEST.NS")
 
     assert production_calls == [
         {
@@ -181,6 +185,11 @@ def test_decision_context_fast_path_refreshes_stale_cached_context(
     assert result.latest_week == LATEST_WEEK
     assert result.evaluated_at_utc != "2026-09-01T10:00:00+00:00"
     assert store.load("TEST.NS", "1W").latest_week == LATEST_WEEK
+
+    journal_entries = journal_store.load_all("TEST.NS", "1W")
+    assert len(journal_entries) == 1
+    assert journal_entries[0].source_context_week == LATEST_WEEK
+    assert journal_entries[0].source_context_bar_index == 1
 
 
 def test_decision_context_endpoint_returns_compact_service_payload(monkeypatch) -> None:

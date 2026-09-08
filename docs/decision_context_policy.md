@@ -86,6 +86,8 @@ GET /api/symbols/{symbol}/decision-context
 
 That endpoint checks the latest completed weekly bar identity. If the saved confirmed `DecisionContext` already matches that latest completed week, the API returns the cached compact context without running scanner analysis. If the context is missing, invalid, developing-mode, or stale, the endpoint refreshes through the production scanner path and saves the new context.
 
+Freshly rebuilt confirmed contexts also upsert a compact `DecisionJournalEntry` through `DecisionJournalStore`. Cached decision-context responses do not create duplicate journal entries because no new analysis was performed.
+
 The fast path is intentionally narrower than the full analysis endpoint. It returns only the compact decision context, not full bars, all evidence, structural swings, or chart-ready analysis payloads.
 
 The API uses confirmed weekly bars for this official decision context. Developing/live-bar context remains future work and must be labeled separately when added.
@@ -155,15 +157,14 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, the React/Next.js VSA Story panel, frontend preloading of that compact context, and the analysis-only live validation journal foundation. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, the React/Next.js VSA Story panel, frontend preloading of that compact context, and analysis-only live validation journal entry creation for refreshed contexts. It does not yet provide a developing-bar live mode.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
 1. Add deeper click-through linking from story segments to chart events.
-2. Wire journal-entry creation into FastAPI after confirmed `DecisionContext` creation.
-3. Add journal list/evaluation endpoints and frontend display.
-4. Add a market-data provider interface.
-5. Add an Upstox read-only provider later, without order placement.
-6. Add a developing-bar/live context mode, clearly separated from confirmed signals.
+2. Add journal list/evaluation endpoints and frontend display.
+3. Add a market-data provider interface.
+4. Add an Upstox read-only provider later, without order placement.
+5. Add a developing-bar/live context mode, clearly separated from confirmed signals.

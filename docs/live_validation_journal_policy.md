@@ -61,6 +61,23 @@ If both confirmation and invalidation occur inside the checked window, the resul
 
 Mixed, neutral, and avoid contexts are tracked as `observation_only` because they should not be treated as directional setup validation.
 
+## API persistence behavior
+
+FastAPI now creates or updates a compact journal entry whenever a confirmed `DecisionContext` is freshly rebuilt through the API analysis path.
+
+This includes:
+
+```text
+GET /api/symbols/{symbol}/analysis
+GET /api/symbols/{symbol}/decision-context when the cached context is missing, invalid, developing-mode, or stale
+```
+
+A fresh cached decision-context response does not create a new journal entry because no new analysis was performed and the stored context is already current.
+
+The service uses `DecisionJournalStore.upsert()` so the same source context identity updates the existing journal entry instead of creating duplicates.
+
+Journal persistence is enabled by default in the local API service and can be disabled or redirected in tests by passing `persist_decision_journal=False` or a temporary `DecisionJournalStore`.
+
 ## Financial correctness boundary
 
 The journal is analysis-only.
@@ -106,14 +123,15 @@ state/decision_journal/
 
 The store uses atomic JSON writes and deterministic entry IDs so the same context can be safely upserted instead of duplicated.
 
+`api.service.ProVSAService` can also receive an injected `DecisionJournalStore` and persistence flag for tests/local customization.
+
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Wire journal-entry creation into FastAPI after confirmed `DecisionContext` creation.
-2. Add an API endpoint to list/evaluate journal entries for a symbol.
-3. Render journal outcomes in the React/Next.js VSA Story panel.
-4. Add developing/live-bar validation later, clearly separated from confirmed weekly signals.
-5. Add market-data provider abstractions before any Upstox read-only data source is introduced.
+1. Add an API endpoint to list/evaluate journal entries for a symbol.
+2. Render journal outcomes in the React/Next.js VSA Story panel.
+3. Add developing/live-bar validation later, clearly separated from confirmed weekly signals.
+4. Add market-data provider abstractions before any Upstox read-only data source is introduced.
 
 No broker order scope should be added to this feature.

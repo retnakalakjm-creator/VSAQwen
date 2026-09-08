@@ -6,6 +6,7 @@ import pandas as pd
 
 from data import completed_weekly_only, daily_to_weekly, download_data
 from decision_context import DecisionContext, DecisionContextStore, build_decision_context
+from decision_journal import DecisionJournalStore, create_journal_entry
 from engine.columns import (
     COL_CORPORATE_ACTION_ANOMALY,
     COL_PRICE_ANOMALY,
@@ -39,17 +40,25 @@ class ProVSAService:
     def __init__(
         self,
         decision_context_store: DecisionContextStore | None = None,
+        decision_journal_store: DecisionJournalStore | None = None,
         scanner_state_store: ScannerStateStore | None = None,
         *,
         scanner_state_root: str | Path = "state",
         allow_full_replay_fallback: bool = True,
         persist_decision_context: bool = True,
+        persist_decision_journal: bool | None = None,
     ) -> None:
         self._decision_context_store = decision_context_store or DecisionContextStore()
+        self._decision_journal_store = decision_journal_store or DecisionJournalStore()
         self._scanner_state_store = scanner_state_store
         self._scanner_state_root = scanner_state_root
         self._allow_full_replay_fallback = allow_full_replay_fallback
         self._persist_decision_context = persist_decision_context
+        self._persist_decision_journal = (
+            persist_decision_context
+            if persist_decision_journal is None
+            else persist_decision_journal
+        )
 
     def analyze_symbol(self, symbol: str) -> AnalysisDTO:
         symbol = self._normalize_symbol(symbol)
@@ -111,8 +120,7 @@ class ProVSAService:
             symbol=symbol,
             timeframe=timeframe,
         )
-        if self._persist_decision_context:
-            self._decision_context_store.save(decision_context)
+        self._persist_decision_artifacts(decision_context)
 
         labels = {
             (item.swing.type, item.swing.bar_index): item.label.value
@@ -165,6 +173,12 @@ class ProVSAService:
             ),
             decision_context=self._decision_context_dto(decision_context),
         )
+
+    def _persist_decision_artifacts(self, context: DecisionContext) -> None:
+        if self._persist_decision_context:
+            self._decision_context_store.save(context)
+        if self._persist_decision_journal:
+            self._decision_journal_store.upsert(create_journal_entry(context))
 
     def _completed_weekly_for_symbol(self, symbol: str) -> pd.DataFrame:
         daily = download_data(symbol)

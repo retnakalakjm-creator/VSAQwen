@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pandas as pd
 
 from decision_context import DecisionContextStore
+from decision_journal import DecisionJournalStore, ValidationOutcome
 from engine.columns import (
     COL_CORPORATE_ACTION_ANOMALY,
     COL_PRICE_ANOMALY,
@@ -129,8 +130,10 @@ def test_api_analysis_reports_bar_signal_and_decision_context_metadata(
     )
 
     store = DecisionContextStore(tmp_path / "decision_context")
+    journal_store = DecisionJournalStore(tmp_path / "decision_journal")
     result = ProVSAService(
         decision_context_store=store,
+        decision_journal_store=journal_store,
         scanner_state_store=scanner_store,
     ).analyze_symbol(" test.ns ")
 
@@ -169,6 +172,12 @@ def test_api_analysis_reports_bar_signal_and_decision_context_metadata(
 
     loaded = store.load("TEST.NS", "1W")
     assert loaded.to_dict() == result.decision_context.dict()
+
+    journal_entries = journal_store.load_all("TEST.NS", "1W")
+    assert len(journal_entries) == 1
+    assert journal_entries[0].source_context_bar_index == 1
+    assert journal_entries[0].source_context_week == "2026-08-31 00:00:00"
+    assert journal_entries[0].status is ValidationOutcome.OBSERVATION_ONLY
 
 
 def test_api_anomaly_helpers_default_safely_when_columns_are_missing() -> None:
