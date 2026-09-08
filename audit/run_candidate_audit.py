@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from audit.runner import (
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from audit.runner import (  # noqa: E402
     DEFAULT_AUDIT_HORIZONS,
     DEFAULT_AUDIT_OUTPUT_DIR,
     run_historical_candidate_audit,
 )
-from audit.stability import DEFAULT_STABILITY_MIN_SAMPLES, DEFAULT_STABILITY_Z_SCORE
+from audit.stability import DEFAULT_STABILITY_MIN_SAMPLES, DEFAULT_STABILITY_Z_SCORE  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:

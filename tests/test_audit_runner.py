@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -286,3 +288,17 @@ def test_cli_parser_accepts_expected_arguments() -> None:
     assert args.top_n == 10
     assert args.drop_unscored is True
     assert args.no_stability_reports is True
+
+
+def test_cli_script_path_help_runs_from_repo_root() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "audit/run_candidate_audit.py", "--help"],
+        cwd=project_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Run a historical scanner candidate outcome audit" in result.stdout
