@@ -5,12 +5,19 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from background.qualification import PatternQualification, PatternQualificationEngine, PatternQualificationResult
+from engine.columns import COL_CORPORATE_ACTION_ANOMALY
 from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
 from model.score_model import ProfessionalScoreResult
 from models import Evidence, EvidenceCode
 from professional.scoring_engine import ProfessionalScoringEngine
 from trend import TrendAnalyzer, TrendResult
+
+
+ANOMALY_SIGNAL_BAR_REASON = (
+    "Signal bar is flagged as a corporate-action or data-quality anomaly; "
+    "review adjusted OHLCV data before treating the setup as actionable."
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -33,6 +40,10 @@ class ScannerCandidate:
     used_fallback_evidence: bool = False
     bar_index: int | None = None
     week: str | None = None
+    execution_bar_index: int | None = None
+    execution_week: str | None = None
+    signal_bar_anomaly: bool = False
+    signal_bar_anomaly_reason: str | None = None
 
     @property
     def qualification(self) -> PatternQualification:
@@ -40,10 +51,16 @@ class ScannerCandidate:
 
     @property
     def actionable(self) -> bool:
-        return self.qualification_result.is_actionable_evidence and self.professional.confidence > 0.0
+        return (
+            self.qualification_result.is_actionable_evidence
+            and self.professional.confidence > 0.0
+            and not self.signal_bar_anomaly
+        )
 
     @property
     def reason(self) -> str:
+        if self.signal_bar_anomaly:
+            return self.signal_bar_anomaly_reason or ANOMALY_SIGNAL_BAR_REASON
         return self.qualification_result.reason
 
     @property
@@ -67,6 +84,36 @@ class ScannerCandidate:
     @property
     def confidence(self) -> float:
         return self.professional.confidence
+
+    @property
+    def signal_bar_index(self) -> int | None:
+        """Bar that generated the scanner signal.
+
+        This aliases ``bar_index`` for backward compatibility and makes the
+        signal/execution distinction explicit in scanner outputs.
+        """
+        return self.bar_index
+
+    @property
+    def signal_week(self) -> str | None:
+        """Week that generated the scanner signal."""
+        return self.week
+
+    @property
+    def execution_available(self) -> bool:
+        """Whether a following bar exists for evaluating execution rules."""
+        return self.execution_bar_index is not None
+
+    @property
+    def execution_pending(self) -> bool:
+        """True when the latest actionable setup has no following bar yet."""
+        return self.actionable and not self.execution_available
+
+    @property
+    def execution_note(self) -> str:
+        if self.execution_available:
+            return "Evaluate execution only from the next bar/session after the signal bar."
+        return "No execution bar is available yet; this is a setup signal, not a same-bar entry."
 
     @property
     def evidence_codes(self) -> tuple[str, ...]:
@@ -241,7 +288,32 @@ class ScannerEngine:
         direction = "bullish" if qualification.qualification is PatternQualification.PERSISTENT_BULLISH else "bearish"
         return PatternQualificationResult(qualification=qualification.qualification, is_actionable_evidence=True, reason=f"Persistent {direction} structure remains valid and is confirmed by fresh directional VSA evidence ({age} bar{'s' if age != 1 else ''} old).", evidence_codes=qualification.evidence_codes, evidence_bar_indices=qualification.evidence_bar_indices)
 
-    def evaluate(self, *, trend: TrendResult, evidence: EvidenceResult, history, bar_index: int | None = None, week: str | None = None) -> ScannerCandidate:
+    @staticmethod
+    def _signal_bar_anomaly(metrics: pd.DataFrame, index: int | None) -> bool:
+        if index is None or index < 0 or index >= len(metrics) or COL_CORPORATE_ACTION_ANOMALY not in metrics.columns:
+            return False
+        value = metrics.iloc[index].get(COL_CORPORATE_ACTION_ANOMALY, False)
+        if value is None:
+            return False
+        try:
+            if pd.isna(value):
+                return False
+        except (TypeError, ValueError):
+            return False
+        return bool(value)
+
+    def evaluate(
+        self,
+        *,
+        trend: TrendResult,
+        evidence: EvidenceResult,
+        history,
+        bar_index: int | None = None,
+        week: str | None = None,
+        execution_bar_index: int | None = None,
+        execution_week: str | None = None,
+        signal_bar_anomaly: bool = False,
+    ) -> ScannerCandidate:
         qualification = self._qualification.evaluate(history)
         structural_qualification_current = self._qualification_is_current(qualification, bar_index)
         target_bar_evidence = self._target_bar_evidence(evidence, bar_index)
@@ -269,7 +341,24 @@ class ScannerEngine:
                     qualification = self._qualify_vsa_continuation(qualification, scoring_bar_index, scoring_age)
 
         scoring_bar_index = self._scoring_bar_index(scoring_evidence)
-        return ScannerCandidate(evidence=evidence, professional=professional, qualification_result=qualification, target_bar_evidence=target_bar_evidence, campaign_evidence=campaign_evidence, qualifying_evidence=qualifying_evidence, scoring_evidence=scoring_evidence, scoring_bar_index=scoring_bar_index, scoring_evidence_age=(None if scoring_bar_index is None or bar_index is None else bar_index - scoring_bar_index), used_fallback_evidence=(scoring_bar_index is not None and bar_index is not None and scoring_bar_index != bar_index), bar_index=bar_index, week=week)
+        return ScannerCandidate(
+            evidence=evidence,
+            professional=professional,
+            qualification_result=qualification,
+            target_bar_evidence=target_bar_evidence,
+            campaign_evidence=campaign_evidence,
+            qualifying_evidence=qualifying_evidence,
+            scoring_evidence=scoring_evidence,
+            scoring_bar_index=scoring_bar_index,
+            scoring_evidence_age=(None if scoring_bar_index is None or bar_index is None else bar_index - scoring_bar_index),
+            used_fallback_evidence=(scoring_bar_index is not None and bar_index is not None and scoring_bar_index != bar_index),
+            bar_index=bar_index,
+            week=week,
+            execution_bar_index=execution_bar_index,
+            execution_week=execution_week,
+            signal_bar_anomaly=signal_bar_anomaly,
+            signal_bar_anomaly_reason=ANOMALY_SIGNAL_BAR_REASON if signal_bar_anomaly else None,
+        )
 
     @staticmethod
     def _week_at(metrics: pd.DataFrame, index: int) -> str | None:
@@ -277,6 +366,19 @@ class ScannerEngine:
         if value is None or pd.isna(value):
             return None
         return str(value)
+
+    @classmethod
+    def _next_bar_index(cls, metrics: pd.DataFrame, index: int) -> int | None:
+        next_index = index + 1
+        if next_index >= len(metrics):
+            return None
+        return next_index
+
+    def _next_week_at(self, metrics: pd.DataFrame, index: int) -> str | None:
+        next_index = self._next_bar_index(metrics, index)
+        if next_index is None:
+            return None
+        return self._week_at(metrics, next_index)
 
     def _scan_history_to_index(self, metrics: pd.DataFrame, target_index: int) -> tuple[list[EvidenceResult], TrendResult, EvidenceResult]:
         """Build history while retaining only structural events needed for qualification.
@@ -311,7 +413,16 @@ class ScannerEngine:
         if target_index >= len(metrics):
             raise IndexError("target_index is outside metrics")
         history, current_trend, current_evidence = self._scan_history_to_index(metrics, target_index)
-        return self.evaluate(trend=current_trend, evidence=current_evidence, history=history, bar_index=target_index, week=self._week_at(metrics, target_index))
+        return self.evaluate(
+            trend=current_trend,
+            evidence=current_evidence,
+            history=history,
+            bar_index=target_index,
+            week=self._week_at(metrics, target_index),
+            execution_bar_index=self._next_bar_index(metrics, target_index),
+            execution_week=self._next_week_at(metrics, target_index),
+            signal_bar_anomaly=self._signal_bar_anomaly(metrics, target_index),
+        )
 
     def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
         history = []
@@ -323,7 +434,18 @@ class ScannerEngine:
             evidence = EvidenceEngine().collect(metrics=replay, trend=trend, structural_swings=structural_swings)
             structural_evidence = tuple(item for item in evidence.evidence if item.code in self._STRUCTURAL_CODES)
             history.append(EvidenceResult(context=evidence.context, evidence=structural_evidence))
-            candidates.append(self.evaluate(trend=trend, evidence=evidence, history=history, bar_index=index, week=self._week_at(metrics, index)))
+            candidates.append(
+                self.evaluate(
+                    trend=trend,
+                    evidence=evidence,
+                    history=history,
+                    bar_index=index,
+                    week=self._week_at(metrics, index),
+                    execution_bar_index=self._next_bar_index(metrics, index),
+                    execution_week=self._next_week_at(metrics, index),
+                    signal_bar_anomaly=self._signal_bar_anomaly(metrics, index),
+                )
+            )
         return candidates
 
     def scan_actionable(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
@@ -331,5 +453,14 @@ class ScannerEngine:
             return []
         target_index = len(metrics) - 1
         history, trend, evidence = self._scan_history_to_index(metrics, target_index)
-        candidate = self.evaluate(trend=trend, evidence=evidence, history=history, bar_index=target_index, week=self._week_at(metrics, target_index))
+        candidate = self.evaluate(
+            trend=trend,
+            evidence=evidence,
+            history=history,
+            bar_index=target_index,
+            week=self._week_at(metrics, target_index),
+            execution_bar_index=self._next_bar_index(metrics, target_index),
+            execution_week=self._next_week_at(metrics, target_index),
+            signal_bar_anomaly=self._signal_bar_anomaly(metrics, target_index),
+        )
         return [candidate] if candidate.actionable else []

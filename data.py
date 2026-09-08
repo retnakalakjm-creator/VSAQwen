@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import time
-from datetime import time as datetime_time
+from dataclasses import asdict, dataclass
+from datetime import datetime, time as datetime_time, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +21,43 @@ INCREMENTAL_PERIOD = "10d"
 METRIC_REPLAY_SEED_BARS = config.LOOKBACK_PERIOD * 2
 MARKET_TIMEZONE = "Asia/Kolkata"
 WEEKLY_BAR_CLOSE_TIME = "15:30"
+CACHE_FORMAT_VERSION = 1
+CACHE_INTERVAL = "1d"
+CACHE_FORMAT_PARQUET = "parquet"
+CACHE_FORMAT_CSV = "csv"
+
+
+@dataclass(frozen=True, slots=True)
+class CacheMetadata:
+    """Sidecar metadata for one cached daily OHLCV dataset."""
+
+    schema_version: int
+    symbol: str
+    format: str
+    source: str
+    period: str
+    interval: str
+    rows: int
+    first_date: str | None
+    last_date: str | None
+    updated_at_utc: str
+    stale_reason: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "CacheMetadata":
+        return cls(
+            schema_version=int(data["schema_version"]),
+            symbol=str(data["symbol"]),
+            format=str(data["format"]),
+            source=str(data["source"]),
+            period=str(data["period"]),
+            interval=str(data["interval"]),
+            rows=int(data["rows"]),
+            first_date=(None if data.get("first_date") is None else str(data["first_date"])),
+            last_date=(None if data.get("last_date") is None else str(data["last_date"])),
+            updated_at_utc=str(data["updated_at_utc"]),
+            stale_reason=(None if data.get("stale_reason") is None else str(data["stale_reason"])),
+        )
 
 
 def _normalize_daily_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -49,12 +88,187 @@ def _normalize_daily_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _parquet_engine_available() -> bool:
+    """Return whether pandas can actually use a local Parquet engine.
+
+    Some environments can find pyarrow/fastparquet but still fail to load their
+    native DLLs because of Windows Application Control or Python-version wheel
+    compatibility. Treat any engine-load failure as unavailable and use CSV.
+    """
+    try:
+        from pandas.io.parquet import get_engine
+
+        get_engine("auto")
+    except Exception:
+        return False
+    return True
+
+
+def _cache_data_path(symbol: str) -> Path:
+    return CACHE_DIR / f"{symbol}.parquet"
+
+
+def _legacy_cache_path(symbol: str) -> Path:
+    return CACHE_DIR / f"{symbol}.csv"
+
+
+def _cache_metadata_path(symbol: str) -> Path:
+    return CACHE_DIR / f"{symbol}.metadata.json"
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _cache_metadata(
+    symbol: str,
+    df: pd.DataFrame,
+    *,
+    source: str,
+    cache_format: str,
+    stale_reason: str | None = None,
+) -> CacheMetadata:
+    return CacheMetadata(
+        schema_version=CACHE_FORMAT_VERSION,
+        symbol=symbol,
+        format=cache_format,
+        source=source,
+        period=DEFAULT_PERIOD,
+        interval=CACHE_INTERVAL,
+        rows=len(df),
+        first_date=None if df.empty else pd.Timestamp(df.index[0]).isoformat(),
+        last_date=None if df.empty else pd.Timestamp(df.index[-1]).isoformat(),
+        updated_at_utc=_utc_now(),
+        stale_reason=stale_reason,
+    )
+
+
+def _write_cache_metadata(
+    symbol: str,
+    df: pd.DataFrame,
+    *,
+    source: str,
+    cache_format: str,
+    stale_reason: str | None = None,
+) -> None:
+    metadata_path = _cache_metadata_path(symbol)
+    temp_path = metadata_path.with_name(f".{metadata_path.name}.tmp")
+    metadata = _cache_metadata(
+        symbol,
+        df,
+        source=source,
+        cache_format=cache_format,
+        stale_reason=stale_reason,
+    )
+    temp_path.write_text(
+        json.dumps(asdict(metadata), ensure_ascii=False, sort_keys=True, indent=2),
+        encoding="utf-8",
+    )
+    temp_path.replace(metadata_path)
+
+
+def _write_parquet_cache(symbol: str, df: pd.DataFrame, *, source: str) -> Path:
+    data_path = _cache_data_path(symbol)
+    temp_path = data_path.with_name(f".{data_path.name}.tmp")
+    try:
+        df.to_parquet(temp_path)
+        temp_path.replace(data_path)
+        _write_cache_metadata(
+            symbol,
+            df,
+            source=source,
+            cache_format=CACHE_FORMAT_PARQUET,
+        )
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+    return data_path
+
+
+def _write_csv_cache(symbol: str, df: pd.DataFrame, *, source: str) -> Path:
+    data_path = _legacy_cache_path(symbol)
+    temp_path = data_path.with_name(f".{data_path.name}.tmp")
+    try:
+        df.to_csv(temp_path)
+        temp_path.replace(data_path)
+        _write_cache_metadata(
+            symbol,
+            df,
+            source=source,
+            cache_format=CACHE_FORMAT_CSV,
+        )
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+    return data_path
+
+
+def _write_cached_data(symbol: str, df: pd.DataFrame, *, source: str) -> Path:
+    """Write cache in the best available local format.
+
+    Parquet is preferred for speed and compactness. Python environments without
+    pyarrow/fastparquet, blocked native DLLs, or unsupported wheels continue to
+    work with CSV plus the same metadata sidecar.
+    """
+    if _parquet_engine_available():
+        try:
+            return _write_parquet_cache(symbol, df, source=source)
+        except Exception:
+            # If a Parquet engine is present but blocked at write time, keep the
+            # scanner usable by falling back to CSV instead of crashing.
+            return _write_csv_cache(symbol, df, source=source)
+    return _write_csv_cache(symbol, df, source=source)
+
+
+def read_cache_metadata(symbol: str) -> CacheMetadata | None:
+    """Read cache metadata for diagnostics, if the sidecar exists."""
+    metadata_path = _cache_metadata_path(symbol)
+    if not metadata_path.exists():
+        return None
+    return CacheMetadata.from_dict(json.loads(metadata_path.read_text(encoding="utf-8")))
+
+
+def _read_parquet_cache(symbol: str) -> pd.DataFrame:
+    if not _parquet_engine_available():
+        raise RuntimeError(
+            "Parquet cache exists, but no usable Parquet engine is installed or "
+            "the engine DLL is blocked by policy. Delete the .parquet cache so "
+            "CSV fallback can be rebuilt, or unblock/install pyarrow/fastparquet."
+        )
+    df = pd.read_parquet(_cache_data_path(symbol))
+    df.index = pd.to_datetime(df.index)
+    df.index.name = "date"
+    return df
+
+
+def _read_legacy_csv_cache(symbol: str) -> pd.DataFrame:
+    df = pd.read_csv(_legacy_cache_path(symbol), index_col=0, parse_dates=True)
+    df.index.name = "date"
+    return df
+
+
+def _read_cached_data(symbol: str) -> tuple[pd.DataFrame, Path, str] | None:
+    parquet_path = _cache_data_path(symbol)
+    legacy_path = _legacy_cache_path(symbol)
+
+    if parquet_path.exists() and _parquet_engine_available():
+        return _read_parquet_cache(symbol), parquet_path, CACHE_FORMAT_PARQUET
+
+    if legacy_path.exists():
+        return _read_legacy_csv_cache(symbol), legacy_path, CACHE_FORMAT_CSV
+
+    if parquet_path.exists():
+        return _read_parquet_cache(symbol), parquet_path, CACHE_FORMAT_PARQUET
+
+    return None
+
+
 def _download_history(symbol: str) -> pd.DataFrame:
     return _normalize_daily_data(
         yf.download(
             tickers=symbol,
             period=DEFAULT_PERIOD,
-            interval="1d",
+            interval=CACHE_INTERVAL,
             auto_adjust=False,
             progress=False,
         )
@@ -66,7 +280,7 @@ def _refresh_recent(symbol: str, cached: pd.DataFrame) -> pd.DataFrame:
     recent = yf.download(
         tickers=symbol,
         period=INCREMENTAL_PERIOD,
-        interval="1d",
+        interval=CACHE_INTERVAL,
         auto_adjust=False,
         progress=False,
     )
@@ -86,32 +300,42 @@ def download_data(
     cache_max_age: int = CACHE_MAX_AGE_SECONDS,
 ) -> pd.DataFrame:
     """Load historical data once and incrementally refresh recent bars."""
-    cache_file = CACHE_DIR / f"{symbol}.csv"
+    cached_result = _read_cached_data(symbol)
 
-    if cache_file.exists():
-        cached = pd.read_csv(cache_file, index_col=0, parse_dates=True)
-        cached.index.name = "date"
+    if cached_result is not None:
+        cached, cache_path, cache_format = cached_result
+        validate_data(cached)
 
-        age = time.time() - cache_file.stat().st_mtime
+        # One-time migration path for existing CSV caches when Parquet is usable.
+        if cache_format == CACHE_FORMAT_CSV and _parquet_engine_available():
+            cache_path = _write_cached_data(symbol, cached, source="csv_migration")
+            cache_format = CACHE_FORMAT_PARQUET if cache_path.suffix == ".parquet" else CACHE_FORMAT_CSV
+
+        age = time.time() - cache_path.stat().st_mtime
         if not refresh and age <= cache_max_age:
-            validate_data(cached)
             return cached
 
         # Do not re-download years of history during a live scan.
         try:
             merged = _refresh_recent(symbol, cached)
             validate_data(merged)
-            merged.to_csv(cache_file)
+            _write_cached_data(symbol, merged, source="incremental_refresh")
             return merged
-        except Exception:
-            # Preserve a usable cache if the live refresh fails.
-            validate_data(cached)
+        except Exception as exc:
+            # Preserve a usable cache if the live refresh fails, but record why.
+            _write_cache_metadata(
+                symbol,
+                cached,
+                source="stale_cache",
+                cache_format=cache_format,
+                stale_reason=str(exc),
+            )
             return cached
 
     # First use only: build the historical baseline.
     df = _download_history(symbol)
     validate_data(df)
-    df.to_csv(cache_file)
+    _write_cached_data(symbol, df, source="historical_download")
     return df
 
 

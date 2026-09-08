@@ -36,6 +36,15 @@ def _candidate_payload(symbol: str, candidate: Any) -> dict[str, Any]:
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
         "bar_index": candidate.bar_index,
         "week": candidate.week,
+        "signal_bar_index": candidate.signal_bar_index,
+        "signal_week": candidate.signal_week,
+        "signal_bar_anomaly": bool(getattr(candidate, "signal_bar_anomaly", False)),
+        "signal_bar_anomaly_reason": getattr(candidate, "signal_bar_anomaly_reason", None),
+        "execution_bar_index": candidate.execution_bar_index,
+        "execution_week": candidate.execution_week,
+        "execution_available": candidate.execution_available,
+        "execution_pending": candidate.execution_pending,
+        "execution_note": candidate.execution_note,
         "qualification": str(candidate.qualification),
         "actionable": bool(candidate.actionable),
         "reason": candidate.reason,
@@ -86,6 +95,15 @@ def _scan_from_daily(
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
         "bar_index": latest_index if latest_index >= 0 else None,
         "week": latest_week,
+        "signal_bar_index": latest_index if latest_index >= 0 else None,
+        "signal_week": latest_week,
+        "signal_bar_anomaly": False,
+        "signal_bar_anomaly_reason": None,
+        "execution_bar_index": None,
+        "execution_week": None,
+        "execution_available": False,
+        "execution_pending": False,
+        "execution_note": "No actionable setup is present on the latest completed weekly bar.",
         "qualification": "UNQUALIFIED",
         "actionable": False,
         "reason": "No actionable candidate on the latest completed weekly bar.",
@@ -111,6 +129,9 @@ def scan_symbol(symbol: str, *, use_incremental: bool = True) -> dict[str, Any]:
 def _observation_signature(observation: dict[str, Any]) -> tuple[Any, ...]:
     return (
         observation["week"],
+        observation["signal_bar_index"],
+        observation.get("signal_bar_anomaly", False),
+        observation["execution_bar_index"],
         observation["actionable"],
         observation["qualification"],
         observation["net_strength"],
@@ -128,7 +149,10 @@ def _print_observation(observation: dict[str, Any], as_json: bool) -> None:
     print("=" * 72)
     print(f"Symbol         : {observation['symbol']}")
     print(f"Evaluated (UTC): {observation['evaluated_at']}")
-    print(f"Week           : {observation['week']}")
+    print(f"Signal week    : {observation['signal_week']}")
+    print(f"Signal anomaly : {observation['signal_bar_anomaly']}")
+    print(f"Execution week : {observation['execution_week']}")
+    print(f"Execution note : {observation['execution_note']}")
     print(f"Qualification  : {observation['qualification']}")
     print(f"Actionable     : {observation['actionable']}")
     print(f"Net strength   : {observation['net_strength']:.4f}")

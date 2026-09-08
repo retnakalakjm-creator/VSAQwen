@@ -48,6 +48,7 @@ COL_PREV_SPREAD = "prev_spread"
 
 COL_PRICE_CHANGE = "price_change"
 COL_PRICE_CHANGE_PCT = "price_change_pct"
+COL_PRICE_GAP_RATIO = "price_gap_ratio"
 
 # -----------------------------------------------------------------------------
 # Rolling Statistics
@@ -61,6 +62,14 @@ COL_STD_SPREAD = "std_spread"
 
 COL_VOLUME_RATIO = "volume_ratio"
 COL_SPREAD_RATIO = "spread_ratio"
+
+# -----------------------------------------------------------------------------
+# Data Quality / Corporate Actions
+# -----------------------------------------------------------------------------
+
+COL_PRICE_ANOMALY = "price_anomaly"
+COL_VOLUME_ANOMALY = "volume_anomaly"
+COL_CORPORATE_ACTION_ANOMALY = "corporate_action_anomaly"
 
 # -----------------------------------------------------------------------------
 # Percentiles

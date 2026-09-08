@@ -1,9 +1,18 @@
 __pycache__/
 *.py[cod]
+.pytest_cache/
 
+# Local environments
+.venv/
+venv/
+
+# Generated runtime data
 cache/
 state/
-vsa.log
-
+benchmarks/results/
 *.csv
+*.parquet
+*.metadata.json
+*.log
+vsa.log
 

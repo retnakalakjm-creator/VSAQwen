@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from data import daily_to_weekly, download_data
+from data import completed_weekly_only, daily_to_weekly, download_data
 from metrics_engine import MetricsEngine
 from scanner import ScannerCandidate, ScannerEngine
 
@@ -28,7 +28,7 @@ class ProVSAService:
             raise ValueError("symbol is required")
 
         daily = download_data(symbol)
-        weekly = daily_to_weekly(daily)
+        weekly = completed_weekly_only(daily_to_weekly(daily))
         metrics = MetricsEngine().calculate(weekly)
 
         scanner = ScannerEngine()
@@ -59,7 +59,10 @@ class ProVSAService:
                 lh_count=trend.lh_count,
                 ll_count=trend.ll_count,
             ),
-            structural_swings=[self._structural_swing(item, labels) for item in trend.structural_swings],
+            structural_swings=[
+                self._structural_swing(item, labels, weekly)
+                for item in trend.structural_swings
+            ],
             evidence=[self._evidence(item) for item in candidate.evidence.evidence],
             qualification=QualificationDTO(
                 qualification=candidate.qualification.value,
@@ -94,6 +97,12 @@ class ProVSAService:
         )
 
     @staticmethod
+    def _week_at(bars: pd.DataFrame, index: int) -> str:
+        if index < 0 or index >= len(bars):
+            raise IndexError("swing index is outside weekly bars")
+        return str(bars.iloc[index]["week_beginning"])
+
+    @staticmethod
     def _evidence(item) -> EvidenceDTO:
         return EvidenceDTO(
             code=item.code.value,
@@ -111,16 +120,22 @@ class ProVSAService:
         )
 
     @staticmethod
-    def _structural_swing(item, labels) -> StructuralSwingDTO:
+    def _structural_swing(item, labels, weekly: pd.DataFrame) -> StructuralSwingDTO:
         swing = item.swing
         score = item.evaluation.professional
         structure = score.structure
         smart_money = score.smart_money
         label = labels.get((swing.type, swing.bar_index))
+        pivot_week = ProVSAService._week_at(weekly, swing.bar_index)
+        confirmation_week = ProVSAService._week_at(weekly, swing.confirmation_index)
         return StructuralSwingDTO(
             bar_index=swing.bar_index,
             confirmation_index=swing.confirmation_index,
-            week=str(swing.week_beginning),
+            week=pivot_week,
+            pivot_bar_index=swing.bar_index,
+            pivot_week=pivot_week,
+            confirmation_bar_index=swing.confirmation_index,
+            confirmation_week=confirmation_week,
             type=swing.type.value,
             label=label,
             price=float(swing.price),

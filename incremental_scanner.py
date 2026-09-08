@@ -105,6 +105,7 @@ class IncrementalScannerEngine:
         events.update({(event.bar_key, event.code): event for event in new_events})
         ordered_events = tuple(events[key] for key in sorted(events, key=lambda value: (value[0], str(value[1]))))
 
+        target_index = len(metrics) - 1
         history = [
             EvidenceResult(
                 context=evidence.context,
@@ -116,6 +117,7 @@ class IncrementalScannerEngine:
             trend=trend,
             evidence=evidence,
             history=history,
-            bar_index=len(metrics) - 1,
-            week=str(metrics.iloc[-1]["week_beginning"]),
+            bar_index=target_index,
+            week=str(metrics.iloc[target_index]["week_beginning"]),
+            signal_bar_anomaly=self._scanner._signal_bar_anomaly(metrics, target_index),
         )

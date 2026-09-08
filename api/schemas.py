@@ -25,9 +25,17 @@ class SwingScoreDTO(BaseModel):
 
 
 class StructuralSwingDTO(BaseModel):
+    # Backward-compatible aliases. `bar_index` and `week` refer to the pivot.
     bar_index: int
     confirmation_index: int
     week: str
+
+    # Explicit causal timing fields.
+    pivot_bar_index: int
+    pivot_week: str
+    confirmation_bar_index: int
+    confirmation_week: str
+
     type: str
     label: str | None
     price: float
