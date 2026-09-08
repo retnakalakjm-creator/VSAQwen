@@ -7,6 +7,7 @@ an optimization boundary only; the underlying decision engine is unchanged.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import time
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from scanner import ScannerEngine
 
 DEFAULT_SYMBOLS = ("SRF.NS",)
 DEFAULT_INTERVAL_SECONDS = 900
+DEFAULT_MAX_WORKERS = 4
 
 
 @dataclass(slots=True)
@@ -58,6 +60,38 @@ def _candidate_payload(symbol: str, candidate: Any) -> dict[str, Any]:
         "scoring_bar_index": candidate.scoring_bar_index,
         "scoring_evidence_age": candidate.scoring_evidence_age,
         "used_fallback_evidence": candidate.used_fallback_evidence,
+    }
+
+
+def _error_payload(symbol: str, exc: Exception) -> dict[str, Any]:
+    return {
+        "symbol": symbol,
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        "bar_index": None,
+        "week": None,
+        "signal_bar_index": None,
+        "signal_week": None,
+        "signal_bar_anomaly": False,
+        "signal_bar_anomaly_reason": None,
+        "execution_bar_index": None,
+        "execution_week": None,
+        "execution_available": False,
+        "execution_pending": False,
+        "execution_note": "Symbol scan failed before a candidate could be evaluated.",
+        "qualification": "ERROR",
+        "actionable": False,
+        "reason": str(exc),
+        "net_strength": 0.0,
+        "net_pressure": 0.0,
+        "confidence": 0.0,
+        "target_bar_evidence_codes": [],
+        "campaign_evidence_codes": [],
+        "qualifying_evidence_codes": [],
+        "scoring_evidence_codes": [],
+        "scoring_bar_index": None,
+        "scoring_evidence_age": None,
+        "used_fallback_evidence": False,
+        "error": type(exc).__name__,
     }
 
 
@@ -120,10 +154,56 @@ def _scan_from_daily(
     }
 
 
+def _worker_count(symbols: tuple[str, ...], max_workers: int) -> int:
+    if max_workers <= 0:
+        raise ValueError("max_workers must be greater than zero")
+    return min(max_workers, max(1, len(symbols)))
+
+
 def scan_symbol(symbol: str, *, use_incremental: bool = True) -> dict[str, Any]:
     """Evaluate one symbol through the existing production scanner path."""
     daily = download_data(symbol, refresh=False)
     return _scan_from_daily(symbol, daily, use_incremental=use_incremental)
+
+
+def _scan_symbol_safe(symbol: str, *, use_incremental: bool = True) -> dict[str, Any]:
+    try:
+        return scan_symbol(symbol, use_incremental=use_incremental)
+    except Exception as exc:
+        return _error_payload(symbol, exc)
+
+
+def scan_symbols_parallel(
+    symbols: tuple[str, ...],
+    *,
+    use_incremental: bool = True,
+    max_workers: int = DEFAULT_MAX_WORKERS,
+) -> list[dict[str, Any]]:
+    """Scan many symbols concurrently while preserving input order.
+
+    Each symbol is isolated: a failure for one symbol returns an error payload
+    and does not prevent other symbols from being evaluated.
+    """
+    if not symbols:
+        return []
+
+    workers = _worker_count(symbols, max_workers)
+    if workers == 1:
+        return [
+            _scan_symbol_safe(symbol, use_incremental=use_incremental)
+            for symbol in symbols
+        ]
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        return list(
+            executor.map(
+                lambda symbol: _scan_symbol_safe(
+                    symbol,
+                    use_incremental=use_incremental,
+                ),
+                symbols,
+            )
+        )
 
 
 def _observation_signature(observation: dict[str, Any]) -> tuple[Any, ...]:
@@ -170,13 +250,43 @@ def run_once(
     as_json: bool,
     *,
     use_incremental: bool = True,
+    max_workers: int = DEFAULT_MAX_WORKERS,
 ) -> list[dict[str, Any]]:
-    observations = []
-    for symbol in symbols:
-        observation = scan_symbol(symbol, use_incremental=use_incremental)
-        observations.append(observation)
+    observations = scan_symbols_parallel(
+        symbols,
+        use_incremental=use_incremental,
+        max_workers=max_workers,
+    )
+    for observation in observations:
         _print_observation(observation, as_json)
     return observations
+
+
+def _live_observation_for_symbol(
+    symbol: str,
+    state: _LiveSymbolState,
+    *,
+    use_incremental: bool = True,
+) -> dict[str, Any] | None:
+    try:
+        daily = download_data(symbol, refresh=False)
+        daily_key = _latest_daily_key(daily)
+
+        if state.observation is not None and state.latest_daily_key == daily_key:
+            return None
+
+        observation = _scan_from_daily(
+            symbol,
+            daily,
+            use_incremental=use_incremental,
+        )
+        state.latest_daily_key = daily_key
+        state.observation = observation
+        return observation
+    except Exception as exc:
+        observation = _error_payload(symbol, exc)
+        state.observation = observation
+        return observation
 
 
 def run_live(
@@ -185,24 +295,37 @@ def run_live(
     as_json: bool,
     *,
     use_incremental: bool = True,
+    max_workers: int = DEFAULT_MAX_WORKERS,
 ) -> None:
     """Poll source data and rescan only when a new source bar appears."""
     states = {symbol: _LiveSymbolState() for symbol in symbols}
+    workers = _worker_count(symbols, max_workers)
 
     while True:
-        for symbol in symbols:
-            daily = download_data(symbol, refresh=False)
-            state = states[symbol]
-            daily_key = _latest_daily_key(daily)
-
-            if state.observation is None or state.latest_daily_key != daily_key:
-                observation = _scan_from_daily(
+        if workers == 1:
+            observations = [
+                _live_observation_for_symbol(
                     symbol,
-                    daily,
+                    states[symbol],
                     use_incremental=use_incremental,
                 )
-                state.latest_daily_key = daily_key
-                state.observation = observation
+                for symbol in symbols
+            ]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                observations = list(
+                    executor.map(
+                        lambda symbol: _live_observation_for_symbol(
+                            symbol,
+                            states[symbol],
+                            use_incremental=use_incremental,
+                        ),
+                        symbols,
+                    )
+                )
+
+        for observation in observations:
+            if observation is not None:
                 _print_observation(observation, as_json)
 
         time.sleep(interval_seconds)
@@ -215,6 +338,12 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="Run one observation cycle and exit")
     parser.add_argument("--json", action="store_true", help="Print observations as JSON")
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_MAX_WORKERS,
+        help="Maximum parallel symbol scans. Use 1 for sequential scanning.",
+    )
+    parser.add_argument(
         "--full-replay",
         action="store_true",
         help="Use the original full replay scanner instead of the incremental production path.",
@@ -225,13 +354,26 @@ def main() -> None:
         raise ValueError("At least one symbol is required")
     if args.interval <= 0:
         raise ValueError("interval must be greater than zero")
+    if args.workers <= 0:
+        raise ValueError("workers must be greater than zero")
 
     symbols = tuple(dict.fromkeys(args.symbols))
     use_incremental = not args.full_replay
     if args.once:
-        run_once(symbols, args.json, use_incremental=use_incremental)
+        run_once(
+            symbols,
+            args.json,
+            use_incremental=use_incremental,
+            max_workers=args.workers,
+        )
     else:
-        run_live(symbols, args.interval, args.json, use_incremental=use_incremental)
+        run_live(
+            symbols,
+            args.interval,
+            args.json,
+            use_incremental=use_incremental,
+            max_workers=args.workers,
+        )
 
 
 if __name__ == "__main__":

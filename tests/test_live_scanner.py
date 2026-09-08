@@ -1,6 +1,14 @@
 from types import SimpleNamespace
 
-from live_scanner import _candidate_payload, _observation_signature
+import pytest
+
+from live_scanner import (
+    _candidate_payload,
+    _observation_signature,
+    _worker_count,
+    run_once,
+    scan_symbols_parallel,
+)
 
 
 def test_candidate_payload_exposes_decision_boundary() -> None:
@@ -73,3 +81,72 @@ def test_observation_signature_ignores_evaluation_timestamp() -> None:
     second["evaluated_at"] = "2026-09-07T18:00:00+00:00"
 
     assert _observation_signature(first) == _observation_signature(second)
+
+
+def test_worker_count_is_bounded_by_symbol_count() -> None:
+    assert _worker_count(("A",), 4) == 1
+    assert _worker_count(("A", "B", "C"), 2) == 2
+    assert _worker_count(("A", "B", "C"), 10) == 3
+
+
+@pytest.mark.parametrize("max_workers", [0, -1])
+def test_worker_count_rejects_non_positive_workers(max_workers: int) -> None:
+    with pytest.raises(ValueError, match="max_workers"):
+        _worker_count(("A",), max_workers)
+
+
+def test_scan_symbols_parallel_preserves_input_order_and_isolates_errors(monkeypatch) -> None:
+    def fake_scan_symbol(symbol: str, *, use_incremental: bool = True):
+        if symbol == "BAD.NS":
+            raise RuntimeError("download failed")
+        return {
+            "symbol": symbol,
+            "week": f"week-{symbol}",
+            "signal_bar_index": 1,
+            "signal_bar_anomaly": False,
+            "execution_bar_index": None,
+            "actionable": False,
+            "qualification": "UNQUALIFIED",
+            "net_strength": 0.0,
+            "net_pressure": 0.0,
+            "target_bar_evidence_codes": [],
+            "scoring_evidence_codes": [],
+        }
+
+    monkeypatch.setattr("live_scanner.scan_symbol", fake_scan_symbol)
+
+    observations = scan_symbols_parallel(
+        ("B.NS", "BAD.NS", "A.NS"),
+        max_workers=3,
+    )
+
+    assert [item["symbol"] for item in observations] == ["B.NS", "BAD.NS", "A.NS"]
+    assert observations[1]["qualification"] == "ERROR"
+    assert observations[1]["error"] == "RuntimeError"
+    assert "download failed" in observations[1]["reason"]
+
+
+def test_run_once_prints_parallel_results_in_result_order(monkeypatch, capsys) -> None:
+    observations = [
+        {"symbol": "A.NS", "value": 1},
+        {"symbol": "B.NS", "value": 2},
+    ]
+    printed: list[str] = []
+
+    def fake_scan_symbols_parallel(symbols, *, use_incremental=True, max_workers=4):
+        assert symbols == ("A.NS", "B.NS")
+        assert max_workers == 2
+        return observations
+
+    def fake_print_observation(observation, as_json):
+        assert as_json is True
+        printed.append(observation["symbol"])
+
+    monkeypatch.setattr("live_scanner.scan_symbols_parallel", fake_scan_symbols_parallel)
+    monkeypatch.setattr("live_scanner._print_observation", fake_print_observation)
+
+    result = run_once(("A.NS", "B.NS"), True, max_workers=2)
+
+    assert result == observations
+    assert printed == ["A.NS", "B.NS"]
+    assert capsys.readouterr().out == ""
