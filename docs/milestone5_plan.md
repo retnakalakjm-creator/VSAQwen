@@ -198,91 +198,84 @@ Document the exact local workflow for running ProVSA as a local professional ter
 
 ### Goal
 
-Add a lightweight watchlist status view that helps choose what to inspect without running expensive scanner analysis for every symbol.
+Add a lightweight status view for multiple symbols without running a full scanner pass for every symbol.
 
 ### Todo
 
-- Define a local watchlist source.
-- Add a read-only endpoint for provider/cache status across multiple symbols.
-- Reuse existing data-source diagnostics logic.
-- Do not call `download_data` from diagnostics-only watchlist status.
-- Add frontend display for cache freshness, stale-cache warnings, and provider readiness.
+- Accept a small watchlist of symbols.
+- Show provider/cache/stale status for each symbol.
+- Show whether a confirmed context exists.
+- Avoid triggering expensive full analysis unless explicitly requested.
+- Keep the endpoint read-only.
 
 ### Acceptance criteria
 
-- The watchlist status view is diagnostics-only.
-- It does not run scanner analysis for all symbols.
-- It does not refresh caches.
-- It does not add broker/order/account scope.
+- Users can quickly identify missing/stale data across a watchlist.
+- No broker/account/order scope is added.
+- Batch status does not silently run heavy scanner loops.
 
-## Phase 6: Optional UX polish and release notes
+## Phase 6: Optional release notes
 
 ### Goal
 
-Prepare a clear local release package for the current app state.
+Summarize what changed across Milestones 1-5 in a human-readable release note.
 
 ### Todo
 
-- Add release notes for Milestones 1 through 4.
-- Document current feature boundaries.
-- Document known limitations.
-- Document recommended manual checks before relying on the local UI.
-- Add screenshots later if desired.
+- Summarize completed weekly-bar safety work.
+- Summarize scanner performance work.
+- Summarize decision context work.
+- Summarize journal work.
+- Summarize provider/data-source work.
+- Summarize frontend live workflow work.
+- Document remaining known limitations.
 
 ### Acceptance criteria
 
-- The project has a clear current-state summary.
-- Limitations are visible and honest.
-- Decision-support-only scope is explicit.
+- The project has a clear local-terminal release summary.
+- Remaining work is easy to prioritize.
 
-## Non-goals for Milestone 5
+## Future Milestone: Dedicated trade-planning layer
 
-Milestone 5 must not add:
+After the UI refactor, add a separate analysis-only trade-planning layer. This layer can translate a confirmed VSA context into trader-facing planning language such as posture, pullback/breakout preference, invalidation area, and reward/risk expectation. It must remain decision-support only and must not place, modify, cancel, size, or route orders.
 
-```text
-order placement
-order modification
-order cancellation
-auto-trading
-position sizing
-broker account access
-holdings/funds/margins display
-credential persistence
-intraday/live-stream trading decisions
-auto-promotion of developing preview to confirmed signal
-changes to VSA detector/scoring/ranking semantics without a separate analysis PR
-```
+## Future Milestone: Swing Scanner dashboard
 
-## Recommended PR sequence
+Add a scanner dashboard that identifies swing-trading candidates from the existing confirmed weekly decision-support pipeline.
 
-1. `milestone5/live-integration-smoke-checklist`
-   - Add local smoke-test checklist and record the live integration gate.
+### Candidate criteria
 
-2. `milestone5/ci-backend-frontend`
-   - Add GitHub Actions for backend tests and frontend build.
+- Bullish background.
+- Fresh demand signals.
+- Limited supply.
+- Favorable trend.
+- Acceptable risk.
 
-3. `milestone5/frontend-error-polish`
-   - Improve local runtime and diagnostics UI states.
-
-4. `milestone5/local-deployment-docs`
-   - Add Windows/local terminal setup documentation.
-
-5. `milestone5/watchlist-diagnostics` optional
-   - Add diagnostics-only watchlist provider/cache status.
-
-6. `milestone5/release-notes` optional
-   - Add milestone release summary and known limitations.
-
-## Completion criteria
-
-Milestone 5 is complete when:
+### Intended dashboard summary
 
 ```text
-Milestone 4 features are verified in the running local app
-live integration findings are fixed or documented
-smoke-test checklist exists
-CI runs backend tests and frontend build
-local setup documentation is sufficient for a fresh checkout
-frontend failure states are understandable
-forbidden broker/order/account scope remains absent
+====================================================================================
+                    PROFESSIONAL VSA SWING SCANNER
+====================================================================================
+
+Analysis Date : <current analysis date>
+
+Stocks Scanned          : <count>
+Bullish Candidates      : <count>
+Watchlist               : <count>
+Bearish Candidates      : <count>
+
+Market Background       : <plain-English market background>
+Average Swing Score     : <plain-English or score-derived summary>
+
+Top Sector
+-----------------------
+Banking
+Capital Goods
+IT
+Pharma
 ```
+
+### Boundary
+
+The Swing Scanner must use confirmed completed weekly bars for official candidates. It must not add broker orders, account access, holdings, funds, margins, or credential persistence.

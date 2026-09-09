@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./vsa-timeline.css";
+import "./readable-ui.css";
+import "./trader-readable-ui.css";
 
 export const metadata: Metadata = {
   title: "ProVSA Command Centre",

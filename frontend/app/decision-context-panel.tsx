@@ -125,8 +125,33 @@ function displayDate(value: string | null | undefined) {
       });
 }
 
-function score(value: number) {
-  return value.toFixed(2);
+function scoreLevel(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "Unknown";
+  if (value >= 0.85) return "Exceptional";
+  if (value >= 0.70) return "Very strong";
+  if (value >= 0.55) return "Strong";
+  if (value >= 0.40) return "Moderate";
+  if (value >= 0.20) return "Weak";
+  return "Very weak";
+}
+
+function confidenceMeaning(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "Confidence is not available yet.";
+  if (value >= 0.85) return "The story is unusually clear and evidence is highly aligned.";
+  if (value >= 0.70) return "The story is clear and evidence is well aligned.";
+  if (value >= 0.55) return "The story is constructive but still needs confirmation.";
+  if (value >= 0.40) return "The story is mixed; treat it as conditional.";
+  if (value >= 0.20) return "The model has limited conviction in this reading.";
+  return "The model has very low conviction in this reading.";
+}
+
+function pressureMeaning(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "Pressure is not available yet.";
+  if (value >= 0.55) return "Demand is clearly in control.";
+  if (value >= 0.20) return "Demand is stronger than supply.";
+  if (value > -0.20) return "Supply and demand are mixed.";
+  if (value > -0.55) return "Supply is stronger than demand.";
+  return "Supply is clearly in control.";
 }
 
 function isBullish(value: string) {
@@ -192,7 +217,7 @@ export function DecisionContextPanel({
 
   if (!context) {
     return (
-      <section className="structure-workspace">
+      <section className="structure-workspace readable-single-section">
         <div className="panel structure-summary">
           <span className="section-kicker">VSA STORY</span>
           <h2>No story yet</h2>
@@ -204,29 +229,25 @@ export function DecisionContextPanel({
 
   const activeContext = storyViewMode === "developing" && developingContext ? developingContext : context;
   const latestEvents = activeContext.recent_events.slice().reverse().slice(0, 6);
-  const latestSwings = activeContext.structural_swings.slice(-4);
   const positivePressure = activeContext.net_pressure >= 0;
   const modeStatus = decisionContextModeStatus(activeContext.mode);
 
   return (
-    <section className="structure-workspace">
-      <div className="panel structure-summary">
+    <section className="readable-story-grid">
+      <div className="panel structure-summary readable-story-main">
         <span className="section-kicker">VSA STORY</span>
-        <div
-          className="chart-tools"
-          aria-label="Decision context mode controls"
-          style={{ justifyContent: "flex-start", margin: "0 0 8px" }}
-        >
+        <div className="context-mode-switch" aria-label="Decision context mode controls">
           <button
             type="button"
+            className={storyViewMode === "confirmed" ? "selected" : ""}
             aria-pressed={storyViewMode === "confirmed"}
-            disabled={storyViewMode === "confirmed"}
             onClick={showConfirmedContext}
           >
             Confirmed weekly
           </button>
           <button
             type="button"
+            className={storyViewMode === "developing" ? "selected developing" : ""}
             aria-pressed={storyViewMode === "developing"}
             disabled={developingContextLoading}
             onClick={() => void loadDevelopingContext()}
@@ -242,11 +263,11 @@ export function DecisionContextPanel({
         ) : null}
         <h2>{activeContext.story.headline}</h2>
         <p>{activeContext.story.summary}</p>
-        <div className="evidence-detail latest-evidence" aria-label={`${modeStatus.label} context mode`}>
-          <h4>{modeStatus.label}</h4>
-          <p>{modeStatus.detail}</p>
+        <div className="mode-explainer" aria-label={`${modeStatus.label} context mode`}>
+          <strong>{modeStatus.label}</strong>
+          <span>{modeStatus.detail}</span>
         </div>
-        <div className="summary-grid">
+        <div className="summary-grid readable-summary-grid">
           <span>
             Phase
             <strong>{pretty(activeContext.phase)}</strong>
@@ -260,19 +281,19 @@ export function DecisionContextPanel({
             <strong>{pretty(activeContext.bias)}</strong>
           </span>
         </div>
-        <div className="plain-score">
+        <div className="plain-score story-plain-reading">
           <span>Pressure</span>
           <strong>{positivePressure ? "Demand" : "Supply"}</strong>
-          <small>{score(activeContext.net_pressure)} net pressure</small>
+          <small>{pressureMeaning(activeContext.net_pressure)}</small>
         </div>
-        <div className="plain-score">
+        <div className="plain-score story-plain-reading">
           <span>Confidence</span>
-          <strong>{score(activeContext.confidence)}</strong>
-          <small>Evaluated {displayDate(activeContext.evaluated_at_utc)}</small>
+          <strong>{scoreLevel(activeContext.confidence)}</strong>
+          <small>{confidenceMeaning(activeContext.confidence)} Evaluated {displayDate(activeContext.evaluated_at_utc)}.</small>
         </div>
       </div>
 
-      <div className="panel structure-sequence">
+      <div className="panel structure-sequence story-watch-panel">
         <div className="workspace-heading">
           <div>
             <span className="section-kicker">WHAT TO WATCH NEXT</span>
@@ -286,7 +307,7 @@ export function DecisionContextPanel({
           <h4>Invalidation</h4>
           <p>{activeContext.story.invalidation_condition}</p>
         </div>
-        <div className="vsa-category-summary">
+        <div className="vsa-category-summary expected-next-behavior">
           <span className="section-kicker">EXPECTED NEXT BEHAVIOR</span>
           <div className="vsa-category-list">
             {activeContext.story.what_to_expect_next.map((item) => (
@@ -319,7 +340,7 @@ export function DecisionContextPanel({
                 <div className="signal-top">
                   <span className={bullish ? "dot up" : "dot down"} />
                   <strong>{pretty(event.code)}</strong>
-                  <span>{score(event.strength)}</span>
+                  <span>{scoreLevel(event.strength)}</span>
                 </div>
                 <div className="signal-code">
                   {displayDate(event.week)} · {pretty(event.category)} · {pretty(event.role)}
@@ -329,32 +350,6 @@ export function DecisionContextPanel({
             );
           })
         )}
-      </div>
-
-      <div className="panel structure-sequence">
-        <div className="workspace-heading">
-          <div>
-            <span className="section-kicker">STRUCTURE MEMORY</span>
-            <h2>Recent decisive swings</h2>
-          </div>
-          <span>{latestSwings.length} stored</span>
-        </div>
-        <div className="swing-track">
-          {latestSwings.map((swing, index) => {
-            const high = swing.type.toLowerCase().includes("high");
-            return (
-              <div
-                className={`swing-node ${high ? "high" : "low"} ${index === latestSwings.length - 1 ? "latest" : ""}`}
-                key={`${swing.pivot_bar_index}-${swing.type}`}
-              >
-                <span>{swing.label ?? swing.type}</span>
-                <small>{swing.price.toFixed(0)}</small>
-                <em>{swing.grade}</em>
-                {index < latestSwings.length - 1 && <b aria-hidden="true">→</b>}
-              </div>
-            );
-          })}
-        </div>
       </div>
     </section>
   );

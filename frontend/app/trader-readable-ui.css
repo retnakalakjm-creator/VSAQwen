@@ -1,0 +1,234 @@
+.professional-summary-card {
+  padding: 16px 18px;
+  border-top: 4px solid #172033;
+}
+
+.professional-summary-heading {
+  margin-bottom: 14px;
+}
+
+.professional-summary-heading h2 {
+  max-width: 780px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.professional-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.professional-summary-row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.professional-summary-row span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.professional-summary-row strong {
+  color: #172033;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.professional-summary-row small {
+  grid-column: 2;
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.professional-summary-note,
+.composition-note {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.evidence-composition-card,
+.bar-story-card {
+  padding: 14px;
+}
+
+.evidence-composition-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.evidence-composition-list button,
+.evidence-composition-list > span {
+  display: grid;
+  gap: 4px;
+  min-height: 76px;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  padding: 10px;
+  color: #475569;
+  background: #ffffff;
+  text-align: left;
+}
+
+.evidence-composition-list button {
+  cursor: pointer;
+}
+
+.evidence-composition-list button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.evidence-composition-list strong {
+  color: #172033;
+  font-size: 13px;
+}
+
+.evidence-composition-list span,
+.evidence-composition-list small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.bar-story-event {
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  margin-top: 8px;
+  border-top: 1px solid #e2e8f0;
+  padding: 11px 10px;
+}
+
+.bar-story-event.selected {
+  border-left-color: #2563eb;
+  background: #eff6ff;
+}
+
+.bar-reading-card {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid #dbe3ec;
+  border-left: 4px solid transparent;
+  border-radius: 12px;
+  padding: 13px 14px;
+  background: #ffffff;
+  color: #172033;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bar-reading-card:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.bar-reading-card.selected {
+  border-left-color: #2563eb;
+  background: #eff6ff;
+}
+
+.bar-reading-card span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.bar-reading-card strong {
+  font-size: 13px;
+}
+
+.bar-reading-card h3,
+.professional-reading-detail h4 {
+  margin: 2px 0 0;
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.bar-reading-card p,
+.professional-reading-detail p {
+  margin: 0;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.readable-nav button strong {
+  text-transform: none;
+}
+
+.story-plain-reading strong {
+  font-size: 14px;
+}
+
+.story-plain-reading small {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.story-watch-panel .latest-evidence p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.expected-next-behavior .vsa-category-list {
+  align-items: stretch;
+  gap: 7px;
+}
+
+.expected-next-behavior .vsa-category-list span {
+  display: block;
+  border-radius: 10px;
+  padding: 8px 11px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.readable-structure-section .structure-sequence {
+  min-height: 240px;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.readable-structure-section .swing-track {
+  min-height: 150px;
+  padding-top: 54px;
+  padding-bottom: 42px;
+}
+
+.readable-structure-section .swing-node {
+  min-width: 92px;
+}
+
+@media (max-width: 1200px) {
+  .professional-summary-grid,
+  .evidence-composition-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .professional-summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .professional-summary-row small {
+    grid-column: auto;
+  }
+}
