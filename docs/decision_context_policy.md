@@ -123,6 +123,10 @@ GET /api/symbols/{symbol}/decision-context
 
 The page renders that VSA Story while the heavier full chart analysis request is still loading. When the full analysis response arrives, the embedded `decision_context` becomes the source for the same panel so the story stays synchronized with the chart payload.
 
+Every rendered VSA Story must visibly label the `DecisionContext.mode` value. Confirmed contexts should be shown as `Confirmed weekly` and described as completed-weekly-bar decision-support context. Developing contexts should be shown as `Developing preview` and described as latest-available weekly data that may change before the week closes and is not a confirmed VSA signal.
+
+Unknown context modes must not be silently treated as confirmed. The frontend should surface an explicit warning when a backend payload contains an unrecognized mode value.
+
 The page also loads read-only decision-journal evaluations from:
 
 ```text
@@ -139,6 +143,7 @@ tradability
 bias
 net pressure
 confidence
+context mode/status
 confirmation condition
 invalidation condition
 what to expect next
@@ -204,12 +209,12 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local confirmed decision-context persistence, the production incremental scanner path, a cached confirmed decision-context endpoint, a preview-only developing decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, frontend read-only journal outcome display, journal-to-chart/context click-through, a read-only market-data provider interface, and an explicit Upstox daily OHLCV provider.
+This layer is now wired into FastAPI analysis output, local confirmed decision-context persistence, the production incremental scanner path, a cached confirmed decision-context endpoint, a preview-only developing decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel with explicit confirmed/developing mode labels, frontend preloading of compact context, frontend read-only journal outcome display, journal-to-chart/context click-through, a read-only market-data provider interface, and an explicit Upstox daily OHLCV provider.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Surface developing/live context in the frontend with clear warning/status labels.
+1. Add an optional frontend toggle to request the developing preview endpoint, while keeping confirmed context as the default.
 2. Add provider/source freshness indicators to the UI.
 3. Continue keeping confirmed signals, developing previews, and journal validation separate.

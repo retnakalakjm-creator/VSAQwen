@@ -56,6 +56,36 @@ export type DecisionContext = {
 
 export type { DecisionContextEvent };
 
+type DecisionContextModeStatus = {
+  label: string;
+  detail: string;
+};
+
+export function decisionContextModeStatus(
+  mode: string | null | undefined,
+): DecisionContextModeStatus {
+  const normalized = (mode ?? "confirmed").trim().toLowerCase();
+  if (normalized === "developing") {
+    return {
+      label: "Developing preview",
+      detail:
+        "Includes the latest available weekly bar and may change before the week closes. Treat this as an early warning, not a confirmed VSA signal.",
+    };
+  }
+  if (normalized === "confirmed") {
+    return {
+      label: "Confirmed weekly",
+      detail:
+        "Uses completed weekly bars only. This is the official decision-support context used by the confirmed scanner and journal workflow.",
+    };
+  }
+  return {
+    label: pretty(normalized),
+    detail:
+      "Context mode is not recognized by the frontend. Review the backend payload before treating this story as confirmed.",
+  };
+}
+
 function pretty(value: string | null | undefined) {
   if (!value) return "—";
   return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -106,6 +136,7 @@ export function DecisionContextPanel({
   const latestEvents = context.recent_events.slice().reverse().slice(0, 6);
   const latestSwings = context.structural_swings.slice(-4);
   const positivePressure = context.net_pressure >= 0;
+  const modeStatus = decisionContextModeStatus(context.mode);
 
   return (
     <section className="structure-workspace">
@@ -113,6 +144,10 @@ export function DecisionContextPanel({
         <span className="section-kicker">VSA STORY</span>
         <h2>{context.story.headline}</h2>
         <p>{context.story.summary}</p>
+        <div className="evidence-detail latest-evidence" aria-label={`${modeStatus.label} context mode`}>
+          <h4>{modeStatus.label}</h4>
+          <p>{modeStatus.detail}</p>
+        </div>
         <div className="summary-grid">
           <span>
             Phase
@@ -145,7 +180,7 @@ export function DecisionContextPanel({
             <span className="section-kicker">WHAT TO WATCH NEXT</span>
             <h2>Confirmation and invalidation</h2>
           </div>
-          <span>{pretty(context.mode)}</span>
+          <span>{modeStatus.label}</span>
         </div>
         <div className="evidence-detail latest-evidence">
           <h4>Confirmation</h4>
