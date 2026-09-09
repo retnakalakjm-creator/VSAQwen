@@ -85,6 +85,20 @@ When no provider is injected, the service intentionally preserves the legacy `da
 
 This runtime wiring must remain outside scanner, metrics, VSA detector, scoring, qualification, actionability, and journal-evaluation logic. Provider selection changes where raw daily OHLCV is retrieved from; it must not change how confirmed weekly decisions are calculated.
 
+## Data source status boundary
+
+FastAPI exposes a read-only diagnostics endpoint:
+
+```text
+GET /api/symbols/{symbol}/data-source
+```
+
+The endpoint reports the configured runtime provider and the existing cache metadata sidecar for that symbol, including cache source, cache format, row count, first/last cached dates, cache update time, and stale-cache reason when present.
+
+For Upstox, the endpoint may report readiness booleans such as whether the provider is enabled, which token environment-variable name is configured, whether a token is present, and whether the symbol has an explicit mapping. It must never return token values, broker account identifiers, holdings, funds, margins, positions, orders, or credential material.
+
+The status endpoint is diagnostic-only. It must not download data, refresh cache files, run scanner analysis, resample daily bars, update scanner state, persist decision context, create journal entries, or change provider configuration.
+
 ## Upstox read-only OHLCV boundary
 
 `UpstoxMarketDataProvider` is a read-only daily OHLCV adapter for Upstox historical candles.
@@ -191,6 +205,7 @@ Developing/live-bar data can be added later, but it must be labeled separately f
 3. Add Upstox symbol mapping for read-only daily OHLCV data.
 4. Add API/runtime provider injection only at the outer service boundary.
 5. Add rate-limit/backoff handling and explicit stale-cache fallback tests.
-6. Add developing/live data mode only after confirmed weekly behavior is unchanged.
+6. Add a read-only data source status endpoint for provider/cache diagnostics.
+7. Add developing/live data mode only after confirmed weekly behavior is unchanged.
 
 No broker order scope should be added to this feature.

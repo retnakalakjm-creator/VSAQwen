@@ -6,8 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from decision_journal import DEFAULT_VALIDATION_HORIZON_BARS
 from market_data import create_market_data_provider_from_env
 
+from .data_source_status import build_data_source_status
 from .schemas import (
     AnalysisDTO,
+    DataSourceStatusDTO,
     DecisionContextDTO,
     DecisionJournalDTO,
     DecisionJournalEvaluationResponseDTO,
@@ -42,6 +44,18 @@ _service = create_service()
 @app.get("/api/health", response_model=HealthDTO)
 def health() -> HealthDTO:
     return _service.health()
+
+
+@app.get("/api/symbols/{symbol}/data-source", response_model=DataSourceStatusDTO)
+def symbol_data_source_status(symbol: str) -> DataSourceStatusDTO:
+    try:
+        return DataSourceStatusDTO(
+            **build_data_source_status(symbol, _service._market_data_provider)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Data source status failed") from exc
 
 
 @app.get("/api/symbols/{symbol}/analysis", response_model=AnalysisDTO)

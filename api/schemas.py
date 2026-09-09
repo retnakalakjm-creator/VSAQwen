@@ -226,6 +226,27 @@ class AnalysisDTO(BaseModel):
     decision_context: DecisionContextDTO | None = None
 
 
+class DataSourceStatusDTO(BaseModel):
+    symbol: str
+    configured_provider: str
+    active_provider: str
+    cache_available: bool
+    cache_source: str | None
+    cache_format: str | None
+    cache_rows: int | None
+    cache_first_date: str | None
+    cache_last_date: str | None
+    cache_updated_at_utc: str | None
+    stale_cache: bool
+    stale_reason: str | None
+    upstox_enabled: bool | None
+    upstox_token_env: str | None
+    upstox_token_present: bool | None
+    upstox_symbol_mapped: bool | None
+    diagnostic_only: bool = True
+    cache_metadata: dict[str, object] | None = None
+
+
 class HealthDTO(BaseModel):
     status: str
     service: str
