@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from decision_journal import DEFAULT_VALIDATION_HORIZON_BARS
+from engine.columns import COL_WEEK
 from market_data import create_market_data_provider_from_env
+from metrics_engine import MetricsEngine
+from weekly_bar_interpreter import (
+    DEFAULT_WEEKLY_BAR_READING_LOOKBACK,
+    MAX_WEEKLY_BAR_READING_LOOKBACK,
+    build_weekly_bar_readings,
+)
 
 from .data_source_status import build_data_source_status
 from .schemas import (
@@ -14,6 +21,7 @@ from .schemas import (
     DecisionJournalDTO,
     DecisionJournalEvaluationResponseDTO,
     HealthDTO,
+    WeeklyBarReadingsResponseDTO,
 )
 from .service import ProVSAService
 
@@ -66,6 +74,38 @@ def symbol_analysis(symbol: str) -> AnalysisDTO:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Analysis failed") from exc
+
+
+@app.get(
+    "/api/symbols/{symbol}/weekly-bar-readings",
+    response_model=WeeklyBarReadingsResponseDTO,
+)
+def symbol_weekly_bar_readings(
+    symbol: str,
+    lookback: int = Query(
+        DEFAULT_WEEKLY_BAR_READING_LOOKBACK,
+        ge=1,
+        le=MAX_WEEKLY_BAR_READING_LOOKBACK,
+    ),
+) -> WeeklyBarReadingsResponseDTO:
+    """Return plain-English readings for recent completed weekly bars."""
+    try:
+        normalized_symbol = _service._normalize_symbol(symbol)
+        weekly = _service._completed_weekly_for_symbol(normalized_symbol)
+        metrics = MetricsEngine().calculate(weekly)
+        readings = build_weekly_bar_readings(metrics, lookback=lookback)
+        latest_week = str(metrics.iloc[len(metrics) - 1][COL_WEEK])
+        return WeeklyBarReadingsResponseDTO(
+            symbol=normalized_symbol,
+            timeframe="1W",
+            latest_week=latest_week,
+            lookback=lookback,
+            readings=[reading.to_dict() for reading in readings],
+        )
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Weekly bar readings failed") from exc
 
 
 @app.get("/api/symbols/{symbol}/decision-context", response_model=DecisionContextDTO)

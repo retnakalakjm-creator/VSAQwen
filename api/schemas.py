@@ -209,6 +209,19 @@ class DecisionJournalEvaluationResponseDTO(BaseModel):
     evaluations: list[DecisionJournalEvaluationDTO]
 
 
+class WeeklyBarReadingDTO(BaseModel):
+    week: str
+    professional_reading: str
+
+
+class WeeklyBarReadingsResponseDTO(BaseModel):
+    symbol: str
+    timeframe: str
+    latest_week: str
+    lookback: int
+    readings: list[WeeklyBarReadingDTO]
+
+
 class AnalysisDTO(BaseModel):
     symbol: str
     timeframe: str
