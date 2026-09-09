@@ -7,6 +7,7 @@ from decision_journal import DEFAULT_VALIDATION_HORIZON_BARS
 from engine.columns import COL_WEEK
 from market_data import create_market_data_provider_from_env
 from metrics_engine import MetricsEngine
+from trade_planner import build_trade_plan
 from weekly_bar_interpreter import (
     DEFAULT_WEEKLY_BAR_READING_LOOKBACK,
     MAX_WEEKLY_BAR_READING_LOOKBACK,
@@ -21,6 +22,7 @@ from .schemas import (
     DecisionJournalDTO,
     DecisionJournalEvaluationResponseDTO,
     HealthDTO,
+    TradePlanResponseDTO,
     WeeklyBarReadingsResponseDTO,
 )
 from .service import ProVSAService
@@ -74,6 +76,26 @@ def symbol_analysis(symbol: str) -> AnalysisDTO:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Analysis failed") from exc
+
+
+@app.get("/api/symbols/{symbol}/trade-plan", response_model=TradePlanResponseDTO)
+def symbol_trade_plan(symbol: str) -> TradePlanResponseDTO:
+    """Return an analysis-only trade-planning draft for a confirmed weekly setup."""
+    try:
+        analysis = _service.analyze_symbol(symbol)
+        if analysis.decision_context is None:
+            raise ValueError("analysis did not produce a decision context")
+        plan = build_trade_plan(analysis)
+        return TradePlanResponseDTO(
+            symbol=analysis.symbol,
+            timeframe=analysis.timeframe,
+            latest_week=analysis.latest_week,
+            plan=plan.to_dict(),
+        )
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Trade plan failed") from exc
 
 
 @app.get(

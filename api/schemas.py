@@ -222,6 +222,37 @@ class WeeklyBarReadingsResponseDTO(BaseModel):
     readings: list[WeeklyBarReadingDTO]
 
 
+class TradePlanLevelDTO(BaseModel):
+    label: str
+    price: float | None
+    lower: float | None
+    upper: float | None
+    source: str
+    note: str
+
+
+class TradePlanDTO(BaseModel):
+    posture: str
+    setup_type: str
+    reference_price: float | None
+    support: TradePlanLevelDTO
+    resistance: TradePlanLevelDTO
+    entry_condition: str
+    confirmation_trigger: str
+    invalidation_condition: str
+    risk_reading: str
+    reward_reading: str
+    notes: list[str]
+    analysis_only: bool = True
+
+
+class TradePlanResponseDTO(BaseModel):
+    symbol: str
+    timeframe: str
+    latest_week: str
+    plan: TradePlanDTO
+
+
 class AnalysisDTO(BaseModel):
     symbol: str
     timeframe: str
