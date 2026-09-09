@@ -70,7 +70,9 @@ These labels are for human review only. They must never place orders, modify ord
 
 Confirmed mode should use only completed weekly bars and may support the official scanner decision.
 
-Developing mode may use incomplete/live data in the future, but it must be labeled as developing context only. Developing observations can warn the user that demand/supply may be forming, but they must not be treated as confirmed VSA signals.
+Developing mode may use incomplete/live data, but it must be labeled as developing context only. Developing observations can warn the user that demand/supply may be forming, but they must not be treated as confirmed VSA signals.
+
+Developing context is preview-only. It must not overwrite confirmed `DecisionContext` files, update scanner state snapshots, create decision-journal entries, or change official qualification/actionability decisions.
 
 ## API integration boundary
 
@@ -78,15 +80,23 @@ FastAPI analysis builds and returns `decision_context` in the `AnalysisDTO` resp
 
 FastAPI analysis routes latest-symbol scanning through `production_scanner.scan_latest_candidate_production()`. That path bootstraps with a full point-in-time scan when no valid scanner state exists, then resumes from persisted scanner state on later calls. A guarded full-replay fallback remains enabled by default when scanner state is missing, invalid, or incompatible.
 
-FastAPI also exposes a compact decision-context endpoint:
+FastAPI also exposes a compact confirmed decision-context endpoint:
 
 ```text
 GET /api/symbols/{symbol}/decision-context
 ```
 
-That endpoint checks the latest completed weekly bar identity. If the saved confirmed `DecisionContext` already matches that latest completed week, the API returns the cached compact context without running scanner analysis. If the context is missing, invalid, developing-mode, or stale, the endpoint refreshes through the production scanner path and saves the new context.
+That endpoint checks the latest completed weekly bar identity. If the saved confirmed `DecisionContext` already matches that latest completed week, the API returns the cached compact context without running scanner analysis. If the context is missing, invalid, developing-mode, or stale, the endpoint refreshes through the production scanner path and saves the new confirmed context.
 
 Freshly rebuilt confirmed contexts also upsert a compact `DecisionJournalEntry` through `DecisionJournalStore`. Cached decision-context responses do not create duplicate journal entries because no new analysis was performed.
+
+FastAPI exposes a separate developing decision-context endpoint:
+
+```text
+GET /api/symbols/{symbol}/decision-context/developing
+```
+
+That endpoint uses the latest available weekly data, including a potentially incomplete current week, and returns a `DecisionContext` with `mode=developing`. It is an early-warning preview only. It uses the point-in-time scanner without scanner-state persistence and does not save decision-context JSON or upsert decision-journal entries.
 
 The API also exposes journal endpoints:
 
@@ -101,7 +111,7 @@ Journal evaluation payloads include source context week/bar metadata so UI clien
 
 The fast path is intentionally narrower than the full analysis endpoint. It returns only the compact decision context, not full bars, all evidence, structural swings, or chart-ready analysis payloads.
 
-The API uses confirmed weekly bars for this official decision context and journal evaluation. Developing/live-bar context remains future work and must be labeled separately when added.
+Confirmed API paths use completed weekly bars for official decision context and journal evaluation. Developing/live-bar context is labeled separately and must not be mixed with confirmed scanner decisions.
 
 ## Frontend integration boundary
 
@@ -173,7 +183,7 @@ See `docs/live_validation_journal_policy.md` for the detailed journal policy.
 
 The default provider remains yfinance. The provider layer only retrieves raw daily OHLCV payloads; `data.py` still owns normalization, validation, caching, daily-to-weekly resampling, and completed weekly bar filtering.
 
-`UpstoxMarketDataProvider` is now present only as an explicit disabled scaffold. It does not download data yet, is not selected automatically, and must not add broker/order scope when completed.
+`UpstoxMarketDataProvider` is present as an explicit read-only daily OHLCV provider. It is not selected automatically, requires explicit enablement, and must not add broker/order scope.
 
 Future providers must not bypass confirmed-bar rules or add broker/order scope.
 
@@ -194,11 +204,12 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local decision-context persistence, the production incremental scanner path, a cached decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, frontend read-only journal outcome display, journal-to-chart/context click-through, a read-only market-data provider interface, and a disabled Upstox provider scaffold. It does not yet provide a developing-bar live mode.
+This layer is now wired into FastAPI analysis output, local confirmed decision-context persistence, the production incremental scanner path, a cached confirmed decision-context endpoint, a preview-only developing decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel, frontend preloading of compact context, frontend read-only journal outcome display, journal-to-chart/context click-through, a read-only market-data provider interface, and an explicit Upstox daily OHLCV provider.
 
 ## Future integration path
 
 Recommended follow-up PRs:
 
-1. Implement read-only Upstox daily OHLCV mapping behind explicit provider tests, without order placement.
-2. Add a developing-bar/live context mode, clearly separated from confirmed signals.
+1. Surface developing/live context in the frontend with clear warning/status labels.
+2. Add provider/source freshness indicators to the UI.
+3. Continue keeping confirmed signals, developing previews, and journal validation separate.

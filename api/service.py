@@ -5,7 +5,12 @@ from pathlib import Path
 import pandas as pd
 
 from data import completed_weekly_only, daily_to_weekly, download_data
-from decision_context import DecisionContext, DecisionContextStore, build_decision_context
+from decision_context import (
+    DecisionContext,
+    DecisionContextStore,
+    DecisionMode,
+    build_decision_context,
+)
 from decision_journal import (
     DEFAULT_VALIDATION_HORIZON_BARS,
     DecisionJournalEntry,
@@ -23,6 +28,7 @@ from engine.columns import (
 from market_data import MarketDataProvider
 from metrics_engine import MetricsEngine
 from production_scanner import scan_latest_candidate_production
+from scanner import ScannerEngine
 from scanner_state import ScannerStateStore
 
 from .schemas import (
@@ -104,6 +110,30 @@ class ProVSAService:
         if analysis.decision_context is None:
             raise ValueError("analysis did not produce a decision context")
         return analysis.decision_context
+
+    def developing_decision_context_for_symbol(self, symbol: str) -> DecisionContextDTO:
+        """Return a preview-only decision context from latest available weekly data.
+
+        Developing context may include the current incomplete weekly bar. It is
+        intentionally isolated from the confirmed production scanner path: it
+        does not load or save scanner state, does not persist decision-context
+        JSON, and does not upsert decision-journal entries.
+        """
+        symbol = self._normalize_symbol(symbol)
+        weekly = self._developing_weekly_for_symbol(symbol)
+        metrics = MetricsEngine().calculate(weekly)
+        if metrics.empty:
+            raise ValueError("no developing weekly bars are available for symbol")
+
+        target_index = len(metrics) - 1
+        candidate = ScannerEngine().scan_to_index(metrics, target_index)
+        context = build_decision_context(
+            candidate,
+            symbol=symbol,
+            timeframe=DEFAULT_API_TIMEFRAME,
+            mode=DecisionMode.DEVELOPING,
+        )
+        return self._decision_context_dto(context)
 
     def decision_journal_for_symbol(self, symbol: str) -> DecisionJournalDTO:
         """Return saved compact journal entries without running analysis."""
@@ -261,6 +291,14 @@ class ProVSAService:
         weekly = completed_weekly_only(daily_to_weekly(daily))
         if weekly.empty:
             raise ValueError("no completed weekly bars are available for symbol")
+        return weekly
+
+    def _developing_weekly_for_symbol(self, symbol: str) -> pd.DataFrame:
+        """Return latest weekly bars without dropping the current partial week."""
+        daily = self._download_daily_data_for_symbol(symbol)
+        weekly = daily_to_weekly(daily)
+        if weekly.empty:
+            raise ValueError("no developing weekly bars are available for symbol")
         return weekly
 
     def _download_daily_data_for_symbol(self, symbol: str) -> pd.DataFrame:

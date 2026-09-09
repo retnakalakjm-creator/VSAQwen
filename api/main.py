@@ -64,6 +64,19 @@ def symbol_decision_context(symbol: str) -> DecisionContextDTO:
         raise HTTPException(status_code=500, detail="Decision context failed") from exc
 
 
+@app.get(
+    "/api/symbols/{symbol}/decision-context/developing",
+    response_model=DecisionContextDTO,
+)
+def symbol_developing_decision_context(symbol: str) -> DecisionContextDTO:
+    try:
+        return _service.developing_decision_context_for_symbol(symbol)
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Developing decision context failed") from exc
+
+
 @app.get("/api/symbols/{symbol}/decision-journal", response_model=DecisionJournalDTO)
 def symbol_decision_journal(symbol: str) -> DecisionJournalDTO:
     try:
