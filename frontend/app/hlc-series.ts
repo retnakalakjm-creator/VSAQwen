@@ -18,6 +18,7 @@ export interface HLCData extends CustomData<Time> {
   close: number;
   direction: "up" | "down" | "flat";
   highlight?: boolean;
+  highlightBackground?: boolean;
   structural?: { label: string; price: number; isHigh: boolean; color: string };
 }
 
@@ -36,6 +37,7 @@ const UP_COLOR = "#16a34a";
 const DOWN_COLOR = "#dc2626";
 const FLAT_COLOR = "#64748b";
 const HIGHLIGHT_COLOR = "#2563eb";
+const HIGHLIGHT_FILL_COLOR = "rgba(37, 99, 235, 0.09)";
 
 class HLCSeriesRenderer implements ICustomSeriesPaneRenderer {
   private data: PaneRendererCustomData<Time, HLCData> | null = null;
@@ -71,13 +73,22 @@ class HLCSeriesRenderer implements ICustomSeriesPaneRenderer {
       const close = priceConverter(bar.originalData.close);
       if (high === null || low === null || close === null) continue;
 
+      const hasBarByBarBackground = Boolean(bar.originalData.highlightBackground);
+      const hasChartSelection = Boolean(bar.originalData.highlight);
+
       const x = Math.round(bar.x * horizontalPixelRatio) + 0.5;
       const highY = high * verticalPixelRatio;
       const lowY = low * verticalPixelRatio;
       const closeY = close * verticalPixelRatio;
 
+      if (hasBarByBarBackground) {
+        const bandWidth = Math.max(18, Math.round(barSpacing * horizontalPixelRatio * 0.95));
+        context.fillStyle = HIGHLIGHT_FILL_COLOR;
+        context.fillRect(x - bandWidth / 2, 0, bandWidth, context.canvas.height);
+      }
+
       context.lineWidth = lineWidth;
-      context.strokeStyle = bar.originalData.highlight
+      context.strokeStyle = hasChartSelection
         ? HIGHLIGHT_COLOR
         : bar.originalData.direction === "up"
           ? UP_COLOR

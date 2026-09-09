@@ -1,20 +1,22 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ColorType, createChart, createSeriesMarkers } from "lightweight-charts";
 import type { IChartApi, Time } from "lightweight-charts";
+import { BarByBarPanel } from "./bar-by-bar-panel";
 import { DataSourceStatusPanel } from "./data-source-status-panel";
 import { DecisionContextPanel } from "./decision-context-panel";
 import type { DecisionContext, DecisionContextEvent } from "./decision-context-panel";
 import { DecisionJournalPanel } from "./decision-journal-panel";
 import type { DecisionJournalEvaluation, DecisionJournalEvaluationResponse } from "./decision-journal-panel";
 import { HLCSeries } from "./hlc-series";
+import { TradePlanPanel } from "./trade-plan-panel";
 
 type Bar = { bar_index: number; week: string; open: number; high: number; low: number; close: number; volume: number };
 type Swing = { bar_index: number; confirmation_index: number; week: string; type: string; label: string | null; price: number; grade: string; is_failed: boolean; score: { overall: number; smart_money: number; professional: number } };
 type Evidence = { code: string; category: string; direction: string; strength: number; quality: number; bar_index: number; week: string; observation: string; description: string };
 type Analysis = { symbol: string; timeframe: string; latest_week: string; bars: Bar[]; trend: { direction: string; state: string; strength: number; confidence: number; swing_count: number }; structural_swings: Swing[]; evidence: Evidence[]; qualification: { qualification: string; actionable: boolean; reason: string }; professional: { net_strength: number; net_pressure: number; confidence: number }; decision_context?: DecisionContext | null };
-type WorkspaceSection = "overview" | "chart" | "story" | "evidence" | "structure" | "journal" | "data";
+type WorkspaceSection = "overview" | "chart" | "story" | "evidence" | "structure" | "trade" | "journal" | "data";
 
 type WorkspaceMeta = { key: WorkspaceSection; label: string; helper: string };
 type EvidenceCategorySummary = { category: string; count: number; latestWeek: string | null };
@@ -29,6 +31,7 @@ const WORKSPACE_SECTIONS: WorkspaceMeta[] = [
   { key: "story", label: "VSA Story", helper: "Confirmed/developing" },
   { key: "evidence", label: "Bar-by-Bar", helper: "Professional reading" },
   { key: "structure", label: "Structure", helper: "Swing sequence" },
+  { key: "trade", label: "Trade Plan", helper: "Planning context" },
   { key: "journal", label: "Journal", helper: "Expectation validation" },
   { key: "data", label: "Diagnostics", helper: "Source/cache" },
 ];
@@ -71,6 +74,10 @@ function chartTime(value: string | undefined | null): Time {
   const date = value ? new Date(value) : new Date();
   if (!Number.isNaN(date.getTime())) date.setUTCDate(date.getUTCDate() + 1);
   return Math.floor(date.getTime() / 1000) as Time;
+}
+
+function sameChartWeek(left: string | undefined | null, right: string | undefined | null) {
+  return Boolean(left && right) && Number(chartTime(left)) === Number(chartTime(right));
 }
 
 function evidenceTone(event: Evidence) {
@@ -184,14 +191,20 @@ export default function Home() {
   const [selectedJournalEntryId, setSelectedJournalEntryId] = useState("");
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [selectedSwing, setSelectedSwing] = useState<Swing | null>(null);
+  const [barByBarSelectedWeek, setBarByBarSelectedWeek] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<WorkspaceSection>("overview");
   const [error, setError] = useState("");
+
+  const handleBarByBarWeekSelect = useCallback((week: string | null) => {
+    setBarByBarSelectedWeek(week);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     const encodedSymbol = encodeURIComponent(symbol);
     setSelectedEvidence(null);
     setSelectedSwing(null);
+    setBarByBarSelectedWeek(null);
     setSelectedJournalEntryId("");
     setAnalysis(null);
     setDecisionContextPreview(null);
@@ -259,6 +272,7 @@ export default function Home() {
   const recentEvidence = analysis?.evidence.slice(-12) ?? [];
   const activeSectionMeta = WORKSPACE_SECTIONS.find((item) => item.key === activeSection) ?? WORKSPACE_SECTIONS[0];
   const eventMix = buildEventMix(recentEvidence);
+  const activeSymbol = analysis?.symbol ?? decisionContext?.symbol ?? symbol;
 
   useEffect(() => {
     if (!chartRef.current || !analysis || !shouldShowChart) return;
@@ -287,6 +301,7 @@ export default function Home() {
         close: bar.close,
         direction,
         highlight: selectedEvidence?.bar_index === bar.bar_index || selectedSwing?.bar_index === bar.bar_index,
+        highlightBackground: sameChartWeek(bar.week, barByBarSelectedWeek),
         structural: swing ? { label: swing.label ?? swing.type, price: swing.price, isHigh, color: isHigh ? DOWN_COLOR : UP_COLOR } : undefined,
       };
     }));
@@ -307,6 +322,9 @@ export default function Home() {
     chart.subscribeClick((param) => {
       if (!param.time) return;
       const time = Number(param.time);
+      const clickedBar = analysis.bars.find((bar) => Number(chartTime(bar.week)) === time);
+      if (clickedBar) setBarByBarSelectedWeek(clickedBar.week);
+
       const evidence = analysis.evidence.filter((item) => Number(chartTime(item.week)) === time);
       const swings = analysis.structural_swings.filter((item) => Number(chartTime(item.week)) === time);
       if (evidence.length) {
@@ -321,9 +339,14 @@ export default function Home() {
 
     chart.timeScale().fitContent();
     const selectedBarIndex = selectedEvidence?.bar_index ?? selectedSwing?.bar_index;
+    const selectedWeekIndex = barByBarSelectedWeek ? analysis.bars.findIndex((bar) => sameChartWeek(bar.week, barByBarSelectedWeek)) : -1;
     if (selectedBarIndex !== undefined) {
       const from = Math.max(0, selectedBarIndex - 28);
       const to = Math.min(analysis.bars.length + 3, selectedBarIndex + 14);
+      chart.timeScale().setVisibleLogicalRange({ from, to });
+    } else if (selectedWeekIndex >= 0) {
+      const from = Math.max(0, selectedWeekIndex - 28);
+      const to = Math.min(analysis.bars.length + 3, selectedWeekIndex + 14);
       chart.timeScale().setVisibleLogicalRange({ from, to });
     }
 
@@ -336,7 +359,7 @@ export default function Home() {
       chart.remove();
       chartApiRef.current = null;
     };
-  }, [analysis, selectedEvidence?.bar_index, selectedEvidence?.code, selectedSwing?.bar_index, activeSection, shouldShowChart]);
+  }, [analysis, selectedEvidence?.bar_index, selectedEvidence?.code, selectedSwing?.bar_index, barByBarSelectedWeek, activeSection, shouldShowChart]);
 
   function buildEventMix(events: Evidence[]): EvidenceCategorySummary[] {
     const summaries = new Map<string, EvidenceCategorySummary>();
@@ -429,7 +452,7 @@ export default function Home() {
       { label: "Demand", value: demandPhrase(analysis), detail: pressurePhrase(analysis?.professional.net_pressure) },
       { label: "Professional activity", value: professionalActivityPhrase(analysis?.professional.net_strength).replace(/\.$/, ""), detail: "Converted from model strength into trader-readable wording." },
       { label: "Risk", value: riskPhrase(decisionContext, analysis), detail: "Risk remains conditional until confirmation and invalidation levels are respected." },
-      { label: "Reward potential", value: rewardPhrase(decisionContext, analysis), detail: "Exact swing targets require the dedicated trade-planning layer planned after this UI refactor." },
+      { label: "Reward potential", value: rewardPhrase(decisionContext, analysis), detail: "Open Trade Plan for planning context around support, resistance, confirmation, and invalidation." },
       { label: "Suggested posture", value: suggestedPosture(decisionContext, analysis), detail: "This is decision-support posture, not order placement or broker action." },
       { label: "Confidence", value: scoreLevel(decisionContext?.confidence ?? analysis?.professional.confidence), detail: plainConfidence(decisionContext?.confidence ?? analysis?.professional.confidence) },
     ];
@@ -445,7 +468,7 @@ export default function Home() {
         <div className="professional-summary-grid">
           {professionalRows().map((row) => <div className="professional-summary-row" key={row.label}><span>{row.label}</span><strong>{row.value}</strong><small>{row.detail}</small></div>)}
         </div>
-        <p className="professional-summary-note">Trade entries such as buy-on-pullback, breakout entry, target range, and stop/invalidation mapping will be produced by a dedicated trade-planning layer after this UI refactor. This screen stays decision-support only.</p>
+        <p className="professional-summary-note">Trade planning is available as a separate analysis-only workspace. It gives planning context around support, resistance, confirmation, and invalidation, but it is not an order signal.</p>
       </section>
     );
   }
@@ -470,6 +493,7 @@ export default function Home() {
         <button type="button" className="panel structure readable-summary-card" onClick={() => setActiveSection("structure")}><h3>Structure</h3><strong>{latestSwing?.label ?? "—"}</strong><div className="panel-status">{analysis.structural_swings.length} swings · {analysis.trend.swing_count} classified</div><small>Open swing progression separately for details.</small></button>
         <button type="button" className="panel decision readable-summary-card" onClick={() => setActiveSection("story")}><h3>Decision</h3><strong>{suggestedPosture(decisionContext, analysis)}</strong><div className="panel-status">{decisionContext ? `${pretty(decisionContext.phase)} · ${pretty(decisionContext.bias)}` : analysis.qualification.actionable ? "Actionable" : "Observation only"}</div><small>{decisionContext?.story.headline ?? analysis.qualification.reason}</small></button>
         <button type="button" className="panel professional readable-summary-card" onClick={() => setActiveSection("evidence")}><h3>Professional Flow</h3><strong>{professionalActivityPhrase(analysis.professional.net_strength).replace(/\.$/, "")}</strong><div className="panel-status">{pressurePhrase(analysis.professional.net_pressure)}</div><small>{plainConfidence(analysis.professional.confidence)}</small></button>
+        <button type="button" className="panel trade readable-summary-card" onClick={() => setActiveSection("trade")}><h3>Trade Plan</h3><strong>Planning context</strong><div className="panel-status">Support · resistance · confirmation</div><small>Analysis-only plan. Not an order signal.</small></button>
       </div>
     );
   }
@@ -479,12 +503,12 @@ export default function Home() {
       return <div className="evidence-detail swing-detail readable-detail-reset"><div className="detail-title"><strong>{(selectedSwing.label ?? selectedSwing.type).toUpperCase()}</strong><button type="button" onClick={() => setSelectedSwing(null)}>×</button></div><div className="detail-meta">Structural point · observed {displayDate(selectedSwing.week)} · confirmed {displayDate(confirmationDate(selectedSwing))}</div><p>Confirmed {selectedSwing.type.toLowerCase()} at {selectedSwing.price.toFixed(2)}. {selectedSwing.is_failed ? "This structural point is marked failed." : "This structural point remains valid."}</p><small>Internal model grades are hidden from the main reading. Use this as structural context, not an order signal.</small></div>;
     }
     if (selectedEvidence) {
-      return <div className="evidence-detail readable-detail-reset professional-reading-detail"><div className="detail-title"><strong>Week Ending {displayDate(evidenceDate(selectedEvidence))}</strong><button type="button" onClick={() => setSelectedEvidence(null)}>×</button></div><h4>Professional Reading</h4><p>{professionalReading(selectedEvidence)}</p>{selectedEvidence.description && <small>{selectedEvidence.description}</small>}</div>;
+      return <div className="evidence-detail readable-detail-reset professional-reading-detail"><div className="detail-title"><strong>Week {displayDate(evidenceDate(selectedEvidence))}</strong><button type="button" onClick={() => setSelectedEvidence(null)}>×</button></div><h4>Professional Reading</h4><p>{professionalReading(selectedEvidence)}</p>{selectedEvidence.description && <small>{selectedEvidence.description}</small>}</div>;
     }
     if (displayedEvidence) {
-      return <div className="evidence-detail latest-evidence readable-detail-reset professional-reading-detail"><h3>Week Ending {displayDate(evidenceDate(displayedEvidence))}</h3><h4>Professional Reading</h4><p>{professionalReading(displayedEvidence)}</p><small>Select any week to inspect its professional reading.</small></div>;
+      return <div className="evidence-detail latest-evidence readable-detail-reset professional-reading-detail"><h3>Latest VSA Evidence · {displayDate(evidenceDate(displayedEvidence))}</h3><h4>Professional Reading</h4><p>{professionalReading(displayedEvidence)}</p><small>The Bar-by-Bar table now comes from the dedicated backend weekly-reading API.</small></div>;
     }
-    return <p>Select a week or chart marker to inspect the professional reading here.</p>;
+    return <p>Select a chart marker to inspect the related VSA evidence here.</p>;
   }
 
   function renderEvidenceComposition() {
@@ -504,22 +528,10 @@ export default function Home() {
       <section className="readable-two-column">
         <div className="readable-stack">
           {renderChartPanel()}
+          <BarByBarPanel symbol={activeSymbol} selectedWeek={barByBarSelectedWeek} onSelectWeek={handleBarByBarWeekSelect} />
           {renderEvidenceComposition()}
-          <div className="panel bar-story-card">
-            <div className="workspace-heading"><div><span className="section-kicker">BAR-BY-BAR INTERPRETATION</span><h2>Recent weekly professional reading</h2></div><span>{recentEvidence.length} shown</span></div>
-            <p className="composition-note">This view follows the uploaded reference format: Week Ending plus Professional Reading. It is a narrative reading of the recent weekly bars, not a trade-plan or order instruction.</p>
-            {recentEvidence.slice().reverse().map((item) => (
-              <button type="button" className={`bar-reading-card ${selectedEvidence?.bar_index === item.bar_index && selectedEvidence?.code === item.code ? "selected" : ""}`} key={`${item.bar_index}-${item.code}`} onClick={() => { setSelectedEvidence(item); setSelectedSwing(null); }}>
-                <span>Week Ending</span>
-                <strong>{displayDate(evidenceDate(item))}</strong>
-                <h3>Professional Reading</h3>
-                <p>{professionalReading(item)}</p>
-              </button>
-            ))}
-            {!analysis && <div className="status">Loading analysis...</div>}
-          </div>
         </div>
-        <aside className="panel readable-detail-panel"><span className="section-kicker">SELECTED WEEK</span>{renderSelectedDetail()}</aside>
+        <aside className="panel readable-detail-panel"><span className="section-kicker">SELECTED CHART CONTEXT</span>{renderSelectedDetail()}</aside>
       </section>
     );
   }
@@ -542,6 +554,7 @@ export default function Home() {
         {renderSummaryCards()}
         <div className="readable-overview-grid">
           <div className="panel readable-story-preview"><span className="section-kicker">PRIMARY STORY</span><h2>{decisionContext?.story.headline ?? "Loading confirmed story"}</h2><p>{decisionContext?.story.summary ?? "The confirmed weekly decision context will appear here after analysis."}</p><button type="button" className="readable-link-button" onClick={() => setActiveSection("story")}>Open VSA Story</button></div>
+          <div className="panel readable-story-preview"><span className="section-kicker">TRADE PLAN</span><h2>Planning context</h2><p>Use the dedicated analysis-only plan for support, resistance, confirmation, invalidation, risk, and reward context.</p><button type="button" className="readable-link-button" onClick={() => setActiveSection("trade")}>Open Trade Plan</button></div>
           <div className="panel readable-data-preview"><span className="section-kicker">LOW PRIORITY DIAGNOSTICS</span><h2>Data source and cache freshness</h2><p>Provider/cache details are available separately so they do not compete with the trading story.</p><button type="button" className="readable-link-button secondary" onClick={() => setActiveSection("data")}>Open Diagnostics</button></div>
         </div>
       </section>
@@ -553,9 +566,17 @@ export default function Home() {
     if (activeSection === "story") return <DecisionContextPanel context={decisionContext} onSelectEvent={selectDecisionContextEvent} />;
     if (activeSection === "evidence") return renderEvidencePanel();
     if (activeSection === "structure") return renderStructurePanel();
+    if (activeSection === "trade") return <TradePlanPanel symbol={activeSymbol} />;
     if (activeSection === "journal") return <DecisionJournalPanel response={journalResponse} error={journalError} isLoading={journalLoading} selectedEntryId={selectedJournalEntryId} onSelectEvaluation={selectJournalEvaluation} />;
-    if (activeSection === "data") return <DataSourceStatusPanel symbol={analysis?.symbol ?? decisionContext?.symbol ?? symbol} />;
+    if (activeSection === "data") return <DataSourceStatusPanel symbol={activeSymbol} />;
     return renderOverviewPanel();
+  }
+
+  function pageDescription() {
+    if (activeSection === "data") return "Diagnostics only. No market-data download, scanner refresh, order, account, holding, fund, margin, or position action is triggered from this view.";
+    if (activeSection === "trade") return "Analysis-only trade planning. No broker, order, account, holding, fund, margin, or position-sizing action is triggered from this view.";
+    if (activeSection === "evidence") return "Backend-generated Bar-by-Bar weekly reading. The table shows only Week and Professional Reading.";
+    return "Trader-readable workspace. Internal scores are converted into plain-English interpretation.";
   }
 
   return (
@@ -563,7 +584,7 @@ export default function Home() {
       <aside className="sidebar readable-sidebar"><div className="brand">ProVSA<span>Command Centre</span></div><nav className="nav readable-nav" aria-label="Main workspace sections">{WORKSPACE_SECTIONS.map((item) => <button className={item.key === activeSection ? "active" : ""} key={item.key} onClick={() => setActiveSection(item.key)} type="button"><strong>{item.label}</strong><span>{item.helper}</span></button>)}</nav></aside>
       <section className="workspace readable-workspace">
         <header className="header readable-header"><div className="symbol-title"><h1>{analysis?.symbol ?? decisionContext?.symbol ?? symbol}</h1><span className="timeframe-badge">{analysis?.timeframe ?? decisionContext?.timeframe ?? "1W"}</span>{latest && <span className={change >= 0 ? "price-change up" : "price-change down"}>{latest.close.toFixed(2)} {change >= 0 ? "+" : ""}{change.toFixed(2)} ({changePct.toFixed(2)}%)</span>}</div><form className="symbol-form" onSubmit={submit}><input name="symbol" defaultValue={symbol} aria-label="Symbol" /><button type="submit">Analyze</button></form></header>
-        <section className="readable-page-title"><div><span className="section-kicker">{activeSectionMeta.helper}</span><h2>{activeSectionMeta.label}</h2></div><p>{activeSection === "data" ? "Diagnostics only. No market-data download, scanner refresh, order, account, holding, fund, margin, or position action is triggered from this view." : "Trader-readable workspace. Internal scores are converted into plain-English interpretation."}</p></section>
+        <section className="readable-page-title"><div><span className="section-kicker">{activeSectionMeta.helper}</span><h2>{activeSectionMeta.label}</h2></div><p>{pageDescription()}</p></section>
         <div className="readable-tabbar" role="tablist" aria-label="Workspace sections">{WORKSPACE_SECTIONS.map((item) => <button key={item.key} type="button" className={item.key === activeSection ? "selected" : ""} aria-pressed={item.key === activeSection} onClick={() => setActiveSection(item.key)}>{item.label}</button>)}</div>
         {renderActiveSection()}
       </section>
