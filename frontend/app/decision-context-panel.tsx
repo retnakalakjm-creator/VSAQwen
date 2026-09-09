@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
 type DecisionContextEvent = {
   bar_index: number;
   week: string;
@@ -56,10 +60,14 @@ export type DecisionContext = {
 
 export type { DecisionContextEvent };
 
+type StoryViewMode = "confirmed" | "developing";
+
 type DecisionContextModeStatus = {
   label: string;
   detail: string;
 };
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 export function decisionContextModeStatus(
   mode: string | null | undefined,
@@ -84,6 +92,20 @@ export function decisionContextModeStatus(
     detail:
       "Context mode is not recognized by the frontend. Review the backend payload before treating this story as confirmed.",
   };
+}
+
+async function fetchJson<T>(url: string, fallbackError: string): Promise<T> {
+  const response = await fetch(url);
+  if (response.ok) return (await response.json()) as T;
+
+  let detail = fallbackError;
+  try {
+    const body = (await response.json()) as { detail?: string };
+    if (body.detail) detail = body.detail;
+  } catch {
+    // Keep the fallback message when the backend did not return JSON.
+  }
+  throw new Error(detail);
 }
 
 function pretty(value: string | null | undefined) {
@@ -121,6 +143,53 @@ export function DecisionContextPanel({
   context,
   onSelectEvent,
 }: DecisionContextPanelProps) {
+  const requestGenerationRef = useRef(0);
+  const [storyViewMode, setStoryViewMode] = useState<StoryViewMode>("confirmed");
+  const [developingContext, setDevelopingContext] = useState<DecisionContext | null>(null);
+  const [developingContextError, setDevelopingContextError] = useState("");
+  const [developingContextLoading, setDevelopingContextLoading] = useState(false);
+
+  useEffect(() => {
+    requestGenerationRef.current += 1;
+    setStoryViewMode("confirmed");
+    setDevelopingContext(null);
+    setDevelopingContextError("");
+    setDevelopingContextLoading(false);
+  }, [context?.symbol, context?.timeframe, context?.latest_week]);
+
+  async function loadDevelopingContext() {
+    if (!context) return;
+
+    const requestGeneration = requestGenerationRef.current;
+    const encodedSymbol = encodeURIComponent(context.symbol);
+    setDevelopingContextLoading(true);
+    setDevelopingContextError("");
+
+    try {
+      const preview = await fetchJson<DecisionContext>(
+        `${API}/api/symbols/${encodedSymbol}/decision-context/developing`,
+        "Developing context failed",
+      );
+      if (requestGeneration !== requestGenerationRef.current) return;
+      setDevelopingContext(preview);
+      setStoryViewMode("developing");
+    } catch (err) {
+      if (requestGeneration !== requestGenerationRef.current) return;
+      setDevelopingContext(null);
+      setStoryViewMode("confirmed");
+      setDevelopingContextError(err instanceof Error ? err.message : "Developing context failed");
+    } finally {
+      if (requestGeneration === requestGenerationRef.current) {
+        setDevelopingContextLoading(false);
+      }
+    }
+  }
+
+  function showConfirmedContext() {
+    setStoryViewMode("confirmed");
+    setDevelopingContextError("");
+  }
+
   if (!context) {
     return (
       <section className="structure-workspace">
@@ -133,17 +202,46 @@ export function DecisionContextPanel({
     );
   }
 
-  const latestEvents = context.recent_events.slice().reverse().slice(0, 6);
-  const latestSwings = context.structural_swings.slice(-4);
-  const positivePressure = context.net_pressure >= 0;
-  const modeStatus = decisionContextModeStatus(context.mode);
+  const activeContext = storyViewMode === "developing" && developingContext ? developingContext : context;
+  const latestEvents = activeContext.recent_events.slice().reverse().slice(0, 6);
+  const latestSwings = activeContext.structural_swings.slice(-4);
+  const positivePressure = activeContext.net_pressure >= 0;
+  const modeStatus = decisionContextModeStatus(activeContext.mode);
 
   return (
     <section className="structure-workspace">
       <div className="panel structure-summary">
         <span className="section-kicker">VSA STORY</span>
-        <h2>{context.story.headline}</h2>
-        <p>{context.story.summary}</p>
+        <div
+          className="chart-tools"
+          aria-label="Decision context mode controls"
+          style={{ justifyContent: "flex-start", margin: "0 0 8px" }}
+        >
+          <button
+            type="button"
+            aria-pressed={storyViewMode === "confirmed"}
+            disabled={storyViewMode === "confirmed"}
+            onClick={showConfirmedContext}
+          >
+            Confirmed weekly
+          </button>
+          <button
+            type="button"
+            aria-pressed={storyViewMode === "developing"}
+            disabled={developingContextLoading}
+            onClick={() => void loadDevelopingContext()}
+          >
+            {developingContextLoading ? "Loading preview..." : "Developing preview"}
+          </button>
+        </div>
+        {developingContextError ? (
+          <div className="evidence-detail" role="alert">
+            <h4>Developing preview unavailable</h4>
+            <p>{developingContextError}</p>
+          </div>
+        ) : null}
+        <h2>{activeContext.story.headline}</h2>
+        <p>{activeContext.story.summary}</p>
         <div className="evidence-detail latest-evidence" aria-label={`${modeStatus.label} context mode`}>
           <h4>{modeStatus.label}</h4>
           <p>{modeStatus.detail}</p>
@@ -151,26 +249,26 @@ export function DecisionContextPanel({
         <div className="summary-grid">
           <span>
             Phase
-            <strong>{pretty(context.phase)}</strong>
+            <strong>{pretty(activeContext.phase)}</strong>
           </span>
           <span>
             Tradability
-            <strong>{pretty(context.tradability)}</strong>
+            <strong>{pretty(activeContext.tradability)}</strong>
           </span>
           <span>
             Bias
-            <strong>{pretty(context.bias)}</strong>
+            <strong>{pretty(activeContext.bias)}</strong>
           </span>
         </div>
         <div className="plain-score">
           <span>Pressure</span>
           <strong>{positivePressure ? "Demand" : "Supply"}</strong>
-          <small>{score(context.net_pressure)} net pressure</small>
+          <small>{score(activeContext.net_pressure)} net pressure</small>
         </div>
         <div className="plain-score">
           <span>Confidence</span>
-          <strong>{score(context.confidence)}</strong>
-          <small>Evaluated {displayDate(context.evaluated_at_utc)}</small>
+          <strong>{score(activeContext.confidence)}</strong>
+          <small>Evaluated {displayDate(activeContext.evaluated_at_utc)}</small>
         </div>
       </div>
 
@@ -184,14 +282,14 @@ export function DecisionContextPanel({
         </div>
         <div className="evidence-detail latest-evidence">
           <h4>Confirmation</h4>
-          <p>{context.story.confirmation_condition}</p>
+          <p>{activeContext.story.confirmation_condition}</p>
           <h4>Invalidation</h4>
-          <p>{context.story.invalidation_condition}</p>
+          <p>{activeContext.story.invalidation_condition}</p>
         </div>
         <div className="vsa-category-summary">
           <span className="section-kicker">EXPECTED NEXT BEHAVIOR</span>
           <div className="vsa-category-list">
-            {context.story.what_to_expect_next.map((item) => (
+            {activeContext.story.what_to_expect_next.map((item) => (
               <span key={item}>{item}</span>
             ))}
           </div>
