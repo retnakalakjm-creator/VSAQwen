@@ -321,6 +321,11 @@ class DecisionContextStore:
             raise ValueError(
                 f"Unsupported DecisionContext schema version: {context.schema_version}"
             )
+        if context.mode != DecisionMode.CONFIRMED:
+            raise ValueError(
+                "Only confirmed DecisionContext objects may be persisted; "
+                f"got {context.mode.value!r}."
+            )
 
         destination = self.path_for(context.symbol, context.timeframe)
         self._root.mkdir(parents=True, exist_ok=True)

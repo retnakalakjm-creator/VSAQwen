@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ColorType, createChart, createSeriesMarkers } from "lightweight-charts";
 import type { IChartApi, Time } from "lightweight-charts";
+import { DataSourceStatusPanel } from "./data-source-status-panel";
 import { DecisionContextPanel } from "./decision-context-panel";
 import type { DecisionContext, DecisionContextEvent } from "./decision-context-panel";
 import { DecisionJournalPanel } from "./decision-journal-panel";
@@ -264,6 +265,7 @@ export default function Home() {
       <section className="workspace">
         <header className="header"><div className="symbol-title"><h1>{analysis?.symbol ?? decisionContext?.symbol ?? symbol}</h1><span className="timeframe-badge">{analysis?.timeframe ?? decisionContext?.timeframe ?? "1W"}</span>{latest && <span className={change >= 0 ? "price-change up" : "price-change down"}>{latest.close.toFixed(2)} {change >= 0 ? "+" : ""}{change.toFixed(2)} ({changePct.toFixed(2)}%)</span>}</div><form className="symbol-form" onSubmit={submit}><input name="symbol" defaultValue={symbol} aria-label="Symbol" /><button type="submit">Analyze</button></form></header>
         <section className="chart-card"><div className="chart-header"><div className="layer-legend"><span className="chart-title">PRICE</span><span className="legend-item"><i className="legend-line price-line" />HLC</span><span className="legend-item"><i className="legend-dot structure-dot" />STRUCTURE</span><span className="legend-item"><i className="legend-dot evidence-dot" />VSA</span></div><div className="chart-tools"><button type="button" onClick={zoomOut} aria-label="Zoom out">−</button><button type="button" onClick={zoomIn} aria-label="Zoom in">+</button><button type="button" onClick={fitChart}>Fit</button><button type="button" onClick={latestChart}>Latest</button><span className="latest-date">{analysis?.latest_week || decisionContext?.latest_week ? displayDate(analysis?.latest_week ?? decisionContext?.latest_week) : "Loading..."}</span></div></div>{error ? <div className="status">{error}</div> : <div className="chart-wrap" ref={chartRef} />}</section>
+        <DataSourceStatusPanel symbol={analysis?.symbol ?? decisionContext?.symbol ?? symbol} />
         <DecisionContextPanel context={decisionContext} onSelectEvent={selectDecisionContextEvent} />
         <DecisionJournalPanel response={journalResponse} error={journalError} isLoading={journalLoading} selectedEntryId={selectedJournalEntryId} onSelectEvaluation={selectJournalEvaluation} />
         {analysis && <>

@@ -35,6 +35,8 @@ confirmation and invalidation notes
 
 The defaults are intentionally small so the local UI can reopen quickly and explain the current situation without replaying or storing the whole market history.
 
+Only confirmed weekly decision contexts may be persisted. Developing-preview contexts are rejected by `DecisionContextStore.save()` so a future accidental save cannot overwrite the confirmed context file.
+
 ## What is not persisted
 
 The context store must not persist:
@@ -143,6 +145,14 @@ GET /api/symbols/{symbol}/decision-journal/evaluations
 
 The UI does not pass `persist_status=true`, so viewing journal outcomes does not mutate saved journal status. It may refresh the journal panel after full analysis completes because full analysis can create or update the latest compact journal entry.
 
+The frontend also renders data-source/cache freshness from the diagnostic endpoint:
+
+```text
+GET /api/symbols/{symbol}/data-source
+```
+
+That panel is display-only. It may show provider name, cache source, cache date range, update time, stale-cache warnings, and Upstox readiness booleans, but it must not trigger data downloads, cache refreshes, scanner runs, decision-context persistence, journal mutations, broker requests, or credential exposure.
+
 The VSA Story and journal panels are decision-support only. They show:
 
 ```text
@@ -217,12 +227,10 @@ build_decision_context
 
 The builder accepts the latest scanner candidate and intentionally keeps only recent decision-relevant events/swings.
 
-This layer is now wired into FastAPI analysis output, local confirmed decision-context persistence, the production incremental scanner path, a cached confirmed decision-context endpoint, a preview-only developing decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel with explicit confirmed/developing mode labels and an explicit developing-preview toggle, frontend preloading of compact confirmed context, frontend read-only journal outcome display, journal-to-chart/context click-through, a read-only market-data provider interface, and an explicit Upstox daily OHLCV provider.
+This layer is now wired into FastAPI analysis output, local confirmed decision-context persistence with a developing-mode save guard, the production incremental scanner path, a cached confirmed decision-context endpoint, a preview-only developing decision-context endpoint, decision-journal creation/list/evaluation APIs, the React/Next.js VSA Story panel with explicit confirmed/developing mode labels and an explicit developing-preview toggle, frontend preloading of compact confirmed context, frontend read-only journal outcome display, journal-to-chart/context click-through, frontend provider/cache freshness display, a read-only market-data provider interface, an explicit Upstox daily OHLCV provider, a read-only data-source diagnostics endpoint, and a local Upstox readiness helper.
 
 ## Future integration path
 
-Recommended follow-up PRs:
+Milestone 4 provider/source visibility, developing-preview UI, Upstox readiness checks, and developing-context persistence hardening are implemented.
 
-1. Add provider/source freshness indicators to the UI.
-2. Add a read-only local Upstox provider readiness helper.
-3. Continue keeping confirmed signals, developing previews, and journal validation separate.
+Future follow-up work should be treated as a new milestone or polish track and must continue keeping confirmed signals, developing previews, data-source diagnostics, and journal validation separate.

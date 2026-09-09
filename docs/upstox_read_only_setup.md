@@ -28,6 +28,24 @@ NSE_EQ|INE002A01018
 
 ProVSA does not guess instrument keys from yfinance-style symbols. Either pass the Upstox instrument key directly to the provider or configure `UPSTOX_SYMBOL_MAP`.
 
+## Local readiness check
+
+After configuring the environment, run the diagnostic helper:
+
+```bash
+python tools/check_upstox_provider_config.py --symbol RELIANCE.NS
+```
+
+The helper reports whether Upstox is selected, enabled, whether the configured token environment variable is present, and whether the symbol has an explicit mapping. It prints only readiness booleans and the token environment-variable name; it must never print the token value.
+
+To optionally validate one read-only OHLCV fetch through the configured provider, pass `--fetch`:
+
+```bash
+python tools/check_upstox_provider_config.py --symbol RELIANCE.NS --fetch
+```
+
+The fetch check uses the read-only daily OHLCV provider path only. It does not call order, position, holdings, funds, margins, or account APIs.
+
 ## Retry and stale-cache behavior
 
 The Upstox adapter classifies temporary provider failures before they reach scanner code:
@@ -52,6 +70,7 @@ historical daily OHLCV candles
 raw Open/High/Low/Close/Volume payloads
 read-only HTTP GET calls
 bounded retry for temporary transport/rate-limit failures
+local readiness checks without token disclosure
 ```
 
 It does not support:
