@@ -35,6 +35,21 @@ type VSAStorySummary = {
   what_to_expect_next: string[];
 };
 
+type QualificationLifecycle = {
+  qualification: string;
+  qualification_side: string;
+  status: string;
+  current_vsa_bias: string;
+  actionable: boolean;
+  scoring_evidence_age: number | null;
+  used_fallback_evidence: boolean;
+  supporting_event_codes: string[];
+  opposing_event_codes: string[];
+  ignored_audit_only_codes: string[];
+  reason: string;
+  production_safe: boolean;
+};
+
 export type DecisionContext = {
   schema_version: number;
   symbol: string;
@@ -43,6 +58,7 @@ export type DecisionContext = {
   latest_bar_index: number | null;
   latest_week: string | null;
   qualification: string;
+  qualification_lifecycle?: QualificationLifecycle | null;
   actionable: boolean;
   decision: string;
   tradability: string;
@@ -154,6 +170,53 @@ function pressureMeaning(value: number | null | undefined) {
   return "Supply is clearly in control.";
 }
 
+function evidenceAgeLabel(age: number | null | undefined) {
+  if (age === null || age === undefined) return "No current scoring-evidence age";
+  if (age === 0) return "Current scoring evidence";
+  return `${age} completed bar${age === 1 ? "" : "s"} old`;
+}
+
+function codesText(codes: string[] | null | undefined) {
+  if (!codes || codes.length === 0) return "None";
+  return codes.map((code) => pretty(code)).join(", ");
+}
+
+function lifecycleStatusDetail(lifecycle: QualificationLifecycle | null | undefined) {
+  if (!lifecycle) {
+    return "Lifecycle label is not available in this context. Re-run fresh analysis to populate the production-safe label.";
+  }
+
+  const side = pretty(lifecycle.qualification_side).toLowerCase();
+  const bias = pretty(lifecycle.current_vsa_bias).toLowerCase();
+
+  switch (lifecycle.status) {
+    case "active":
+      return `The ${side} qualification remains aligned with current production-safe VSA evidence.`;
+    case "conflicted":
+      return `The ${side} qualification is active, but current production-safe VSA evidence is mixed or partly opposing it.`;
+    case "invalidated":
+      return `The previous ${side} qualification is invalidated by current ${bias} production-safe VSA evidence.`;
+    case "expired":
+      return `The ${side} qualification is stale and should be treated as expired until fresh confirmation appears.`;
+    case "needs_follow_through":
+      return `The ${side} qualification has not failed, but it still needs follow-through before acting.`;
+    case "unqualified":
+      return "No persistent bullish or bearish qualification is active.";
+    default:
+      return `${pretty(lifecycle.status)} status is reported by the backend lifecycle label.`;
+  }
+}
+
+function lifecycleEvidenceLine(lifecycle: QualificationLifecycle | null | undefined) {
+  if (!lifecycle) return "No lifecycle payload was included in this decision context.";
+  return [
+    `Qualification: ${pretty(lifecycle.qualification)}`,
+    `Side: ${pretty(lifecycle.qualification_side)}`,
+    `Current VSA bias: ${pretty(lifecycle.current_vsa_bias)}`,
+    evidenceAgeLabel(lifecycle.scoring_evidence_age),
+  ].join(" · ");
+}
+
 function isBullish(value: string) {
   const text = value.toLowerCase();
   return text.includes("bull") || text.includes("demand") || text.includes("accumulation") || text.includes("markup");
@@ -231,6 +294,7 @@ export function DecisionContextPanel({
   const latestEvents = activeContext.recent_events.slice().reverse().slice(0, 6);
   const positivePressure = activeContext.net_pressure >= 0;
   const modeStatus = decisionContextModeStatus(activeContext.mode);
+  const lifecycle = activeContext.qualification_lifecycle ?? null;
 
   return (
     <section className="readable-story-grid">
@@ -280,6 +344,36 @@ export function DecisionContextPanel({
             Bias
             <strong>{pretty(activeContext.bias)}</strong>
           </span>
+          <span>
+            Qualification lifecycle
+            <strong>{lifecycle ? pretty(lifecycle.status) : "Not available"}</strong>
+            <small>{lifecycleStatusDetail(lifecycle)}</small>
+          </span>
+        </div>
+        <div className="evidence-detail latest-evidence" aria-label="Qualification lifecycle detail">
+          <h4>Qualification lifecycle</h4>
+          <p>{lifecycleStatusDetail(lifecycle)}</p>
+          <small>{lifecycleEvidenceLine(lifecycle)}</small>
+          {lifecycle ? (
+            <>
+              <small>
+                Opposing evidence: {codesText(lifecycle.opposing_event_codes)}. Supporting evidence:{" "}
+                {codesText(lifecycle.supporting_event_codes)}.
+              </small>
+              {lifecycle.ignored_audit_only_codes.length > 0 ? (
+                <small>
+                  Audit-only candidates ignored for this production-safe label:{" "}
+                  {codesText(lifecycle.ignored_audit_only_codes)}.
+                </small>
+              ) : null}
+              {lifecycle.used_fallback_evidence ? (
+                <small>Uses fallback scoring evidence; review freshness before acting.</small>
+              ) : null}
+              {!lifecycle.production_safe ? (
+                <small>This lifecycle payload is marked not production-safe by the backend.</small>
+              ) : null}
+            </>
+          ) : null}
         </div>
         <div className="plain-score story-plain-reading">
           <span>Pressure</span>
