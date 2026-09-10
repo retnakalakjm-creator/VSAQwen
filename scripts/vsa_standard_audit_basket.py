@@ -13,7 +13,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def _load_standard_basket_helpers() -> tuple[Callable[..., Any], Callable[..., str], Callable[[], Any]]:
+def _load_standard_basket_helpers() -> tuple[
+    Callable[..., Any],
+    Callable[..., str],
+    Callable[..., Any],
+    Callable[[], tuple[str, ...]],
+]:
     """Load the root helper without importing this script by the same name."""
 
     spec = importlib.util.spec_from_file_location(
@@ -28,20 +33,29 @@ def _load_standard_basket_helpers() -> tuple[Callable[..., Any], Callable[..., s
     return (
         module.build_standard_basket_commands,
         module.build_vsa_audit_url,
-        module.get_standard_vsa_audit_basket,
+        module.get_vsa_audit_basket,
+        module.list_vsa_audit_basket_names,
     )
 
 
 (
     build_standard_basket_commands,
     build_vsa_audit_url,
-    get_standard_vsa_audit_basket,
+    get_vsa_audit_basket,
+    list_vsa_audit_basket_names,
 ) = _load_standard_basket_helpers()
 
 
 def main(argv: list[str] | None = None) -> int:
+    basket_names = list_vsa_audit_basket_names()
     parser = argparse.ArgumentParser(
-        description="Print the standard Milestone 6 VSA audit basket and local commands."
+        description="Print a Milestone 6 VSA audit basket and local commands."
+    )
+    parser.add_argument(
+        "--basket",
+        choices=basket_names,
+        default=basket_names[0],
+        help="Basket to print. Default: original 30-symbol baseline.",
     )
     parser.add_argument(
         "--base-url",
@@ -67,24 +81,25 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        basket = get_standard_vsa_audit_basket()
+        basket = get_vsa_audit_basket(args.basket)
         start_week = args.start_week or basket.start_week
         horizon_weeks = args.horizon_weeks or basket.horizon_weeks
         url = build_vsa_audit_url(
             base_url=args.base_url,
+            basket_name=basket.name,
             start_week=start_week,
             horizon_weeks=horizon_weeks,
             max_symbols=basket.max_symbols,
         )
-        commands = build_standard_basket_commands()
-        if args.base_url != "http://127.0.0.1:8000" or start_week != basket.start_week or horizon_weeks != basket.horizon_weeks:
-            commands = {
-                **commands,
-                "audit_url": url,
-                "save_audit": f'curl.exe "{url}" -o standard_basket_audit.json',
-            }
+        commands = build_standard_basket_commands(
+            basket_name=basket.name,
+            base_url=args.base_url,
+            start_week=start_week,
+            horizon_weeks=horizon_weeks,
+        )
         payload: dict[str, Any] = {
             **basket.to_dict(),
+            "available_baskets": list(basket_names),
             "audit_url": url,
             "commands": commands,
         }
@@ -96,11 +111,17 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
 
-    print("Standard Milestone 6 VSA audit basket")
+    print("Milestone 6 VSA audit basket")
     print(f"Name: {payload['name']}")
+    if payload.get("description"):
+        print(f"Description: {payload['description']}")
     print(f"Symbols ({payload['symbol_count']}): {','.join(payload['symbols'])}")
     print(f"Start week: {payload['start_week']}")
     print(f"Horizon weeks: {payload['horizon_weeks']}")
+    print()
+    print("Available baskets:")
+    for name in payload["available_baskets"]:
+        print(f"- {name}")
     print()
     print("Run backend separately, then run:")
     print(payload["commands"]["save_audit"])
