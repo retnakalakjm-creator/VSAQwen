@@ -106,11 +106,13 @@ def test_qualification_dto_exposes_lifecycle_status_from_existing_candidate_fiel
     )
 
     assert dto.lifecycle is not None
-    assert dto.lifecycle.status == "invalidated"
+    assert dto.lifecycle.status == "conflicted"
+    assert dto.lifecycle.pending_supersession is True
     assert dto.lifecycle.qualification_side == "bearish"
     assert dto.lifecycle.current_vsa_bias == "bullish"
     assert dto.lifecycle.opposing_event_codes == ["demand_coming_in"]
     assert dto.lifecycle.supporting_event_codes == []
+    assert "pending supersession" in dto.lifecycle.reason
     assert dto.lifecycle.production_safe is True
 
 
@@ -132,7 +134,8 @@ def test_decision_context_dto_can_carry_lifecycle_without_persistence_schema_cha
 
     assert dto.symbol == "LT.NS"
     assert dto.qualification_lifecycle is not None
-    assert dto.qualification_lifecycle.status == "invalidated"
+    assert dto.qualification_lifecycle.status == "conflicted"
+    assert dto.qualification_lifecycle.pending_supersession is True
     assert dto.qualification_lifecycle.opposing_event_codes == ["increasing_demand"]
 
 

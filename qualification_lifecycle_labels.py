@@ -58,6 +58,25 @@ BEARISH_PRODUCTION_VSA_CODES = frozenset(
     }
 )
 
+# Fresh demand/reversal evidence against a persistent bearish context is a
+# lifecycle challenge, not an automatic bullish flip. Keep it as a conflicted
+# pending-supersession state until later casebook/chart review promotes a
+# stricter invalidation or supersession rule.
+BEARISH_PENDING_SUPERSESSION_CODES = frozenset(
+    {
+        "stopping_volume",
+        "demand_coming_in",
+        "increasing_demand",
+        "hidden_demand",
+        "demand_drying_up",
+        "no_supply",
+        "spring",
+        "test",
+        "selling_climax",
+        "shakeout",
+    }
+)
+
 # Audit-only candidate families stay deliberately outside the production label
 # direction sets until a later PR promotes them through detector-specific gates.
 AUDIT_ONLY_CANDIDATE_CODES = frozenset(
@@ -89,6 +108,7 @@ class QualificationLifecycleLabelResult:
     opposing_event_codes: tuple[str, ...]
     ignored_audit_only_codes: tuple[str, ...]
     reason: str
+    pending_supersession: bool = False
     production_safe: bool = True
 
     def to_dict(self) -> dict[str, Any]:
@@ -104,6 +124,7 @@ class QualificationLifecycleLabelResult:
             "opposing_event_codes": list(self.opposing_event_codes),
             "ignored_audit_only_codes": list(self.ignored_audit_only_codes),
             "reason": self.reason,
+            "pending_supersession": self.pending_supersession,
             "production_safe": self.production_safe,
         }
 
@@ -168,6 +189,12 @@ def label_qualification_lifecycle(
     supporting, opposing = _split_supporting_opposing(side, bullish=bullish, bearish=bearish)
     has_stale_evidence = _is_stale(scoring_evidence_age, max_actionable_vsa_age)
     has_current_fresh_evidence = bool(directional_codes) and not has_stale_evidence
+    pending_supersession = _pending_bearish_supersession(
+        side=side,
+        opposing=opposing,
+        has_current_fresh_evidence=has_current_fresh_evidence,
+        used_fallback_evidence=used_fallback_evidence,
+    )
 
     status = _status_for_persistent_qualification(
         actionable=actionable,
@@ -176,6 +203,7 @@ def label_qualification_lifecycle(
         used_fallback_evidence=used_fallback_evidence,
         supporting=supporting,
         opposing=opposing,
+        pending_supersession=pending_supersession,
     )
 
     return QualificationLifecycleLabelResult(
@@ -189,7 +217,8 @@ def label_qualification_lifecycle(
         supporting_event_codes=supporting,
         opposing_event_codes=opposing,
         ignored_audit_only_codes=ignored_audit_codes,
-        reason=_reason(status, side, current_bias),
+        reason=_reason(status, side, current_bias, pending_supersession),
+        pending_supersession=pending_supersession,
     )
 
 
@@ -201,7 +230,10 @@ def _status_for_persistent_qualification(
     used_fallback_evidence: bool,
     supporting: tuple[str, ...],
     opposing: tuple[str, ...],
+    pending_supersession: bool,
 ) -> QualificationLifecycleLabel:
+    if pending_supersession:
+        return QualificationLifecycleLabel.CONFLICTED
     if supporting and opposing and has_current_fresh_evidence:
         return QualificationLifecycleLabel.CONFLICTED
     if opposing and not supporting:
@@ -213,6 +245,21 @@ def _status_for_persistent_qualification(
     if has_stale_evidence or not has_current_fresh_evidence:
         return QualificationLifecycleLabel.EXPIRED
     return QualificationLifecycleLabel.ACTIVE if actionable else QualificationLifecycleLabel.EXPIRED
+
+
+def _pending_bearish_supersession(
+    *,
+    side: QualificationSide,
+    opposing: tuple[str, ...],
+    has_current_fresh_evidence: bool,
+    used_fallback_evidence: bool,
+) -> bool:
+    return (
+        side is QualificationSide.BEARISH
+        and has_current_fresh_evidence
+        and not used_fallback_evidence
+        and any(code in BEARISH_PENDING_SUPERSESSION_CODES for code in opposing)
+    )
 
 
 def _split_supporting_opposing(
@@ -290,10 +337,16 @@ def _reason(
     status: QualificationLifecycleLabel,
     side: QualificationSide,
     bias: CurrentVSABias,
+    pending_supersession: bool,
 ) -> str:
     if status is QualificationLifecycleLabel.ACTIVE:
         return f"Persistent {side.value} qualification is supported by fresh same-side VSA evidence."
     if status is QualificationLifecycleLabel.CONFLICTED:
+        if pending_supersession and side is QualificationSide.BEARISH:
+            return (
+                "Persistent bearish qualification is challenged by fresh demand/reversal VSA evidence "
+                "and is marked conflicted pending supersession; it is not flipped bullish automatically."
+            )
         return f"Persistent {side.value} qualification has both supporting and opposing fresh VSA evidence."
     if status is QualificationLifecycleLabel.INVALIDATED:
         return f"Persistent {side.value} qualification has fresh opposing {bias.value} VSA evidence without same-side support."
@@ -306,6 +359,7 @@ def _reason(
 
 __all__ = [
     "AUDIT_ONLY_CANDIDATE_CODES",
+    "BEARISH_PENDING_SUPERSESSION_CODES",
     "BEARISH_PRODUCTION_VSA_CODES",
     "BULLISH_PRODUCTION_VSA_CODES",
     "CurrentVSABias",

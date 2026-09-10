@@ -6,6 +6,7 @@ from background.qualification import PatternQualification
 from models import EvidenceCode
 from qualification_lifecycle_labels import (
     AUDIT_ONLY_CANDIDATE_CODES,
+    BEARISH_PENDING_SUPERSESSION_CODES,
     CurrentVSABias,
     QualificationLifecycleLabel,
     QualificationSide,
@@ -34,10 +35,11 @@ def test_lifecycle_label_marks_supported_persistent_bullish_as_active() -> None:
     assert result.current_vsa_bias is CurrentVSABias.BULLISH
     assert result.supporting_event_codes == ("demand_coming_in", "no_supply")
     assert result.opposing_event_codes == ()
+    assert result.pending_supersession is False
     assert result.production_safe is True
 
 
-def test_lifecycle_label_invalidates_bearish_when_fresh_demand_opposes_it() -> None:
+def test_lifecycle_label_marks_bearish_demand_challenge_conflicted_pending_supersession() -> None:
     result = label_qualification_lifecycle(
         qualification=PatternQualification.PERSISTENT_BEARISH,
         actionable=False,
@@ -45,21 +47,27 @@ def test_lifecycle_label_invalidates_bearish_when_fresh_demand_opposes_it() -> N
         scoring_evidence_age=0,
     )
 
-    assert result.status is QualificationLifecycleLabel.INVALIDATED
+    assert "demand_coming_in" in BEARISH_PENDING_SUPERSESSION_CODES
+    assert result.status is QualificationLifecycleLabel.CONFLICTED
     assert result.qualification_side is QualificationSide.BEARISH
     assert result.current_vsa_bias is CurrentVSABias.BULLISH
     assert result.supporting_event_codes == ()
     assert result.opposing_event_codes == ("demand_coming_in",)
-    assert "fresh opposing bullish" in result.reason
+    assert result.pending_supersession is True
+    assert "pending supersession" in result.reason
+    assert "not flipped bullish automatically" in result.reason
 
 
-def test_lifecycle_label_marks_mixed_fresh_evidence_as_conflicted() -> None:
+def test_lifecycle_label_marks_lt_style_mixed_bearish_context_pending_supersession() -> None:
     result = label_qualification_lifecycle(
         qualification="persistent_bearish",
         actionable=False,
         scoring_evidence=[
             _evidence(EvidenceCode.INCREASING_SUPPLY),
             _evidence(EvidenceCode.DEMAND_COMING_IN),
+            _evidence(EvidenceCode.INCREASING_DEMAND),
+            _evidence("absorption"),
+            _evidence("effort_gt_result"),
         ],
         scoring_evidence_age=0,
     )
@@ -67,7 +75,26 @@ def test_lifecycle_label_marks_mixed_fresh_evidence_as_conflicted() -> None:
     assert result.status is QualificationLifecycleLabel.CONFLICTED
     assert result.current_vsa_bias is CurrentVSABias.MIXED
     assert result.supporting_event_codes == ("increasing_supply",)
-    assert result.opposing_event_codes == ("demand_coming_in",)
+    assert result.opposing_event_codes == ("demand_coming_in", "increasing_demand")
+    assert result.ignored_audit_only_codes == ("absorption", "effort_gt_result")
+    assert result.pending_supersession is True
+
+
+def test_lifecycle_label_still_invalidates_bullish_when_fresh_supply_opposes_it() -> None:
+    result = label_qualification_lifecycle(
+        qualification=PatternQualification.PERSISTENT_BULLISH,
+        actionable=False,
+        scoring_evidence=[_evidence(EvidenceCode.INCREASING_SUPPLY)],
+        scoring_evidence_age=0,
+    )
+
+    assert result.status is QualificationLifecycleLabel.INVALIDATED
+    assert result.qualification_side is QualificationSide.BULLISH
+    assert result.current_vsa_bias is CurrentVSABias.BEARISH
+    assert result.supporting_event_codes == ()
+    assert result.opposing_event_codes == ("increasing_supply",)
+    assert result.pending_supersession is False
+    assert "fresh opposing bearish" in result.reason
 
 
 def test_lifecycle_label_expires_when_no_fresh_vsa_confirmation_exists() -> None:
@@ -82,6 +109,7 @@ def test_lifecycle_label_expires_when_no_fresh_vsa_confirmation_exists() -> None
     assert result.current_vsa_bias is CurrentVSABias.NONE
     assert result.supporting_event_codes == ()
     assert result.opposing_event_codes == ()
+    assert result.pending_supersession is False
 
 
 def test_lifecycle_label_waits_for_follow_through_on_stale_opposing_fallback() -> None:
@@ -96,6 +124,7 @@ def test_lifecycle_label_waits_for_follow_through_on_stale_opposing_fallback() -
     assert result.status is QualificationLifecycleLabel.NEEDS_FOLLOW_THROUGH
     assert result.current_vsa_bias is CurrentVSABias.BEARISH
     assert result.opposing_event_codes == ("increasing_supply",)
+    assert result.pending_supersession is False
     assert "fallback/stale" in result.reason
 
 
@@ -116,6 +145,7 @@ def test_lifecycle_label_keeps_audit_only_candidates_out_of_production_bias() ->
     assert result.ignored_audit_only_codes == ("effort_gt_result", "absorption")
     assert result.supporting_event_codes == ()
     assert result.opposing_event_codes == ()
+    assert result.pending_supersession is False
 
 
 def test_lifecycle_label_marks_unqualified_without_forcing_direction() -> None:
@@ -131,6 +161,7 @@ def test_lifecycle_label_marks_unqualified_without_forcing_direction() -> None:
     assert result.current_vsa_bias is CurrentVSABias.BULLISH
     assert result.supporting_event_codes == ()
     assert result.opposing_event_codes == ()
+    assert result.pending_supersession is False
 
 
 def test_candidate_adapter_reads_existing_scanner_fields_only() -> None:
@@ -144,6 +175,8 @@ def test_candidate_adapter_reads_existing_scanner_fields_only() -> None:
 
     result = label_candidate_qualification_lifecycle(candidate)
 
-    assert result.status is QualificationLifecycleLabel.INVALIDATED
-    assert result.to_dict()["status"] == "invalidated"
+    assert result.status is QualificationLifecycleLabel.CONFLICTED
+    assert result.pending_supersession is True
+    assert result.to_dict()["status"] == "conflicted"
+    assert result.to_dict()["pending_supersession"] is True
     assert result.to_dict()["production_safe"] is True

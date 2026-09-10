@@ -87,6 +87,7 @@ class QualificationLifecycleDTO(BaseModel):
     opposing_event_codes: list[str]
     ignored_audit_only_codes: list[str]
     reason: str
+    pending_supersession: bool = False
     production_safe: bool = True
 
 
