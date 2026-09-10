@@ -1,6 +1,6 @@
 # Milestone 6: Backend VSA Event Foundation
 
-This document is the living planning and audit record for Milestone 6.
+This document is the living planning, audit, and decision record for Milestone 6.
 
 Milestone 6 shifts priority from frontend polish to the backend VSA event foundation. The goal is to make VSA detection, event timing, event outcome, invalidation, and chart interpretation concrete, testable, point-in-time safe, and fast enough to run across a basket of real symbols without long manual review sessions.
 
@@ -8,15 +8,9 @@ Milestone 6 shifts priority from frontend polish to the backend VSA event founda
 
 We should not manually spend long hours inspecting 30 stocks one by one. We already have an optimized pipeline with incremental refresh. Milestone 6 should reuse that pipeline to run automated VSA event audits quickly, then reserve manual chart review only for exceptions, misses, contradictions, and high-value case studies.
 
-Every Milestone 6 PR should update this document when it adds a new finding, new test case, new event weakness, or new TODO.
+Every Milestone 6 PR should update this document when it adds a new finding, new test case, new event weakness, new audit surface, or new TODO.
 
-## Current observations from recent review
-
-### 1. Backend VSA events are now the top priority
-
-The frontend Bar-by-Bar and Trade Plan work is useful, but it should not become the main focus now. The scanner needs a stronger backend foundation first.
-
-Priority is now:
+## Current priority
 
 1. Backend VSA event replay and audit foundation.
 2. Strengthen and calibrate existing VSA events.
@@ -24,7 +18,9 @@ Priority is now:
 4. Add event lifecycle, follow-through, invalidation, and absorption logic.
 5. Only then return to scanner ranking and frontend refinement.
 
-### 2. We need point-in-time replay, not hindsight-only review
+## Key observations from review
+
+### Point-in-time replay is required
 
 When we inspect a completed chart, it is easy to explain the move after seeing the full future. That is dangerous for a scanner.
 
@@ -32,10 +28,10 @@ Milestone 6 must answer questions like:
 
 - If the current week were 24 Feb 2025, what would the scanner know?
 - What events would fire in each following completed week?
-- Did the later bars validate, invalidate, absorb, or contradict the original event?
+- Did later bars validate, invalidate, absorb, or contradict the original event?
 - Did an old bearish or bullish event remain active after the market disproved it?
 
-### 3. LT.NS Feb-Mar 2025 case: structural weakness was not enough
+### LT.NS Feb-Mar 2025: structural weakness was not enough
 
 Observed chart case:
 
@@ -46,7 +42,7 @@ Observed chart case:
 Interpretation:
 
 - The system may have correctly detected structural weakness at that point.
-- But lower low is not automatically bearish in VSA.
+- But a lower low is not automatically bearish in VSA.
 - A lower low can become a spring, shakeout, selling-climax recovery, or absorbed supply event if downside follow-through fails and demand returns.
 - The missing layer is event lifecycle and outcome status.
 
@@ -56,7 +52,7 @@ Required future behavior:
 - If price does not continue lower and later reclaims structure, the event should be marked as invalidated, absorbed, or failed bearish continuation.
 - The UI/story should distinguish swing formed date from confirmation/story date.
 
-### 4. Swing formed date vs confirmation date must be clear
+### Swing formed date vs confirmation date must be clear
 
 Observed UI confusion:
 
@@ -70,7 +66,7 @@ Required future display:
 - Confirmed in story: date when the swing/event became known.
 - On chart: optionally mark the pivot bar with the swing marker and the confirmation/story bar with a separate vertical shade.
 
-### 5. LT.NS Mar 2026 case: effort versus result must be audited
+### LT.NS Mar 2026: effort versus result must be audited
 
 Observed chart case:
 
@@ -85,19 +81,17 @@ Key concern:
 - The scanner must be tested to see whether it fires Stopping Volume, Spring, Shakeout, Absorption, Demand Coming In, and Effort vs Result correctly in the correct weeks.
 - Effort-vs-result should not be added or activated blindly. It must be calibrated across many symbols and false-positive cases.
 
-### 6. Current known implementation gap: Effort vs Result
+### First basket review finding
 
-Known backend status to verify and track:
+The first small basket review covered LT.NS, RELIANCE.NS, and SRF.NS. It showed that Effort-vs-Result candidates are not isolated to LT.NS. RELIANCE.NS and SRF.NS also surfaced high-priority candidate rows.
 
-- Effort vs Result evidence codes exist.
-- The effort collector exists.
-- Production evidence collection has not been fully using the effort collector in the main evidence flow.
+Milestone implication:
 
-Milestone 6 should inspect this before changing live scanner behavior.
+- A single LT.NS case is not enough to change production detectors.
+- Future detector changes must be checked against a fixed basket baseline.
+- PR #77 defines the standard 30-symbol audit basket for that purpose.
 
-## What Milestone 6 must inspect and test
-
-### Event families
+## Event families to inspect
 
 Core event families to inspect, strengthen, or add:
 
@@ -122,22 +116,9 @@ Core event families to inspect, strengthen, or add:
 - Structural Progression Improving.
 - Structural Progression Weakening.
 
-### Event quality checks
+For each event family, inspect true positives, false positives, missed expected events, event timing, point-in-time safety, follow-through, expiry, invalidation, absorption, and whether volume/spread/close/structure gates are too strict or too loose.
 
-For each event family, inspect:
-
-- True positives.
-- False positives.
-- Missed expected events.
-- Event timing: signal bar, test bar, recovery bar, confirmation bar.
-- Whether event timing is point-in-time safe.
-- Whether follow-through is required.
-- Whether the event should expire.
-- Whether later price action invalidates or absorbs it.
-- Whether current story overweights old evidence.
-- Whether volume class, spread class, close position, and structure context are too strict or too loose.
-
-### Outcome and lifecycle statuses to design
+## Outcome and lifecycle statuses to design
 
 Candidate statuses:
 
@@ -154,44 +135,144 @@ Candidate statuses:
 
 These should be analysis labels only. They must not trigger broker, order, account, funds, holdings, margin, credential, or position-size behavior.
 
-## Automated audit runner requirements
+## Implemented Milestone 6 audit surfaces
 
-The next implementation should avoid a slow manual backtest process.
+### PR #70: VSA event audit runner
 
-Required behavior:
+Implemented behavior:
 
-- Use existing optimized/incremental data pipeline where possible.
-- Accept a symbol list, as-of/start week, optional end week, and replay horizon.
-- Replay only completed weekly bars.
-- Run point-in-time event detection week by week.
-- Emit compact rows, not huge historical warehouses.
-- Flag only important exceptions for manual chart review.
+- `GET /api/vsa-audit/events`.
+- Accepts comma, semicolon, or newline separated symbols.
+- Supports `start_week`, `end_week`, `horizon_weeks`, and `max_symbols`.
+- Loads completed weekly data once per symbol through the existing service/data path.
+- Keeps the data path aligned with the existing cache and incremental refresh behavior.
+- Performs one bounded scanner pass up to the requested end week for each symbol.
+- Returns compact point-in-time rows for target/scoring/qualifying/campaign event codes.
+- Separates structural progression events from non-structural VSA events.
+- Records per-symbol errors without failing the whole batch.
+- Does not persist scanner state, decision context, or decision journal entries.
+- Does not change production scanner scoring, ranking, event rules, frontend behavior, or broker/account scope.
 
-Suggested output columns:
+### PR #71: audit flags and LT.NS casebook update
 
-- Symbol.
-- Replay week.
-- Events fired.
-- Event family.
-- Direction.
-- Strength.
-- Quality.
-- Role: campaign, qualifying, scoring, structural, outcome.
-- Signal bar date.
-- Test/recovery/confirmation date where applicable.
-- Follow-through status.
-- Outcome label.
-- Notes / detector diagnostics.
+Audit flags introduced:
 
-Exception flags:
+- `no_target_event`.
+- `fallback_scoring_evidence`.
+- `stale_scoring_evidence`.
+- `actionable_audit_row`.
+- `structural_event_without_vsa_confirmation`.
+- `bullish_vsa_against_bearish_qualification`.
+- `bearish_vsa_against_bullish_qualification`.
+- `conflicting_target_vsa_pressure`.
+- `conflicting_scoring_vsa_pressure`.
+- `qualification_without_current_evidence`.
 
-- Missed expected event.
-- High-confidence event failed.
-- Event invalidated within N weeks.
-- Conflicting bullish and bearish evidence.
-- Structural event without follow-through.
-- Potential spring/shakeout/stopping-volume candidate.
-- Potential effort-vs-result candidate.
+These flags do not change scanner behavior. They only label audit rows that need inspection.
+
+### PR #72: audit-only detector diagnostics
+
+Detector diagnostics introduced:
+
+- `review_potential_stopping_volume`.
+- `review_potential_effort_gt_result`.
+- `review_potential_absorption`.
+- `review_potential_spring_or_shakeout`.
+- `review_high_volume_reversal_without_bullish_event`.
+
+These diagnostics are intentionally weaker than production VSA evidence rules. They are review hints only. They do not create evidence, do not activate disabled detectors, do not change production scanner scoring/ranking, and do not change frontend behavior.
+
+### PR #73: Effort and absorption calibration summary
+
+PR #73 added a calibration summary helper that turns audit rows into a compact review queue for Effort-vs-Result, absorption, high-volume reversal, Stopping Volume, Spring/Shakeout, qualification conflicts, and stale evidence.
+
+This remains audit/calibration-only and does not change production scanner behavior.
+
+### PR #74: VSA audit calibration CLI
+
+PR #74 added a CLI for saved audit JSON files.
+
+Example:
+
+```powershell
+python scripts/vsa_audit_calibration_summary.py LT_New.txt --output LT_calibration_summary.json
+```
+
+This lets local audit output be converted into calibration summaries without adding API or frontend behavior.
+
+### PR #75: VSA audit candidate events
+
+PR #75 added structured audit-only candidate event objects and a CLI.
+
+Candidate families include:
+
+- `audit_effort_gt_result_candidate`.
+- `audit_absorption_candidate`.
+- `audit_stopping_volume_candidate`.
+- `audit_spring_shakeout_candidate`.
+- `audit_high_volume_reversal_candidate`.
+- `audit_qualification_conflict_candidate`.
+- `audit_stale_evidence_candidate`.
+
+Example:
+
+```powershell
+python scripts/vsa_audit_candidate_events.py LT_New.txt --min-priority high --output LT_candidate_events_high.json
+```
+
+The LT.NS run produced high-priority Effort-vs-Result, absorption, high-volume reversal, and qualification-lifecycle candidates. These are not production events; they are structured review candidates.
+
+### PR #76: candidate-event basket batch review/export
+
+PR #76 added a batch review/export layer for the candidate-event output.
+
+Purpose:
+
+- Run the audit/candidate flow over a basket.
+- Produce compact JSON and CSV review files.
+- Rank symbols by high-priority candidate counts.
+- Group candidate families so Effort-vs-Result, absorption, high-volume reversal, and lifecycle conflicts can be reviewed quickly.
+- Avoid changing production detector/scanner behavior before false positives are checked across multiple stocks.
+
+Example:
+
+```powershell
+python scripts/vsa_audit_batch_review.py basket_audit.json --min-priority high --json-output basket_candidate_review.json --csv-output basket_candidate_review.csv
+```
+
+Scope remains audit/export-only. No market-data load, scanner replay, scoring/ranking change, detector activation, API behavior change, frontend behavior change, persistence change, or broker/account/order behavior is added.
+
+### PR #77: standard 30-symbol VSA audit basket
+
+PR #77 defines a repeatable 30-symbol basket and command helper.
+
+Basket name:
+
+```text
+milestone6_standard_india_large_cap_30
+```
+
+Default audit window:
+
+```text
+start_week=2026-03-02
+horizon_weeks=8
+max_symbols=30
+```
+
+Purpose:
+
+- Make basket-level VSA audits repeatable.
+- Avoid changing production detector rules based on only LT.NS.
+- Give every future Effort-vs-Result, absorption, high-volume reversal, and lifecycle change the same baseline.
+
+Example:
+
+```powershell
+python scripts/vsa_standard_audit_basket.py
+```
+
+Scope remains configuration/command-helper only. It does not load market data, replay the scanner, alter detectors, change scoring/ranking, change API/frontend behavior, persist results, or add broker/account/order behavior.
 
 ## Real-stock casebook
 
@@ -205,12 +286,25 @@ Purpose:
 - Verify formed date versus confirmation date.
 - Check if bearish structural event later becomes invalidated or absorbed.
 
-Questions:
+Audit command:
 
-- Was structural weakness correctly detected point-in-time?
-- Was bearish follow-through actually confirmed?
-- When should the event stop contributing bearish weight?
-- Did later demand/spring/recovery evidence override it correctly?
+```text
+/api/vsa-audit/events?symbols=LT.NS&start_week=2025-02-24&horizon_weeks=20
+```
+
+Confirmed audit findings from the first run:
+
+- The audit covered 20 replay weeks from 24 Feb 2025 to 07 Jul 2025 with no per-symbol errors.
+- On 24 Feb 2025, no target event fired, but the scanner was actionable and still using older bearish supply scoring evidence with `structural_progression_weakening` as qualifying evidence.
+- On 17 Mar 2025, `increasing_demand` and `demand_coming_in` fired while the qualification remained `persistent_bearish`.
+- On 24 Mar 2025, `structural_progression_weakening` fired as the target structural event, but no same-week non-structural VSA confirmation fired.
+- Demand evidence appeared again later, including 07 Apr, 05 May, and 23 Jun 2025.
+- By late May through July, several rows had no target, scoring, or campaign events, but qualification still remained `persistent_bearish`.
+
+Milestone implication:
+
+- Structural weakening detection may be valid point-in-time, but the system needs lifecycle / invalidation / absorption handling.
+- Bearish qualification should not continue to dominate after demand appears and fresh bearish evidence disappears.
 
 ### LT.NS: Mar 2026 high-volume support / effort-vs-result / spring candidate
 
@@ -221,60 +315,96 @@ Purpose:
 - Test absorption / support behavior after very-high and ultra-high volume.
 - Test Spring or Shakeout recovery logic.
 
-Weeks to inspect:
+Audit command:
 
-- 02 Mar 2026.
-- 09 Mar 2026.
-- 16 Mar 2026.
-- 23 Mar 2026.
+```text
+/api/vsa-audit/events?symbols=LT.NS&start_week=2026-03-02&horizon_weeks=8
+```
 
-Questions:
+Confirmed audit findings from the first run:
 
-- Did Stopping Volume fire?
-- Did Effort Greater Than Result fire?
-- Did Spring or Shakeout fire only when point-in-time confirmation was available?
-- Did the scanner identify absorption rather than only bearish supply?
+- The audit covered 8 replay weeks from 02 Mar 2026 to 20 Apr 2026 with no per-symbol errors.
+- On 02 Mar 2026, the target event was `increasing_supply`; `stopping_volume` did not fire.
+- On 09 Mar 2026, no target event fired and the scanner reused earlier `increasing_supply` scoring evidence.
+- On 16 Mar 2026, `structural_progression_weakening` fired, but `effort_gt_result`, absorption, and stopping-volume style demand evidence did not fire.
+- On 23 Mar 2026, `demand_coming_in` fired, but `spring` and `shakeout` did not fire.
+- On 06 Apr 2026, `increasing_demand` and `demand_coming_in` fired.
+- On 13 Apr and 20 Apr 2026, no target event fired but older `increasing_supply` still appeared as scoring evidence with high age.
+
+Confirmed candidate-event findings:
+
+- 02 Mar 2026 produced Effort-vs-Result, absorption, and high-volume reversal candidates while production still had `increasing_supply` and `persistent_bearish` qualification.
+- 16 Mar 2026 produced a high-priority Effort-vs-Result candidate while production fired only structural weakening.
+- 23 Mar 2026 produced an Effort-vs-Result candidate and a qualification conflict while production saw `demand_coming_in` but remained `persistent_bearish`.
+- 06 Apr 2026 produced a qualification lifecycle conflict while production fired `increasing_demand` and `demand_coming_in` but remained bearish.
+- 13 Apr 2026 produced absorption and high-volume reversal candidates even though no target event fired.
+
+Milestone implication:
+
+- The scanner currently identifies supply pressure but does not yet properly label the later high-volume effort-vs-result / absorption / spring-like sequence.
+- Effort vs Result, Stopping Volume, Spring, Shakeout, Absorption, and qualification lifecycle need targeted diagnostics and calibration across a wider basket before production behavior changes.
+
+### First small basket run: LT.NS, RELIANCE.NS, SRF.NS
+
+Uploaded batch review output showed:
+
+- 23 high-priority review rows.
+- 11 Effort-vs-Result candidates.
+- 5 absorption candidates.
+- 5 high-volume reversal candidates.
+- 2 qualification-lifecycle conflict candidates.
+- LT.NS and RELIANCE.NS tied as the top review symbols with 10 high-priority rows each.
+- SRF.NS had 3 high-priority Effort-vs-Result rows.
+
+Milestone implication:
+
+- The Effort-vs-Result issue is not isolated to LT.NS.
+- A fixed 30-symbol basket is required before production detector changes.
 
 ## Proposed Milestone 6 PR sequence
 
-### PR #69: Milestone 6 planning document
+Completed:
 
-Create this living document and establish the backend VSA foundation roadmap.
+- PR #69: Milestone 6 living planning document.
+- PR #70: Automated VSA event audit runner.
+- PR #71: Audit flags and LT.NS casebook findings.
+- PR #72: Audit-only detector diagnostics.
+- PR #73: Effort and absorption calibration summary.
+- PR #74: VSA audit calibration CLI.
+- PR #75: VSA audit candidate events.
+- PR #76: Candidate-event basket batch review/export.
 
-### PR #70: Automated VSA event audit runner
+Current:
 
-Backend-only audit runner that uses existing optimized/incremental pipeline and creates compact event replay output for many symbols.
+- PR #77: Standard 30-symbol VSA audit basket.
 
-No production scanner behavior changes yet.
+Next likely steps:
 
-### PR #71: Effort vs Result audit and calibration
-
-Use the audit runner to inspect effort-vs-result candidates across many symbols. Only then decide whether and how to wire effort collection into production.
-
-### PR #72: Stopping Volume, Spring, Shakeout, and Test strengthening
-
-Audit and strengthen the high-value reversal/absorption family.
-
-### PR #73: Event lifecycle and invalidation logic
-
-Add follow-through, failed continuation, absorption, invalidation, and expiry labels to story events.
-
-### PR #74+: Story weighting and scanner ranking refinement
-
-Only after the VSA event foundation is stronger, update story weighting, ranking, and frontend presentation.
+- Run standard 30-symbol basket audit and generate batch review CSV/JSON.
+- Inspect false positives in high-priority Effort-vs-Result, absorption, high-volume reversal, and qualification lifecycle candidates.
+- Add detector gate diagnostics for why each production event fired or failed.
+- Then decide whether any candidate family should become low-weight production evidence.
 
 ## Current TODO list
 
-- [ ] Build automated multi-symbol event replay/audit runner.
-- [ ] Reuse existing optimized/incremental pipeline; avoid slow manual 30-stock chart review.
-- [ ] Define standard 30+ stock audit basket.
-- [ ] Add LT.NS Feb-Mar 2025 as a structural weakening invalidation case.
-- [ ] Add LT.NS Mar 2026 as Stopping Volume / Effort vs Result / Spring case.
+- [x] Create Milestone 6 living planning document.
+- [x] Build first automated multi-symbol event replay/audit runner surface.
+- [x] Reuse existing optimized/incremental data loading; avoid slow manual 30-stock chart review.
+- [x] Run LT.NS Feb-Mar 2025 audit and record findings.
+- [x] Run LT.NS Mar 2026 audit and record findings.
+- [x] Add audit flags so exception rows can be filtered quickly.
+- [x] Add first detector diagnostics explaining why high-volume reversal rows deserve review.
+- [x] Add calibration summary helper.
+- [x] Add calibration CLI for saved audit output.
+- [x] Add structured audit-only candidate events.
+- [x] Add candidate-event batch review/export surface.
+- [x] Define standard 30-symbol audit basket.
+- [ ] Run candidate-event batch review across the standard basket.
 - [ ] Inspect whether Effort vs Result is currently absent from production evidence collection.
 - [ ] Audit Stopping Volume strictness across real examples.
 - [ ] Audit Spring support-touch/test/confirmation strictness across real examples.
 - [ ] Audit Shakeout and Selling Climax separation.
-- [ ] Add detector diagnostics explaining why each event fired or failed.
+- [ ] Add full detector gate diagnostics explaining why each production event fired or failed.
 - [ ] Add formed-date vs confirmation-date fields for structural/story events.
 - [ ] Design outcome labels without changing scanner scoring prematurely.
 - [ ] Add compact casebook results as findings are confirmed.
@@ -285,9 +415,19 @@ Only after the VSA event foundation is stronger, update story weighting, ranking
 - PR #66 added backend weekly Bar-by-Bar professional readings.
 - PR #67 added analysis-only trade-planning layer.
 - PR #68 wired Bar-by-Bar and Trade Plan into the frontend.
+- PR #69 created and merged this Milestone 6 living document.
+- PR #70 added and merged the first automated audit runner surface.
+- PR #71 added and merged audit flags and first LT.NS audit findings.
+- PR #72 added and merged audit-only detector diagnostics for high-volume reversal review.
+- PR #73 added and merged the Effort/absorption calibration summary helper.
+- PR #74 added and merged the saved-output calibration CLI.
+- PR #75 added and merged structured audit-only candidate events.
+- PR #76 added and merged candidate-event basket batch review/export.
+- PR #77 defines the standard 30-symbol VSA audit basket.
 - After reviewing LT.NS examples, priority shifted to backend VSA event reliability.
 - Decision: automated audit first, scanner behavior changes later.
 - Decision: no long manual 30-stock chart review; use optimized pipeline and inspect only flagged exceptions.
+- Decision: keep audit/calibration PRs behavior-safe; production detector changes come later after basket evidence is available.
 
 ## Update rule for future work
 

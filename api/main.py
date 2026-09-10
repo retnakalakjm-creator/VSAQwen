@@ -8,6 +8,15 @@ from engine.columns import COL_WEEK
 from market_data import create_market_data_provider_from_env
 from metrics_engine import MetricsEngine
 from trade_planner import build_trade_plan
+from vsa_event_audit import (
+    AUDIT_TIMEFRAME,
+    DEFAULT_AUDIT_HORIZON_WEEKS,
+    DEFAULT_MAX_AUDIT_SYMBOLS,
+    MAX_AUDIT_REPLAY_WEEKS,
+    MAX_AUDIT_SYMBOLS,
+    build_vsa_event_audit,
+    parse_symbol_list,
+)
 from weekly_bar_interpreter import (
     DEFAULT_WEEKLY_BAR_READING_LOOKBACK,
     MAX_WEEKLY_BAR_READING_LOOKBACK,
@@ -23,6 +32,8 @@ from .schemas import (
     DecisionJournalEvaluationResponseDTO,
     HealthDTO,
     TradePlanResponseDTO,
+    VSAEventAuditResponseDTO,
+    VSAEventAuditSymbolResultDTO,
     WeeklyBarReadingsResponseDTO,
 )
 from .service import ProVSAService
@@ -66,6 +77,72 @@ def symbol_data_source_status(symbol: str) -> DataSourceStatusDTO:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Data source status failed") from exc
+
+
+@app.get("/api/vsa-audit/events", response_model=VSAEventAuditResponseDTO)
+def vsa_event_audit_events(
+    symbols: str = Query(
+        ...,
+        description="Comma, semicolon, or newline separated symbol list.",
+    ),
+    start_week: str | None = Query(
+        None,
+        description="Optional first replay week/date, inclusive.",
+    ),
+    end_week: str | None = Query(
+        None,
+        description="Optional last replay week/date, inclusive.",
+    ),
+    horizon_weeks: int = Query(
+        DEFAULT_AUDIT_HORIZON_WEEKS,
+        ge=1,
+        le=MAX_AUDIT_REPLAY_WEEKS,
+        description="Replay weeks when end_week is omitted, or latest-window size.",
+    ),
+    max_symbols: int = Query(
+        DEFAULT_MAX_AUDIT_SYMBOLS,
+        ge=1,
+        le=MAX_AUDIT_SYMBOLS,
+        description="Safety cap for one audit request.",
+    ),
+) -> VSAEventAuditResponseDTO:
+    """Run a compact point-in-time VSA event audit for many symbols.
+
+    This endpoint is audit-only. It reuses the normal completed-week data path
+    once per symbol, then produces compact replay rows without persisting scanner
+    state, decision context, or journal entries.
+    """
+    try:
+        parsed_symbols = parse_symbol_list(symbols, max_symbols=max_symbols)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    results: list[VSAEventAuditSymbolResultDTO] = []
+    errors: dict[str, str] = {}
+    for raw_symbol in parsed_symbols:
+        try:
+            normalized_symbol = _service._normalize_symbol(raw_symbol)
+            weekly = _service._completed_weekly_for_symbol(normalized_symbol)
+            audit = build_vsa_event_audit(
+                symbol=normalized_symbol,
+                weekly=weekly,
+                start_week=start_week,
+                end_week=end_week,
+                horizon_weeks=horizon_weeks,
+            )
+            results.append(VSAEventAuditSymbolResultDTO(**audit.to_dict()))
+        except Exception as exc:
+            errors[raw_symbol] = str(exc)
+
+    return VSAEventAuditResponseDTO(
+        symbols=parsed_symbols,
+        timeframe=AUDIT_TIMEFRAME,
+        start_week=start_week,
+        end_week=end_week,
+        horizon_weeks=horizon_weeks,
+        results=results,
+        errors=errors,
+    )
 
 
 @app.get("/api/symbols/{symbol}/analysis", response_model=AnalysisDTO)

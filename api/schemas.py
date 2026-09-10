@@ -253,6 +253,49 @@ class TradePlanResponseDTO(BaseModel):
     plan: TradePlanDTO
 
 
+class VSAEventAuditRowDTO(BaseModel):
+    symbol: str
+    replay_bar_index: int
+    replay_week: str
+    event_count: int
+    target_event_codes: list[str]
+    scoring_event_codes: list[str]
+    qualifying_event_codes: list[str]
+    campaign_event_codes: list[str]
+    structural_event_codes: list[str]
+    vsa_event_codes: list[str]
+    qualification: str
+    actionable: bool
+    used_fallback_evidence: bool
+    scoring_evidence_age: int | None
+    net_pressure: float
+    confidence: float
+    audit_flags: list[str]
+    detector_diagnostics: list[str]
+    notes: list[str]
+
+
+class VSAEventAuditSymbolResultDTO(BaseModel):
+    symbol: str
+    timeframe: str
+    start_week: str | None
+    end_week: str | None
+    replay_weeks: int
+    rows: list[VSAEventAuditRowDTO]
+    audit_only: bool = True
+
+
+class VSAEventAuditResponseDTO(BaseModel):
+    symbols: list[str]
+    timeframe: str
+    start_week: str | None
+    end_week: str | None
+    horizon_weeks: int
+    results: list[VSAEventAuditSymbolResultDTO]
+    errors: dict[str, str] = Field(default_factory=dict)
+    audit_only: bool = True
+
+
 class AnalysisDTO(BaseModel):
     symbol: str
     timeframe: str
