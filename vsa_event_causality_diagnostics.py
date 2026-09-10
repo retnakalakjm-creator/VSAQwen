@@ -8,8 +8,10 @@ from typing import Any, Iterable, Mapping, Sequence
 DEFAULT_CAUSALITY_HORIZON_ROWS = 8
 
 OUTCOME_FOLLOW_THROUGH_VISIBLE = "follow_through_visible"
+OUTCOME_MIXED_FOLLOW_THROUGH_CONFLICT = "mixed_follow_through_conflict"
 OUTCOME_INVALIDATED_BY_LATER_EVIDENCE = "invalidated_by_later_evidence"
 OUTCOME_NO_FOLLOW_THROUGH_VISIBLE = "no_follow_through_visible"
+OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS = "no_later_selected_audit_rows"
 OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS = "pending_insufficient_future_rows"
 OUTCOME_LIFECYCLE_TRANSITION_REVIEW = "lifecycle_transition_review"
 OUTCOME_CONTEXT_ONLY_REVIEW = "context_only_review"
@@ -51,6 +53,13 @@ LIFECYCLE_ACTIONS = frozenset(
         "mark_conflicted",
         "wait_for_follow_through",
         "keep_active",
+    }
+)
+
+INVALIDATING_LIFECYCLE_ACTIONS = frozenset(
+    {
+        "invalidate_qualification",
+        "mark_conflicted",
     }
 )
 
@@ -180,7 +189,11 @@ def build_vsa_event_causality_diagnostics(
     diagnostics = tuple(
         sorted(
             (
-                _build_diagnostic_row(row, _future_rows(row, source_rows, review_horizon_rows), review_horizon_rows)
+                _build_diagnostic_row(
+                    row,
+                    _future_rows(row, source_rows, review_horizon_rows),
+                    review_horizon_rows,
+                )
                 for row in source_rows
                 if _is_reviewable_row(row)
             ),
@@ -310,14 +323,30 @@ def _outcome_label(
     bucket = str(row.get("triage_bucket", ""))
     lifecycle_status = str(row.get("lifecycle_status", ""))
 
-    if action in LIFECYCLE_ACTIONS or family == "qualification_lifecycle" or bucket == "qualification_lifecycle_issue" or lifecycle_status:
+    if (
+        action in LIFECYCLE_ACTIONS
+        or family == "qualification_lifecycle"
+        or bucket == "qualification_lifecycle_issue"
+        or lifecycle_status
+    ):
         return OUTCOME_LIFECYCLE_TRANSITION_REVIEW
     if direction not in {"bullish", "bearish"}:
         return OUTCOME_CONTEXT_ONLY_REVIEW
-    if future_opposition or any(action in {"invalidate_qualification", "mark_conflicted"} for action in future_actions):
+
+    has_invalidating_action = any(
+        action in INVALIDATING_LIFECYCLE_ACTIONS for action in future_actions
+    )
+    has_opposition = bool(future_opposition) or has_invalidating_action
+    has_support = bool(future_support)
+
+    if has_support and has_opposition:
+        return OUTCOME_MIXED_FOLLOW_THROUGH_CONFLICT
+    if has_opposition:
         return OUTCOME_INVALIDATED_BY_LATER_EVIDENCE
-    if future_support:
+    if has_support:
         return OUTCOME_FOLLOW_THROUGH_VISIBLE
+    if future_rows_checked == 0:
+        return OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS
     if future_rows_checked < review_horizon_rows:
         return OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS
     return OUTCOME_NO_FOLLOW_THROUGH_VISIBLE
@@ -335,6 +364,16 @@ def _causal_read(
     readable_event = _pretty(event_code)
     if outcome == OUTCOME_FOLLOW_THROUGH_VISIBLE:
         return f"{readable_event} has later same-side VSA evidence: {', '.join(future_support)}."
+    if outcome == OUTCOME_MIXED_FOLLOW_THROUGH_CONFLICT:
+        pieces = [f"same-side VSA evidence: {', '.join(future_support)}"]
+        if future_opposition:
+            pieces.append(f"opposing VSA evidence: {', '.join(future_opposition)}")
+        invalidating_actions = tuple(
+            action for action in future_actions if action in INVALIDATING_LIFECYCLE_ACTIONS
+        )
+        if invalidating_actions:
+            pieces.append(f"invalidating lifecycle action: {', '.join(invalidating_actions)}")
+        return f"{readable_event} has mixed follow-through and contradiction: {'; '.join(pieces)}."
     if outcome == OUTCOME_INVALIDATED_BY_LATER_EVIDENCE:
         pieces = []
         if future_opposition:
@@ -343,9 +382,11 @@ def _causal_read(
             pieces.append(f"lifecycle action: {', '.join(future_actions)}")
         return f"{readable_event} is contradicted by later {'; '.join(pieces)}."
     if outcome == OUTCOME_NO_FOLLOW_THROUGH_VISIBLE:
-        return f"{readable_event} has no visible follow-through inside the review window."
+        return f"{readable_event} has no visible follow-through inside the completed review window."
+    if outcome == OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS:
+        return f"{readable_event} has no later selected audit rows in this saved input; rerun with a wider/base audit file before treating it as pending."
     if outcome == OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS:
-        return f"{readable_event} is too recent to evaluate through the full review window."
+        return f"{readable_event} has later audit rows, but not enough to evaluate through the full review window."
     if outcome == OUTCOME_LIFECYCLE_TRANSITION_REVIEW:
         return "Qualification lifecycle/action row; review how it changes active context rather than treating it as a price event."
     if direction in {"bullish", "bearish"}:
@@ -356,10 +397,14 @@ def _causal_read(
 def _recommended_action(outcome: str) -> str:
     if outcome == OUTCOME_FOLLOW_THROUGH_VISIBLE:
         return "review_for_event_continuation_or_active_lifecycle"
+    if outcome == OUTCOME_MIXED_FOLLOW_THROUGH_CONFLICT:
+        return "review_mixed_event_cluster_before_activation"
     if outcome == OUTCOME_INVALIDATED_BY_LATER_EVIDENCE:
         return "review_for_event_invalidation_or_supersession"
     if outcome == OUTCOME_NO_FOLLOW_THROUGH_VISIBLE:
         return "review_for_failed_event_or_decay_rule"
+    if outcome == OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS:
+        return "rerun_with_wider_same_symbol_audit_context"
     if outcome == OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS:
         return "wait_for_more_completed_bars"
     if outcome == OUTCOME_LIFECYCLE_TRANSITION_REVIEW:
@@ -500,7 +545,11 @@ def _csv_row(row: Mapping[str, Any]) -> dict[str, str]:
     return csv_row
 
 
-def _top_review_symbols(rows: Sequence[VSAEventCausalityDiagnosticRow], *, limit: int = 10) -> tuple[dict[str, Any], ...]:
+def _top_review_symbols(
+    rows: Sequence[VSAEventCausalityDiagnosticRow],
+    *,
+    limit: int = 10,
+) -> tuple[dict[str, Any], ...]:
     counts = _count(row.symbol for row in rows)
     ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
     return tuple({"symbol": symbol, "count": count} for symbol, count in ordered)
@@ -571,7 +620,9 @@ __all__ = [
     "OUTCOME_FOLLOW_THROUGH_VISIBLE",
     "OUTCOME_INVALIDATED_BY_LATER_EVIDENCE",
     "OUTCOME_LIFECYCLE_TRANSITION_REVIEW",
+    "OUTCOME_MIXED_FOLLOW_THROUGH_CONFLICT",
     "OUTCOME_NO_FOLLOW_THROUGH_VISIBLE",
+    "OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS",
     "OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS",
     "VSAEventCausalityDiagnosticRow",
     "VSAEventCausalityDiagnosticSummary",

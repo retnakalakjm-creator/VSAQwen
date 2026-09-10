@@ -11,6 +11,8 @@ from vsa_event_causality_diagnostics import (
     OUTCOME_FOLLOW_THROUGH_VISIBLE,
     OUTCOME_INVALIDATED_BY_LATER_EVIDENCE,
     OUTCOME_LIFECYCLE_TRANSITION_REVIEW,
+    OUTCOME_MIXED_FOLLOW_THROUGH_CONFLICT,
+    OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS,
     OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS,
     build_vsa_event_causality_diagnostics,
     render_vsa_event_causality_diagnostics_csv,
@@ -58,7 +60,7 @@ def test_causality_marks_same_side_follow_through_visible() -> None:
     assert summary["outcome_counts"][OUTCOME_FOLLOW_THROUGH_VISIBLE] == 1
 
 
-def test_causality_marks_later_opposing_vsa_as_invalidation_review() -> None:
+def test_causality_marks_later_opposing_vsa_as_clean_invalidation_review() -> None:
     payload = {
         "rows": [
             _row(
@@ -90,6 +92,48 @@ def test_causality_marks_later_opposing_vsa_as_invalidation_review() -> None:
     assert "contradicted" in structural["causal_read"]
 
 
+def test_causality_marks_mixed_support_and_opposition_separately() -> None:
+    payload = {
+        "rows": [
+            _row(
+                replay_week="2026-03-02 00:00:00",
+                replay_bar_index=233,
+                candidate_code="audit_effort_gt_result_candidate",
+                candidate_family="effort_vs_result",
+                direction="bullish_reversal_review",
+                target_event_codes=["increasing_supply"],
+                scoring_event_codes=["increasing_supply"],
+            ),
+            _row(
+                replay_week="2026-03-16 00:00:00",
+                replay_bar_index=235,
+                candidate_code="demand_coming_in",
+                direction="bullish",
+                target_event_codes=["demand_coming_in"],
+                scoring_event_codes=["demand_coming_in"],
+            ),
+            _row(
+                replay_week="2026-03-23 00:00:00",
+                replay_bar_index=236,
+                candidate_code="structural_progression_weakening",
+                candidate_family="structural_progression",
+                direction="bearish",
+                target_event_codes=["structural_progression_weakening"],
+                scoring_event_codes=["structural_progression_weakening"],
+            ),
+        ]
+    }
+
+    summary = build_vsa_event_causality_diagnostics(payload, review_horizon_rows=8).to_dict()
+
+    candidate = next(row for row in summary["rows"] if row["event_code"] == "audit_effort_gt_result_candidate")
+    assert candidate["outcome_label"] == OUTCOME_MIXED_FOLLOW_THROUGH_CONFLICT
+    assert candidate["future_supporting_event_codes"] == ["demand_coming_in"]
+    assert candidate["future_opposing_event_codes"] == ["structural_progression_weakening"]
+    assert candidate["recommended_action"] == "review_mixed_event_cluster_before_activation"
+    assert "mixed follow-through and contradiction" in candidate["causal_read"]
+
+
 def test_causality_marks_lifecycle_transition_rows_separately() -> None:
     payload = {
         "rows": [
@@ -111,13 +155,37 @@ def test_causality_marks_lifecycle_transition_rows_separately() -> None:
     assert summary["rows"][0]["recommended_action"] == "review_context_lifecycle_transition"
 
 
-def test_causality_marks_latest_event_as_pending_when_future_rows_missing() -> None:
+def test_causality_marks_no_later_selected_rows_distinct_from_pending() -> None:
     payload = {"rows": [_row(candidate_code="spring", target_event_codes=["spring"])]}
 
     summary = build_vsa_event_causality_diagnostics(payload, review_horizon_rows=3).to_dict()
 
-    assert summary["rows"][0]["outcome_label"] == OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS
+    assert summary["rows"][0]["outcome_label"] == OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS
     assert summary["rows"][0]["future_rows_checked"] == 0
+    assert summary["rows"][0]["recommended_action"] == "rerun_with_wider_same_symbol_audit_context"
+
+
+def test_causality_marks_partial_future_window_as_pending() -> None:
+    payload = {
+        "rows": [
+            _row(candidate_code="spring", target_event_codes=["spring"]),
+            _row(
+                replay_week="2026-03-09 00:00:00",
+                replay_bar_index=234,
+                candidate_code="neutral_context_marker",
+                candidate_family="context",
+                direction="neutral",
+                target_event_codes=[],
+                scoring_event_codes=[],
+            ),
+        ]
+    }
+
+    summary = build_vsa_event_causality_diagnostics(payload, review_horizon_rows=3).to_dict()
+
+    spring = next(row for row in summary["rows"] if row["event_code"] == "spring")
+    assert spring["outcome_label"] == OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS
+    assert spring["future_rows_checked"] == 1
 
 
 def test_causality_csv_renders_outcome_columns() -> None:
@@ -128,7 +196,7 @@ def test_causality_csv_renders_outcome_columns() -> None:
 
     assert len(rows) == 1
     assert rows[0]["symbol"] == "LT.NS"
-    assert rows[0]["outcome_label"] == OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS
+    assert rows[0]["outcome_label"] == OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS
     assert "causal_read" in rows[0]
 
 
@@ -156,5 +224,5 @@ def test_causality_cli_writes_json_and_csv(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     json_body = json.loads(json_output.read_text(encoding="utf-8"))
     csv_rows = list(csv.DictReader(StringIO(csv_output.read_text(encoding="utf-8"))))
-    assert json_body["outcome_counts"] == {OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS: 1}
-    assert csv_rows[0]["outcome_label"] == OUTCOME_PENDING_INSUFFICIENT_FUTURE_ROWS
+    assert json_body["outcome_counts"] == {OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS: 1}
+    assert csv_rows[0]["outcome_label"] == OUTCOME_NO_LATER_SELECTED_AUDIT_ROWS
