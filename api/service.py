@@ -28,6 +28,7 @@ from engine.columns import (
 from market_data import MarketDataProvider
 from metrics_engine import MetricsEngine
 from production_scanner import scan_latest_candidate_production
+from qualification_lifecycle_labels import label_candidate_qualification_lifecycle
 from scanner import ScannerEngine
 from scanner_state import ScannerStateStore
 
@@ -43,6 +44,7 @@ from .schemas import (
     HealthDTO,
     ProfessionalScoreDTO,
     QualificationDTO,
+    QualificationLifecycleDTO,
     StructuralSwingDTO,
     SwingScoreDTO,
     TrendDTO,
@@ -133,7 +135,8 @@ class ProVSAService:
             timeframe=DEFAULT_API_TIMEFRAME,
             mode=DecisionMode.DEVELOPING,
         )
-        return self._decision_context_dto(context)
+        lifecycle = self._qualification_lifecycle(candidate)
+        return self._decision_context_dto(context, lifecycle=lifecycle)
 
     def decision_journal_for_symbol(self, symbol: str) -> DecisionJournalDTO:
         """Return saved compact journal entries without running analysis."""
@@ -226,6 +229,7 @@ class ProVSAService:
             symbol=symbol,
             timeframe=timeframe,
         )
+        qualification_lifecycle = self._qualification_lifecycle(candidate)
         self._persist_decision_artifacts(decision_context)
 
         labels = {
@@ -265,6 +269,7 @@ class ProVSAService:
                 reason=candidate.reason,
                 evidence_codes=list(candidate.qualification_result.evidence_codes),
                 evidence_bar_indices=list(candidate.qualification_result.evidence_bar_indices),
+                lifecycle=qualification_lifecycle,
             ),
             professional=ProfessionalScoreDTO(
                 trend=float(candidate.professional.trend),
@@ -277,7 +282,10 @@ class ProVSAService:
                 net_pressure=float(candidate.net_pressure),
                 confidence=float(candidate.confidence),
             ),
-            decision_context=self._decision_context_dto(decision_context),
+            decision_context=self._decision_context_dto(
+                decision_context,
+                lifecycle=qualification_lifecycle,
+            ),
         )
 
     def _persist_decision_artifacts(self, context: DecisionContext) -> None:
@@ -327,8 +335,21 @@ class ProVSAService:
         return str(weekly.iloc[len(weekly) - 1]["week_beginning"])
 
     @staticmethod
-    def _decision_context_dto(context: DecisionContext) -> DecisionContextDTO:
-        return DecisionContextDTO(**context.to_dict())
+    def _qualification_lifecycle(candidate) -> QualificationLifecycleDTO:
+        return QualificationLifecycleDTO(
+            **label_candidate_qualification_lifecycle(candidate).to_dict()
+        )
+
+    @staticmethod
+    def _decision_context_dto(
+        context: DecisionContext,
+        *,
+        lifecycle: QualificationLifecycleDTO | None = None,
+    ) -> DecisionContextDTO:
+        payload = context.to_dict()
+        if lifecycle is not None:
+            payload["qualification_lifecycle"] = lifecycle
+        return DecisionContextDTO(**payload)
 
     @staticmethod
     def _decision_journal_entry_dto(entry: DecisionJournalEntry) -> DecisionJournalEntryDTO:

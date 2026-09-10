@@ -75,12 +75,28 @@ class TrendDTO(BaseModel):
     ll_count: int
 
 
+class QualificationLifecycleDTO(BaseModel):
+    qualification: str
+    qualification_side: str
+    status: str
+    current_vsa_bias: str
+    actionable: bool
+    scoring_evidence_age: int | None
+    used_fallback_evidence: bool
+    supporting_event_codes: list[str]
+    opposing_event_codes: list[str]
+    ignored_audit_only_codes: list[str]
+    reason: str
+    production_safe: bool = True
+
+
 class QualificationDTO(BaseModel):
     qualification: str
     actionable: bool
     reason: str
     evidence_codes: list[str]
     evidence_bar_indices: list[int]
+    lifecycle: QualificationLifecycleDTO | None = None
 
 
 class ProfessionalScoreDTO(BaseModel):
@@ -136,6 +152,7 @@ class DecisionContextDTO(BaseModel):
     latest_bar_index: int | None
     latest_week: str | None
     qualification: str
+    qualification_lifecycle: QualificationLifecycleDTO | None = None
     actionable: bool
     decision: str
     tradability: str

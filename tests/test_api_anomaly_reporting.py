@@ -70,6 +70,9 @@ def _fake_candidate() -> SimpleNamespace:
         bar_index=1,
         week="2026-08-31 00:00:00",
         execution_pending=False,
+        scoring_evidence=(),
+        scoring_evidence_age=None,
+        used_fallback_evidence=False,
         professional=SimpleNamespace(
             trend=0.0,
             supply=0.0,
@@ -169,9 +172,13 @@ def test_api_analysis_reports_bar_signal_and_decision_context_metadata(
     assert result.decision_context.decision == "avoid"
     assert result.decision_context.latest_bar_index == 1
     assert result.decision_context.story.what_to_expect_next
+    assert result.decision_context.qualification_lifecycle is not None
+    assert result.decision_context.qualification_lifecycle.status == "unqualified"
 
     loaded = store.load("TEST.NS", "1W")
-    assert loaded.to_dict() == result.decision_context.dict()
+    api_context_payload = result.decision_context.model_dump()
+    api_context_payload.pop("qualification_lifecycle", None)
+    assert loaded.to_dict() == api_context_payload
 
     journal_entries = journal_store.load_all("TEST.NS", "1W")
     assert len(journal_entries) == 1
