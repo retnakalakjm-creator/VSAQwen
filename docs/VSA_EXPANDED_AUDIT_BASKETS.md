@@ -17,6 +17,16 @@ This follows the project rule:
 foundation first, visualization second
 ```
 
+## Tata Motors symbol maintenance
+
+PR #95 updates the audit baskets for the Tata Motors demerger/listing symbol changes:
+
+- `TATAMOTORS.NS` is replaced with `TMPV.NS`.
+- `TMCV.NS` is added to the expanded 60-symbol basket.
+- `IOC.NS` is removed from the expanded additional-symbol list so the expanded basket remains exactly 60 symbols.
+
+This is basket maintenance only. It does not change scanner logic, event detectors, scoring, ranking, API behavior, frontend behavior, replay behavior, or persistence.
+
 ## Available baskets
 
 ### `milestone6_standard_india_large_cap_30`
@@ -98,7 +108,7 @@ python scripts/vsa_standard_audit_basket.py --basket milestone6_midcap_focus_30
 
 ## Suggested next audit workflow
 
-Run the expanded 60-symbol basket after pulling PR #94:
+Run the expanded 60-symbol basket after pulling the latest main:
 
 ```powershell
 python scripts/vsa_standard_audit_basket.py --basket milestone6_expanded_india_large_mid_60 --json

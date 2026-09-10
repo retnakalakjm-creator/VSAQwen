@@ -36,6 +36,13 @@ def test_standard_basket_has_exactly_thirty_unique_nse_symbols() -> None:
     assert {"LT.NS", "RELIANCE.NS", "SRF.NS"}.issubset(set(basket.symbols))
 
 
+def test_standard_basket_uses_current_tata_motors_passenger_symbol() -> None:
+    basket = get_standard_vsa_audit_basket()
+
+    assert "TATAMOTORS.NS" not in basket.symbols
+    assert "TMPV.NS" in basket.symbols
+
+
 def test_expanded_large_mid_basket_keeps_standard_baseline_and_adds_symbols() -> None:
     standard = get_standard_vsa_audit_basket()
     expanded = get_vsa_audit_basket(EXPANDED_VSA_AUDIT_BASKET_NAME)
@@ -46,6 +53,15 @@ def test_expanded_large_mid_basket_keeps_standard_baseline_and_adds_symbols() ->
     assert len(set(expanded.symbols)) == 60
     assert expanded.symbols[:30] == standard.symbols
     assert {"SBICARD.NS", "HAL.NS", "TRENT.NS", "BANKBARODA.NS"}.issubset(set(expanded.symbols))
+
+
+def test_expanded_basket_uses_tata_motors_demerger_symbols_without_stale_symbol() -> None:
+    basket = get_vsa_audit_basket(EXPANDED_VSA_AUDIT_BASKET_NAME)
+
+    assert "TATAMOTORS.NS" not in basket.symbols
+    assert "TMPV.NS" in basket.symbols
+    assert "TMCV.NS" in basket.symbols
+    assert "IOC.NS" not in basket.symbols
 
 
 def test_midcap_focus_basket_has_own_thirty_symbol_noise_baseline() -> None:
@@ -65,6 +81,7 @@ def test_all_named_baskets_have_unique_uppercase_nse_symbols() -> None:
         assert len(set(basket.symbols)) == len(basket.symbols)
         assert all(symbol.endswith(".NS") for symbol in basket.symbols)
         assert all(symbol == symbol.upper() for symbol in basket.symbols)
+        assert "TATAMOTORS.NS" not in basket.symbols
 
 
 def test_standard_basket_builds_repeatable_audit_url() -> None:
@@ -79,6 +96,8 @@ def test_standard_basket_builds_repeatable_audit_url() -> None:
     assert query["horizon_weeks"] == ["8"]
     assert query["max_symbols"] == ["30"]
     assert query["symbols"] == [format_basket_symbols()]
+    assert "TMPV.NS" in query["symbols"][0]
+    assert "TATAMOTORS.NS" not in query["symbols"][0]
 
 
 def test_expanded_basket_builds_repeatable_audit_url() -> None:
@@ -91,6 +110,9 @@ def test_expanded_basket_builds_repeatable_audit_url() -> None:
     assert query["horizon_weeks"] == ["8"]
     assert query["max_symbols"] == ["60"]
     assert len(query["symbols"][0].split(",")) == 60
+    assert "TMPV.NS" in query["symbols"][0]
+    assert "TMCV.NS" in query["symbols"][0]
+    assert "TATAMOTORS.NS" not in query["symbols"][0]
 
 
 def test_standard_basket_commands_chain_existing_audit_tools() -> None:
@@ -112,6 +134,9 @@ def test_expanded_basket_commands_use_distinct_output_files() -> None:
     assert "expanded_large_mid_basket_audit.json" in commands["save_audit"]
     assert "expanded_large_mid_basket_candidate_events_high.json" in commands["candidate_events"]
     assert "expanded_large_mid_basket_review.csv" in commands["batch_review"]
+    assert "TMPV.NS" in commands["audit_url"]
+    assert "TMCV.NS" in commands["audit_url"]
+    assert "TATAMOTORS.NS" not in commands["audit_url"]
 
 
 def test_standard_basket_url_rejects_too_small_max_symbols() -> None:
@@ -147,6 +172,8 @@ def test_standard_basket_cli_prints_json() -> None:
     assert payload["symbol_count"] == 30
     assert payload["commands"]["save_audit"].startswith("curl.exe ")
     assert "LT.NS" in payload["symbols"]
+    assert "TMPV.NS" in payload["symbols"]
+    assert "TATAMOTORS.NS" not in payload["symbols"]
 
 
 def test_expanded_basket_cli_prints_json() -> None:
@@ -170,3 +197,6 @@ def test_expanded_basket_cli_prints_json() -> None:
     assert payload["symbol_count"] == 60
     assert payload["commands"]["save_audit"].startswith("curl.exe ")
     assert "SBICARD.NS" in payload["symbols"]
+    assert "TMPV.NS" in payload["symbols"]
+    assert "TMCV.NS" in payload["symbols"]
+    assert "TATAMOTORS.NS" not in payload["symbols"]

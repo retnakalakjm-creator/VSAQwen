@@ -31,7 +31,7 @@ STANDARD_VSA_AUDIT_SYMBOLS: tuple[str, ...] = (
     "ASIANPAINT.NS",
     "MARUTI.NS",
     "M&M.NS",
-    "TATAMOTORS.NS",
+    "TMPV.NS",
     "TATASTEEL.NS",
     "JSWSTEEL.NS",
     "SUNPHARMA.NS",
@@ -62,6 +62,7 @@ EXPANDED_VSA_AUDIT_ADDITIONAL_SYMBOLS: tuple[str, ...] = (
     "EICHERMOT.NS",
     "HEROMOTOCO.NS",
     "BAJAJ-AUTO.NS",
+    "TMCV.NS",
     "APOLLOHOSP.NS",
     "DIVISLAB.NS",
     "TECHM.NS",
@@ -75,7 +76,6 @@ EXPANDED_VSA_AUDIT_ADDITIONAL_SYMBOLS: tuple[str, ...] = (
     "INDUSINDBK.NS",
     "BANKBARODA.NS",
     "PNB.NS",
-    "IOC.NS",
     "GAIL.NS",
 )
 
