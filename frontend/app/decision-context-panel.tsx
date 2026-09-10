@@ -84,6 +84,12 @@ type DecisionContextModeStatus = {
 };
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const NON_VALIDATED_LIFECYCLE_STATUSES = new Set([
+  "conflicted",
+  "invalidated",
+  "expired",
+  "needs_follow_through",
+]);
 
 export function decisionContextModeStatus(
   mode: string | null | undefined,
@@ -217,6 +223,71 @@ function lifecycleEvidenceLine(lifecycle: QualificationLifecycle | null | undefi
   ].join(" · ");
 }
 
+function lifecycleFallbackNote(lifecycle: QualificationLifecycle) {
+  return lifecycle.used_fallback_evidence
+    ? " Fallback scoring evidence is being used, so review freshness before acting."
+    : "";
+}
+
+function lifecycleAwareHeadline(context: DecisionContext) {
+  const lifecycle = context.qualification_lifecycle ?? null;
+  if (!lifecycle || !NON_VALIDATED_LIFECYCLE_STATUSES.has(lifecycle.status)) {
+    return context.story.headline;
+  }
+
+  const side = pretty(lifecycle.qualification_side);
+  const phase = pretty(context.phase);
+
+  switch (lifecycle.status) {
+    case "expired":
+      return `Expired ${side} ${phase} context`;
+    case "invalidated":
+      return `Invalidated ${side} ${phase} context`;
+    case "conflicted":
+      return `Conflicted ${side} ${phase} context`;
+    case "needs_follow_through":
+      return `${side} ${phase} context needs follow-through`;
+    default:
+      return context.story.headline;
+  }
+}
+
+function lifecycleAwareSummary(context: DecisionContext) {
+  const lifecycle = context.qualification_lifecycle ?? null;
+  if (!lifecycle || !NON_VALIDATED_LIFECYCLE_STATUSES.has(lifecycle.status)) {
+    return context.story.summary;
+  }
+
+  const side = pretty(lifecycle.qualification_side).toLowerCase();
+  const phase = pretty(context.phase).toLowerCase();
+  const bias = pretty(lifecycle.current_vsa_bias).toLowerCase();
+  const opposing = lifecycle.opposing_event_codes.length > 0
+    ? ` Opposing evidence: ${codesText(lifecycle.opposing_event_codes)}.`
+    : "";
+  const supporting = lifecycle.supporting_event_codes.length > 0
+    ? ` Supporting evidence: ${codesText(lifecycle.supporting_event_codes)}.`
+    : "";
+
+  switch (lifecycle.status) {
+    case "expired":
+      return `Earlier ${side} VSA context still exists in the ${phase} background, but the supporting evidence is stale (${evidenceAgeLabel(lifecycle.scoring_evidence_age).toLowerCase()}). Treat it as expired until fresh confirmation appears instead of treating the old structure as validated.${supporting}${lifecycleFallbackNote(lifecycle)}`;
+    case "invalidated":
+      return `Earlier ${side} VSA context has been invalidated by current ${bias} production-safe evidence. Wait for a fresh setup before treating the old qualification as validated.${opposing}${lifecycleFallbackNote(lifecycle)}`;
+    case "conflicted":
+      return `Earlier ${side} VSA context is now conflicted. Current production-safe evidence is mixed, so treat the story as conditional until one side confirms.${opposing}${supporting}${lifecycleFallbackNote(lifecycle)}`;
+    case "needs_follow_through":
+      return `Earlier ${side} VSA context has not failed, but it still needs follow-through. Wait for fresh confirmation before upgrading the story from background context to validated signal.${supporting}${lifecycleFallbackNote(lifecycle)}`;
+    default:
+      return context.story.summary;
+  }
+}
+
+function lifecycleDetailClass(lifecycle: QualificationLifecycle | null | undefined) {
+  const status = lifecycle?.status ?? "unavailable";
+  const caution = NON_VALIDATED_LIFECYCLE_STATUSES.has(status) ? "caution" : "current";
+  return `evidence-detail lifecycle-detail lifecycle-detail-${status} lifecycle-detail-${caution}`;
+}
+
 function isBullish(value: string) {
   const text = value.toLowerCase();
   return text.includes("bull") || text.includes("demand") || text.includes("accumulation") || text.includes("markup");
@@ -325,13 +396,13 @@ export function DecisionContextPanel({
             <p>{developingContextError}</p>
           </div>
         ) : null}
-        <h2>{activeContext.story.headline}</h2>
-        <p>{activeContext.story.summary}</p>
+        <h2>{lifecycleAwareHeadline(activeContext)}</h2>
+        <p className="story-summary-readable">{lifecycleAwareSummary(activeContext)}</p>
         <div className="mode-explainer" aria-label={`${modeStatus.label} context mode`}>
           <strong>{modeStatus.label}</strong>
           <span>{modeStatus.detail}</span>
         </div>
-        <div className="summary-grid readable-summary-grid">
+        <div className="summary-grid readable-summary-grid story-lifecycle-summary-grid">
           <span>
             Phase
             <strong>{pretty(activeContext.phase)}</strong>
@@ -350,7 +421,7 @@ export function DecisionContextPanel({
             <small>{lifecycleStatusDetail(lifecycle)}</small>
           </span>
         </div>
-        <div className="evidence-detail latest-evidence" aria-label="Qualification lifecycle detail">
+        <div className={lifecycleDetailClass(lifecycle)} aria-label="Qualification lifecycle detail">
           <h4>Qualification lifecycle</h4>
           <p>{lifecycleStatusDetail(lifecycle)}</p>
           <small>{lifecycleEvidenceLine(lifecycle)}</small>
