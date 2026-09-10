@@ -91,6 +91,41 @@ Milestone implication:
 - Future detector changes must be checked against a fixed basket baseline.
 - PR #77 defines the standard 30-symbol audit basket for that purpose.
 
+### Standard basket triage finding
+
+The standard 30-symbol review produced 134 high-priority candidate rows. PR #78 separated them into useful triage buckets:
+
+- 15 qualification lifecycle issues.
+- 12 clean candidates.
+- 33 overlapping candidate clusters.
+- 58 contradictory production-evidence rows.
+- 12 manual chart-review rows.
+- 4 likely noisy diagnostics.
+
+Milestone implication:
+
+- Broad Effort-vs-Result, absorption, and high-volume reversal activation is still too risky.
+- Qualification lifecycle is the cleanest next backend target because it fixes stale or contradictory persistent context instead of adding broad detector weight.
+
+### Qualification lifecycle audit finding
+
+The qualification lifecycle audit reduced 134 triage rows to 19 lifecycle review rows:
+
+- 12 `invalidated_review` rows.
+- 3 `conflicted` rows.
+- 1 `expired_review` row.
+- 3 `needs_follow_through` rows.
+
+Important LT.NS rows:
+
+- 23 Mar 2026: `persistent_bearish` plus `demand_coming_in`.
+- 06 Apr 2026: `persistent_bearish` plus `increasing_demand` and `demand_coming_in`.
+
+Milestone implication:
+
+- The next production-safe design should propose explicit qualification transitions before modifying scanner/story behavior.
+- Proposed transitions should include `keep_active`, `mark_conflicted`, `invalidate_qualification`, `expire_qualification`, and `wait_for_follow_through`.
+
 ## Event families to inspect
 
 Core event families to inspect, strengthen, or add:
@@ -274,6 +309,67 @@ python scripts/vsa_standard_audit_basket.py
 
 Scope remains configuration/command-helper only. It does not load market data, replay the scanner, alter detectors, change scoring/ranking, change API/frontend behavior, persist results, or add broker/account/order behavior.
 
+### PR #78: candidate-event triage grading
+
+PR #78 added audit-only triage over candidate-event rows.
+
+Triage buckets:
+
+- `qualification_lifecycle_issue`.
+- `overlapping_candidate_cluster`.
+- `contradictory_production_evidence`.
+- `clean_candidate`.
+- `likely_noisy_diagnostic`.
+- `manual_chart_review`.
+
+Example:
+
+```powershell
+python scripts/vsa_audit_candidate_triage.py standard_basket_review.json --json-output standard_basket_triage.json --csv-output standard_basket_triage.csv
+```
+
+The standard basket output showed that broad candidate rows need further separation before production activation.
+
+### PR #79: qualification lifecycle audit export
+
+PR #79 added audit-only lifecycle review for persistent bullish/bearish qualifications.
+
+Lifecycle statuses:
+
+- `invalidated_review`.
+- `conflicted`.
+- `expired_review`.
+- `needs_follow_through`.
+- `active` with `--include-active`.
+
+Example:
+
+```powershell
+python scripts/vsa_qualification_lifecycle_audit.py standard_basket_triage.json --json-output standard_basket_qualification_lifecycle.json --csv-output standard_basket_qualification_lifecycle.csv
+```
+
+The standard basket lifecycle output reduced 134 triage rows into 19 qualification lifecycle rows. This made qualification invalidation/expiry the highest-value next target.
+
+### PR #80: qualification transition proposal
+
+PR #80 proposes audit-only qualification state transitions from PR #79 lifecycle rows.
+
+Proposed actions:
+
+- `keep_active`.
+- `mark_conflicted`.
+- `invalidate_qualification`.
+- `expire_qualification`.
+- `wait_for_follow_through`.
+
+Example:
+
+```powershell
+python scripts/vsa_qualification_transition_proposal.py standard_basket_qualification_lifecycle.json --json-output standard_basket_qualification_transitions.json --csv-output standard_basket_qualification_transitions.csv
+```
+
+Scope remains audit/export-only. No market-data load, scanner replay, detector activation, production scoring/ranking change, API behavior change, frontend behavior change, persistence change, or broker/account/order behavior is added.
+
 ## Real-stock casebook
 
 Keep adding cases here as we discover them.
@@ -339,10 +435,16 @@ Confirmed candidate-event findings:
 - 06 Apr 2026 produced a qualification lifecycle conflict while production fired `increasing_demand` and `demand_coming_in` but remained bearish.
 - 13 Apr 2026 produced absorption and high-volume reversal candidates even though no target event fired.
 
+Confirmed lifecycle findings:
+
+- 23 Mar 2026: `persistent_bearish` with `demand_coming_in` was classified as `invalidated_review`.
+- 06 Apr 2026: `persistent_bearish` with `increasing_demand` and `demand_coming_in` was classified as `invalidated_review`.
+
 Milestone implication:
 
 - The scanner currently identifies supply pressure but does not yet properly label the later high-volume effort-vs-result / absorption / spring-like sequence.
 - Effort vs Result, Stopping Volume, Spring, Shakeout, Absorption, and qualification lifecycle need targeted diagnostics and calibration across a wider basket before production behavior changes.
+- Qualification invalidation/expiry should be designed before broad detector activation.
 
 ### First small basket run: LT.NS, RELIANCE.NS, SRF.NS
 
@@ -361,6 +463,24 @@ Milestone implication:
 - The Effort-vs-Result issue is not isolated to LT.NS.
 - A fixed 30-symbol basket is required before production detector changes.
 
+### Standard basket lifecycle run
+
+Uploaded standard basket lifecycle output showed:
+
+- 19 total lifecycle review rows.
+- 12 `invalidated_review` rows.
+- 3 `conflicted` rows.
+- 1 `expired_review` row.
+- 3 `needs_follow_through` rows.
+- 15 Grade-A rows and 4 Grade-B rows.
+
+Top symbols included HDFCBANK.NS, MARUTI.NS, ICICIBANK.NS, LT.NS, POWERGRID.NS, TATASTEEL.NS, and TCS.NS.
+
+Milestone implication:
+
+- Qualification state transitions should be designed explicitly before production story/scanner behavior changes.
+- The transition proposal helper in PR #80 is the final audit-only step before designing production labels.
+
 ## Proposed Milestone 6 PR sequence
 
 Completed:
@@ -373,17 +493,20 @@ Completed:
 - PR #74: VSA audit calibration CLI.
 - PR #75: VSA audit candidate events.
 - PR #76: Candidate-event basket batch review/export.
+- PR #77: Standard 30-symbol VSA audit basket.
+- PR #78: Candidate-event triage grading.
+- PR #79: Qualification lifecycle audit export.
 
 Current:
 
-- PR #77: Standard 30-symbol VSA audit basket.
+- PR #80: Qualification transition proposal.
 
 Next likely steps:
 
-- Run standard 30-symbol basket audit and generate batch review CSV/JSON.
-- Inspect false positives in high-priority Effort-vs-Result, absorption, high-volume reversal, and qualification lifecycle candidates.
-- Add detector gate diagnostics for why each production event fired or failed.
-- Then decide whether any candidate family should become low-weight production evidence.
+- Run transition proposals on the standard basket lifecycle output.
+- Review `invalidate_qualification`, `mark_conflicted`, `expire_qualification`, and `wait_for_follow_through` counts.
+- Design production-safe qualification state labels for decision context/story output.
+- Only after qualification lifecycle is safe, revisit Effort-vs-Result, absorption, high-volume reversal, Stopping Volume, Spring, and Shakeout detector gates.
 
 ## Current TODO list
 
@@ -399,13 +522,17 @@ Next likely steps:
 - [x] Add structured audit-only candidate events.
 - [x] Add candidate-event batch review/export surface.
 - [x] Define standard 30-symbol audit basket.
-- [ ] Run candidate-event batch review across the standard basket.
+- [x] Run candidate-event batch review across the standard basket.
+- [x] Add candidate-event triage grading.
+- [x] Add qualification lifecycle audit export.
+- [ ] Add qualification transition proposal output.
 - [ ] Inspect whether Effort vs Result is currently absent from production evidence collection.
 - [ ] Audit Stopping Volume strictness across real examples.
 - [ ] Audit Spring support-touch/test/confirmation strictness across real examples.
 - [ ] Audit Shakeout and Selling Climax separation.
 - [ ] Add full detector gate diagnostics explaining why each production event fired or failed.
 - [ ] Add formed-date vs confirmation-date fields for structural/story events.
+- [ ] Design production-safe qualification state labels.
 - [ ] Design outcome labels without changing scanner scoring prematurely.
 - [ ] Add compact casebook results as findings are confirmed.
 - [ ] Keep this document updated with every Milestone 6 PR.
@@ -423,11 +550,14 @@ Next likely steps:
 - PR #74 added and merged the saved-output calibration CLI.
 - PR #75 added and merged structured audit-only candidate events.
 - PR #76 added and merged candidate-event basket batch review/export.
-- PR #77 defines the standard 30-symbol VSA audit basket.
+- PR #77 added and merged the standard 30-symbol VSA audit basket.
+- PR #78 added and merged candidate-event triage grading.
+- PR #79 added and merged qualification lifecycle audit export.
 - After reviewing LT.NS examples, priority shifted to backend VSA event reliability.
 - Decision: automated audit first, scanner behavior changes later.
 - Decision: no long manual 30-stock chart review; use optimized pipeline and inspect only flagged exceptions.
 - Decision: keep audit/calibration PRs behavior-safe; production detector changes come later after basket evidence is available.
+- Decision: qualification lifecycle should be fixed before broad Effort-vs-Result, absorption, or high-volume reversal activation.
 
 ## Update rule for future work
 
