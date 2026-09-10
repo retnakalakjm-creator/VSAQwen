@@ -47,6 +47,7 @@ type QualificationLifecycle = {
   opposing_event_codes: string[];
   ignored_audit_only_codes: string[];
   reason: string;
+  pending_supersession?: boolean;
   production_safe: boolean;
 };
 
@@ -187,6 +188,18 @@ function codesText(codes: string[] | null | undefined) {
   return codes.map((code) => pretty(code)).join(", ");
 }
 
+function isPendingSupersession(lifecycle: QualificationLifecycle | null | undefined) {
+  return Boolean(lifecycle?.pending_supersession);
+}
+
+function lifecycleStatusLabel(lifecycle: QualificationLifecycle | null | undefined) {
+  if (!lifecycle) return "Not available";
+  if (isPendingSupersession(lifecycle)) {
+    return `${pretty(lifecycle.status)} · Pending supersession`;
+  }
+  return pretty(lifecycle.status);
+}
+
 function lifecycleStatusDetail(lifecycle: QualificationLifecycle | null | undefined) {
   if (!lifecycle) {
     return "Lifecycle label is not available in this context. Re-run fresh analysis to populate the production-safe label.";
@@ -199,6 +212,9 @@ function lifecycleStatusDetail(lifecycle: QualificationLifecycle | null | undefi
     case "active":
       return `The ${side} qualification remains aligned with current production-safe VSA evidence.`;
     case "conflicted":
+      if (isPendingSupersession(lifecycle)) {
+        return `The ${side} qualification is challenged by current ${bias} production-safe evidence and is pending supersession. Do not treat this as a confirmed ${bias} flip yet.`;
+      }
       return `The ${side} qualification is active, but current production-safe VSA evidence is mixed or partly opposing it.`;
     case "invalidated":
       return `The previous ${side} qualification is invalidated by current ${bias} production-safe VSA evidence.`;
@@ -244,6 +260,9 @@ function lifecycleAwareHeadline(context: DecisionContext) {
     case "invalidated":
       return `Invalidated ${side} ${phase} context`;
     case "conflicted":
+      if (isPendingSupersession(lifecycle)) {
+        return `${side} ${phase} context pending supersession`;
+      }
       return `Conflicted ${side} ${phase} context`;
     case "needs_follow_through":
       return `${side} ${phase} context needs follow-through`;
@@ -274,6 +293,9 @@ function lifecycleAwareSummary(context: DecisionContext) {
     case "invalidated":
       return `Earlier ${side} VSA context has been invalidated by current ${bias} production-safe evidence. Wait for a fresh setup before treating the old qualification as validated.${opposing}${lifecycleFallbackNote(lifecycle)}`;
     case "conflicted":
+      if (isPendingSupersession(lifecycle)) {
+        return `Earlier ${side} VSA context in the ${phase} background is challenged by current ${bias} production-safe evidence and is pending supersession. Do not treat this as a confirmed ${bias} flip yet; wait for follow-through or a new opposite qualification to supersede the old context.${opposing}${supporting}${lifecycleFallbackNote(lifecycle)}`;
+      }
       return `Earlier ${side} VSA context is now conflicted. Current production-safe evidence is mixed, so treat the story as conditional until one side confirms.${opposing}${supporting}${lifecycleFallbackNote(lifecycle)}`;
     case "needs_follow_through":
       return `Earlier ${side} VSA context has not failed, but it still needs follow-through. Wait for fresh confirmation before upgrading the story from background context to validated signal.${supporting}${lifecycleFallbackNote(lifecycle)}`;
@@ -417,7 +439,7 @@ export function DecisionContextPanel({
           </span>
           <span>
             Qualification lifecycle
-            <strong>{lifecycle ? pretty(lifecycle.status) : "Not available"}</strong>
+            <strong>{lifecycleStatusLabel(lifecycle)}</strong>
             <small>{lifecycleStatusDetail(lifecycle)}</small>
           </span>
         </div>
@@ -431,6 +453,12 @@ export function DecisionContextPanel({
                 Opposing evidence: {codesText(lifecycle.opposing_event_codes)}. Supporting evidence:{" "}
                 {codesText(lifecycle.supporting_event_codes)}.
               </small>
+              {isPendingSupersession(lifecycle) ? (
+                <small>
+                  Pending supersession: the old qualification is challenged, but the scanner has not
+                  confirmed a new opposite qualification.
+                </small>
+              ) : null}
               {lifecycle.ignored_audit_only_codes.length > 0 ? (
                 <small>
                   Audit-only candidates ignored for this production-safe label:{" "}

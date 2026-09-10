@@ -4,6 +4,8 @@ PR #83 added a frontend-only display for the production-safe qualification lifec
 
 PR #84 makes that display lifecycle-aware and easier to read.
 
+PR #92 adds explicit display support for the PR #91 `pending_supersession` lifecycle flag.
+
 ## What the VSA Story shows
 
 The VSA Story panel reads the optional `qualification_lifecycle` field from the decision-context payload and displays:
@@ -12,19 +14,47 @@ The VSA Story panel reads the optional `qualification_lifecycle` field from the 
 - Plain-English interpretation of the status.
 - Current qualification side and current production-safe VSA bias.
 - Supporting and opposing production-safe event codes, rendered as readable labels.
+- Whether a conflicted lifecycle is pending supersession.
 - Any audit-only candidate codes that were deliberately ignored by the backend lifecycle helper.
 - Fallback-evidence freshness warnings when the backend marks the lifecycle label as using fallback scoring evidence.
 
+## Pending supersession display
+
+PR #91 introduced a conservative production-safe lifecycle path for LT-style cases:
+
+- a persistent bearish context exists;
+- fresh production-safe demand or reversal evidence challenges it;
+- the scanner should not keep presenting the bearish context as fully validated;
+- the scanner also should not automatically flip the story bullish.
+
+The backend reports this as:
+
+```text
+status = conflicted
+pending_supersession = true
+```
+
+PR #92 makes that distinction visible in the VSA Story panel. Instead of showing only a generic conflicted label, the frontend now displays:
+
+```text
+Conflicted · Pending supersession
+```
+
+The headline and summary also explain that the earlier bearish context is challenged by current production-safe evidence and is waiting for follow-through or a new opposite qualification before the old context is superseded.
+
+This is intentionally not a bullish flip. It is a conservative warning that the previous bearish lifecycle may no longer be cleanly active.
+
 ## Lifecycle-aware story wording
 
-The headline and summary now respect the lifecycle status.
+The headline and summary respect the lifecycle status.
 
-When the lifecycle status is `expired`, `invalidated`, `conflicted`, or `needs_follow_through`, the frontend does not repeat backend story language that can sound like the old qualification is still validated. Instead, it presents the status as stale, invalidated, conflicted, or waiting for follow-through.
+When the lifecycle status is `expired`, `invalidated`, `conflicted`, or `needs_follow_through`, the frontend does not repeat backend story language that can sound like the old qualification is still validated. Instead, it presents the status as stale, invalidated, conflicted, pending supersession, or waiting for follow-through.
 
 Example:
 
 - Old display risk: `Bearish VSA context in distribution` plus wording that says persistent bearish structure is validated.
 - Lifecycle-aware display: `Expired bearish distribution context` plus wording that explains the earlier bearish context is stale and needs fresh confirmation.
+- Pending-supersession display: `Bearish distribution context pending supersession` plus wording that explains the bearish context is challenged but has not flipped bullish.
 
 This keeps the screen aligned with the lifecycle label without changing scanner logic.
 
@@ -66,6 +96,8 @@ It does not change:
 
 ## Reason
 
-The lifecycle label fixes the user-facing story problem found in LT.NS-style cases: a prior persistent bearish/bullish qualification can now be shown as active, conflicted, invalidated, expired, or needing follow-through instead of appearing as a stale unchanged qualification.
+The lifecycle label fixes the user-facing story problem found in LT.NS-style cases: a prior persistent bearish/bullish qualification can now be shown as active, conflicted, invalidated, expired, needing follow-through, or conflicted pending supersession instead of appearing as a stale unchanged qualification.
 
 PR #84 makes the surrounding story wording and detail text match that lifecycle status so the screen does not say an old qualification is validated when the lifecycle says it is expired, invalidated, conflicted, or still waiting for follow-through.
+
+PR #92 makes the PR #91 pending-supersession flag visible so the UI can distinguish a normal mixed conflict from a conservative bearish-context supersession warning.
