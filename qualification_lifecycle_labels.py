@@ -11,6 +11,7 @@ class QualificationLifecycleLabel(StrEnum):
     UNQUALIFIED = "unqualified"
     ACTIVE = "active"
     CONFLICTED = "conflicted"
+    SUPERSESSION_REVIEW = "supersession_review"
     INVALIDATED = "invalidated"
     EXPIRED = "expired"
     NEEDS_FOLLOW_THROUGH = "needs_follow_through"
@@ -109,6 +110,8 @@ class QualificationLifecycleLabelResult:
     ignored_audit_only_codes: tuple[str, ...]
     reason: str
     pending_supersession: bool = False
+    supersession_review_confirmed: bool = False
+    supersession_review_blocked: bool = False
     production_safe: bool = True
 
     def to_dict(self) -> dict[str, Any]:
@@ -125,6 +128,8 @@ class QualificationLifecycleLabelResult:
             "ignored_audit_only_codes": list(self.ignored_audit_only_codes),
             "reason": self.reason,
             "pending_supersession": self.pending_supersession,
+            "supersession_review_confirmed": self.supersession_review_confirmed,
+            "supersession_review_blocked": self.supersession_review_blocked,
             "production_safe": self.production_safe,
         }
 
@@ -159,8 +164,15 @@ def label_qualification_lifecycle(
     scoring_evidence_age: int | None = None,
     used_fallback_evidence: bool = False,
     max_actionable_vsa_age: int = DEFAULT_MAX_ACTIONABLE_VSA_AGE,
+    supersession_review_confirmed: bool = False,
+    supersession_review_blocked: bool = False,
 ) -> QualificationLifecycleLabelResult:
-    """Return a read-only lifecycle label for persistent qualification state."""
+    """Return a read-only lifecycle label for persistent qualification state.
+
+    ``supersession_review_confirmed`` is intentionally opt-in. Existing scanner
+    callers keep the pre-6B conflicted pending-supersession behavior unless a
+    later chart/casebook review explicitly promotes the case to review status.
+    """
 
     qualification_text = _enum_text(qualification)
     side = _qualification_side(qualification_text)
@@ -184,6 +196,8 @@ def label_qualification_lifecycle(
             opposing_event_codes=(),
             ignored_audit_only_codes=ignored_audit_codes,
             reason="No persistent bullish or bearish qualification is active.",
+            supersession_review_confirmed=supersession_review_confirmed,
+            supersession_review_blocked=supersession_review_blocked,
         )
 
     supporting, opposing = _split_supporting_opposing(side, bullish=bullish, bearish=bearish)
@@ -204,6 +218,8 @@ def label_qualification_lifecycle(
         supporting=supporting,
         opposing=opposing,
         pending_supersession=pending_supersession,
+        supersession_review_confirmed=supersession_review_confirmed,
+        supersession_review_blocked=supersession_review_blocked,
     )
 
     return QualificationLifecycleLabelResult(
@@ -217,8 +233,17 @@ def label_qualification_lifecycle(
         supporting_event_codes=supporting,
         opposing_event_codes=opposing,
         ignored_audit_only_codes=ignored_audit_codes,
-        reason=_reason(status, side, current_bias, pending_supersession),
+        reason=_reason(
+            status,
+            side,
+            current_bias,
+            pending_supersession,
+            supersession_review_confirmed=supersession_review_confirmed,
+            supersession_review_blocked=supersession_review_blocked,
+        ),
         pending_supersession=pending_supersession,
+        supersession_review_confirmed=supersession_review_confirmed,
+        supersession_review_blocked=supersession_review_blocked,
     )
 
 
@@ -231,8 +256,12 @@ def _status_for_persistent_qualification(
     supporting: tuple[str, ...],
     opposing: tuple[str, ...],
     pending_supersession: bool,
+    supersession_review_confirmed: bool,
+    supersession_review_blocked: bool,
 ) -> QualificationLifecycleLabel:
     if pending_supersession:
+        if supersession_review_confirmed and not supersession_review_blocked:
+            return QualificationLifecycleLabel.SUPERSESSION_REVIEW
         return QualificationLifecycleLabel.CONFLICTED
     if supporting and opposing and has_current_fresh_evidence:
         return QualificationLifecycleLabel.CONFLICTED
@@ -338,11 +367,24 @@ def _reason(
     side: QualificationSide,
     bias: CurrentVSABias,
     pending_supersession: bool,
+    *,
+    supersession_review_confirmed: bool,
+    supersession_review_blocked: bool,
 ) -> str:
     if status is QualificationLifecycleLabel.ACTIVE:
         return f"Persistent {side.value} qualification is supported by fresh same-side VSA evidence."
+    if status is QualificationLifecycleLabel.SUPERSESSION_REVIEW:
+        return (
+            "Persistent bearish qualification has chart-confirmed demand/reversal VSA evidence "
+            "and is marked for supersession review; it is not flipped bullish automatically."
+        )
     if status is QualificationLifecycleLabel.CONFLICTED:
         if pending_supersession and side is QualificationSide.BEARISH:
+            if supersession_review_confirmed and supersession_review_blocked:
+                return (
+                    "Persistent bearish qualification has chart-confirmed demand/reversal VSA evidence, "
+                    "but remaining conflict blocks supersession review; it stays conflicted pending supersession."
+                )
             return (
                 "Persistent bearish qualification is challenged by fresh demand/reversal VSA evidence "
                 "and is marked conflicted pending supersession; it is not flipped bullish automatically."
