@@ -17,6 +17,7 @@ from vsa_event_audit import (
     build_vsa_event_audit,
     parse_symbol_list,
 )
+from vsa_plain_english_legends import legend_registry_payload
 from weekly_bar_interpreter import (
     DEFAULT_WEEKLY_BAR_READING_LOOKBACK,
     MAX_WEEKLY_BAR_READING_LOOKBACK,
@@ -31,6 +32,7 @@ from .schemas import (
     DecisionJournalDTO,
     DecisionJournalEvaluationResponseDTO,
     HealthDTO,
+    PlainEnglishLegendRegistryDTO,
     TradePlanResponseDTO,
     VSAEventAuditResponseDTO,
     VSAEventAuditSymbolResultDTO,
@@ -65,6 +67,12 @@ _service = create_service()
 @app.get("/api/health", response_model=HealthDTO)
 def health() -> HealthDTO:
     return _service.health()
+
+
+@app.get("/api/vsa/legends", response_model=PlainEnglishLegendRegistryDTO)
+def vsa_plain_english_legends() -> PlainEnglishLegendRegistryDTO:
+    """Return the read-only plain-English legend registry for frontend display."""
+    return PlainEnglishLegendRegistryDTO(**legend_registry_payload())
 
 
 @app.get("/api/symbols/{symbol}/data-source", response_model=DataSourceStatusDTO)

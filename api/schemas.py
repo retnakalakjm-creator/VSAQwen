@@ -88,6 +88,8 @@ class QualificationLifecycleDTO(BaseModel):
     ignored_audit_only_codes: list[str]
     reason: str
     pending_supersession: bool = False
+    supersession_review_confirmed: bool = False
+    supersession_review_blocked: bool = False
     production_safe: bool = True
 
 
@@ -312,6 +314,34 @@ class VSAEventAuditResponseDTO(BaseModel):
     results: list[VSAEventAuditSymbolResultDTO]
     errors: dict[str, str] = Field(default_factory=dict)
     audit_only: bool = True
+
+
+class PlainEnglishLegendDTO(BaseModel):
+    code: str
+    family: str
+    frontend_label: str
+    plain_english: str
+    chronological_stage: str
+    chart_reading_order: int
+    chart_reading_role: str
+    example_read: str
+    user_action: str
+    audit_only: bool = False
+    production_safe: bool = True
+
+
+class PlainEnglishLegendCycleStepDTO(BaseModel):
+    order: int
+    stage: str
+    family: str
+    plain_english: str
+
+
+class PlainEnglishLegendRegistryDTO(BaseModel):
+    production_safe: bool = True
+    chart_reading_cycle: list[PlainEnglishLegendCycleStepDTO]
+    field_family_aliases: dict[str, str]
+    legends: list[PlainEnglishLegendDTO]
 
 
 class AnalysisDTO(BaseModel):
