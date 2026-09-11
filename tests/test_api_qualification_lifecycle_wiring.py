@@ -108,12 +108,44 @@ def test_qualification_dto_exposes_lifecycle_status_from_existing_candidate_fiel
     assert dto.lifecycle is not None
     assert dto.lifecycle.status == "conflicted"
     assert dto.lifecycle.pending_supersession is True
+    assert dto.lifecycle.supersession_review_confirmed is False
+    assert dto.lifecycle.supersession_review_blocked is False
     assert dto.lifecycle.qualification_side == "bearish"
     assert dto.lifecycle.current_vsa_bias == "bullish"
     assert dto.lifecycle.opposing_event_codes == ["demand_coming_in"]
     assert dto.lifecycle.supporting_event_codes == []
     assert "pending supersession" in dto.lifecycle.reason
     assert dto.lifecycle.production_safe is True
+
+
+def test_qualification_lifecycle_dto_preserves_supersession_review_fields() -> None:
+    candidate = _fake_candidate(
+        qualification="persistent_bearish",
+        actionable=False,
+        scoring_evidence=[_evidence(EvidenceCode.INCREASING_DEMAND)],
+        scoring_evidence_age=0,
+    )
+
+    lifecycle_payload = ProVSAService._qualification_lifecycle(candidate).model_dump()
+    lifecycle_payload["status"] = "supersession_review"
+    lifecycle_payload["supersession_review_confirmed"] = True
+    lifecycle_payload["supersession_review_blocked"] = False
+
+    dto = QualificationDTO(
+        qualification=candidate.qualification.value,
+        actionable=candidate.actionable,
+        reason=candidate.reason,
+        evidence_codes=[],
+        evidence_bar_indices=[],
+        lifecycle=lifecycle_payload,
+    )
+
+    assert dto.lifecycle is not None
+    assert dto.lifecycle.status == "supersession_review"
+    assert dto.lifecycle.pending_supersession is True
+    assert dto.lifecycle.supersession_review_confirmed is True
+    assert dto.lifecycle.supersession_review_blocked is False
+    assert dto.lifecycle.model_dump()["supersession_review_confirmed"] is True
 
 
 def test_decision_context_dto_can_carry_lifecycle_without_persistence_schema_change() -> None:
@@ -136,6 +168,8 @@ def test_decision_context_dto_can_carry_lifecycle_without_persistence_schema_cha
     assert dto.qualification_lifecycle is not None
     assert dto.qualification_lifecycle.status == "conflicted"
     assert dto.qualification_lifecycle.pending_supersession is True
+    assert dto.qualification_lifecycle.supersession_review_confirmed is False
+    assert dto.qualification_lifecycle.supersession_review_blocked is False
     assert dto.qualification_lifecycle.opposing_event_codes == ["increasing_demand"]
 
 
