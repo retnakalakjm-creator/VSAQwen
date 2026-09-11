@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  buildPlainEnglishLegendLookup,
+  plainEnglishLegendText,
+  type LegendRegistryPayload,
+} from "./plain-english-legend-client";
 
 type DecisionContextEvent = {
   bar_index: number;
@@ -357,6 +362,8 @@ export function DecisionContextPanel({
   const [developingContext, setDevelopingContext] = useState<DecisionContext | null>(null);
   const [developingContextError, setDevelopingContextError] = useState("");
   const [developingContextLoading, setDevelopingContextLoading] = useState(false);
+  const [legendRegistry, setLegendRegistry] = useState<LegendRegistryPayload | null>(null);
+  const [legendRegistryError, setLegendRegistryError] = useState("");
 
   useEffect(() => {
     requestGenerationRef.current += 1;
@@ -365,6 +372,36 @@ export function DecisionContextPanel({
     setDevelopingContextError("");
     setDevelopingContextLoading(false);
   }, [context?.symbol, context?.timeframe, context?.latest_week]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLegendRegistryError("");
+
+    fetchJson<LegendRegistryPayload>(
+      `${API}/api/vsa/legends`,
+      "Plain-English legend registry failed",
+    )
+      .then((payload) => {
+        if (!cancelled) setLegendRegistry(payload);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLegendRegistry(null);
+          setLegendRegistryError(
+            err instanceof Error ? err.message : "Plain-English legend registry failed",
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const legendLookup = useMemo(
+    () => buildPlainEnglishLegendLookup(legendRegistry?.legends ?? []),
+    [legendRegistry],
+  );
 
   async function loadDevelopingContext() {
     if (!context) return;
@@ -416,6 +453,15 @@ export function DecisionContextPanel({
   const positivePressure = activeContext.net_pressure >= 0;
   const modeStatus = decisionContextModeStatus(activeContext.mode);
   const lifecycle = activeContext.qualification_lifecycle ?? null;
+
+  function eventPlainEnglish(event: DecisionContextEvent) {
+    return (
+      plainEnglishLegendText(legendLookup, { code: event.code, family: "event_label" }) ??
+      plainEnglishLegendText(legendLookup, { code: event.code }) ??
+      event.description ??
+      event.observation
+    );
+  }
 
   return (
     <section className="readable-story-grid">
@@ -552,11 +598,15 @@ export function DecisionContextPanel({
           </div>
           <span>{latestEvents.length} shown</span>
         </div>
+        {legendRegistryError ? (
+          <p className="signal-code">Plain-English legend registry unavailable: {legendRegistryError}</p>
+        ) : null}
         {latestEvents.length === 0 ? (
           <p>No recent decision events are stored yet.</p>
         ) : (
           latestEvents.map((event) => {
             const bullish = isBullish(event.direction);
+            const legendText = eventPlainEnglish(event);
             return (
               <button
                 type="button"
@@ -573,6 +623,7 @@ export function DecisionContextPanel({
                   {displayDate(event.week)} · {pretty(event.category)} · {pretty(event.role)}
                 </div>
                 <p>{event.observation}</p>
+                <small>Plain-English meaning: {legendText}</small>
               </button>
             );
           })

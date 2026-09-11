@@ -74,6 +74,7 @@ export function findPlainEnglishLegend(
   if (family) return lookup.get(`${family}:${code}`) ?? null;
 
   for (const lookupKey of [
+    `evidence_code:${code}`,
     `event_label:${code}`,
     `review_marker:${code}`,
     `lifecycle:${code}`,
