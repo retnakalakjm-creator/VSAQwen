@@ -48,6 +48,8 @@ type QualificationLifecycle = {
   ignored_audit_only_codes: string[];
   reason: string;
   pending_supersession?: boolean;
+  supersession_review_confirmed?: boolean;
+  supersession_review_blocked?: boolean;
   production_safe: boolean;
 };
 
@@ -90,6 +92,7 @@ const NON_VALIDATED_LIFECYCLE_STATUSES = new Set([
   "invalidated",
   "expired",
   "needs_follow_through",
+  "supersession_review",
 ]);
 
 export function decisionContextModeStatus(
@@ -192,8 +195,21 @@ function isPendingSupersession(lifecycle: QualificationLifecycle | null | undefi
   return Boolean(lifecycle?.pending_supersession);
 }
 
+function isSupersessionReview(lifecycle: QualificationLifecycle | null | undefined) {
+  return lifecycle?.status === "supersession_review";
+}
+
 function lifecycleStatusLabel(lifecycle: QualificationLifecycle | null | undefined) {
   if (!lifecycle) return "Not available";
+  if (isSupersessionReview(lifecycle)) {
+    if (lifecycle.supersession_review_blocked) {
+      return "Supersession Review · Blocked";
+    }
+    if (lifecycle.supersession_review_confirmed) {
+      return "Supersession Review · Chart-confirmed review";
+    }
+    return "Supersession Review · Review candidate";
+  }
   if (isPendingSupersession(lifecycle)) {
     return `${pretty(lifecycle.status)} · Pending supersession`;
   }
@@ -216,6 +232,11 @@ function lifecycleStatusDetail(lifecycle: QualificationLifecycle | null | undefi
         return `The ${side} qualification is challenged by current ${bias} production-safe evidence and is pending supersession. Do not treat this as a confirmed ${bias} flip yet.`;
       }
       return `The ${side} qualification is active, but current production-safe VSA evidence is mixed or partly opposing it.`;
+    case "supersession_review":
+      if (lifecycle.supersession_review_blocked) {
+        return `The ${side} qualification reached supersession review, but a blocker remains. Do not treat this as a confirmed ${bias} flip or final invalidation.`;
+      }
+      return `The ${side} qualification is a chart-confirmed supersession review candidate against current ${bias} evidence. This is review-only: not a confirmed ${bias} flip, not final invalidation, and not detector activation.`;
     case "invalidated":
       return `The previous ${side} qualification is invalidated by current ${bias} production-safe VSA evidence.`;
     case "expired":
@@ -264,6 +285,8 @@ function lifecycleAwareHeadline(context: DecisionContext) {
         return `${side} ${phase} context pending supersession`;
       }
       return `Conflicted ${side} ${phase} context`;
+    case "supersession_review":
+      return `${side} ${phase} context in supersession review`;
     case "needs_follow_through":
       return `${side} ${phase} context needs follow-through`;
     default:
@@ -297,6 +320,11 @@ function lifecycleAwareSummary(context: DecisionContext) {
         return `Earlier ${side} VSA context in the ${phase} background is challenged by current ${bias} production-safe evidence and is pending supersession. Do not treat this as a confirmed ${bias} flip yet; wait for follow-through or a new opposite qualification to supersede the old context.${opposing}${supporting}${lifecycleFallbackNote(lifecycle)}`;
       }
       return `Earlier ${side} VSA context is now conflicted. Current production-safe evidence is mixed, so treat the story as conditional until one side confirms.${opposing}${supporting}${lifecycleFallbackNote(lifecycle)}`;
+    case "supersession_review":
+      if (lifecycle.supersession_review_blocked) {
+        return `Earlier ${side} VSA context in the ${phase} background reached supersession review, but a blocker remains. Treat this as review-only until the blocker clears; do not mark it as a confirmed ${bias} flip, final invalidation, or activated detector signal.${opposing}${supporting}${lifecycleFallbackNote(lifecycle)}`;
+      }
+      return `Earlier ${side} VSA context in the ${phase} background is now a chart-confirmed supersession review candidate against current ${bias} evidence. This is a conservative review state only: it highlights that the old context may be superseded, but it is not a confirmed ${bias} flip, not final invalidation, and not detector activation.${opposing}${supporting}${lifecycleFallbackNote(lifecycle)}`;
     case "needs_follow_through":
       return `Earlier ${side} VSA context has not failed, but it still needs follow-through. Wait for fresh confirmation before upgrading the story from background context to validated signal.${supporting}${lifecycleFallbackNote(lifecycle)}`;
     default:
@@ -453,6 +481,12 @@ export function DecisionContextPanel({
                 Opposing evidence: {codesText(lifecycle.opposing_event_codes)}. Supporting evidence:{" "}
                 {codesText(lifecycle.supporting_event_codes)}.
               </small>
+              {isSupersessionReview(lifecycle) ? (
+                <small>
+                  Supersession review: chart-confirmed review candidate only. Not a bullish flip,
+                  final invalidation, or detector activation.
+                </small>
+              ) : null}
               {isPendingSupersession(lifecycle) ? (
                 <small>
                   Pending supersession: the old qualification is challenged, but the scanner has not
