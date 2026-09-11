@@ -24,7 +24,6 @@ export function selectedEvidencePlainEnglish(
     fallbackText(plainEnglishLegendText(lookup, { code: evidence.code, family: "evidence_code" })) ??
     fallbackText(plainEnglishLegendText(lookup, { code: evidence.code, family: "event_label" })) ??
     fallbackText(plainEnglishLegendText(lookup, { code: evidence.code })) ??
-    fallbackText(evidence.description) ??
     fallbackText(evidence.observation)
   );
 }
