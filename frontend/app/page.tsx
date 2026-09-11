@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ColorType, createChart, createSeriesMarkers } from "lightweight-charts";
 import type { IChartApi, Time } from "lightweight-charts";
 import { BarByBarPanel } from "./bar-by-bar-panel";
@@ -10,6 +10,8 @@ import type { DecisionContext, DecisionContextEvent } from "./decision-context-p
 import { DecisionJournalPanel } from "./decision-journal-panel";
 import type { DecisionJournalEvaluation, DecisionJournalEvaluationResponse } from "./decision-journal-panel";
 import { HLCSeries } from "./hlc-series";
+import { buildPlainEnglishLegendLookup, type LegendRegistryPayload } from "./plain-english-legend-client";
+import { selectedEvidencePlainEnglish } from "./selected-evidence-legend-detail";
 import { TradePlanPanel } from "./trade-plan-panel";
 
 type Bar = { bar_index: number; week: string; open: number; high: number; low: number; close: number; volume: number };
@@ -193,6 +195,8 @@ export default function Home() {
   const [selectedSwing, setSelectedSwing] = useState<Swing | null>(null);
   const [barByBarSelectedWeek, setBarByBarSelectedWeek] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<WorkspaceSection>("overview");
+  const [legendRegistry, setLegendRegistry] = useState<LegendRegistryPayload | null>(null);
+  const [legendRegistryError, setLegendRegistryError] = useState("");
   const [error, setError] = useState("");
 
   const handleBarByBarWeekSelect = useCallback((week: string | null) => {
@@ -257,6 +261,34 @@ export default function Home() {
     void loadSymbol();
     return () => { cancelled = true; };
   }, [symbol]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLegendRegistryError("");
+
+    fetchJson<LegendRegistryPayload>(
+      `${API}/api/vsa/legends`,
+      "Plain-English legend registry failed",
+    )
+      .then((payload) => {
+        if (!cancelled) setLegendRegistry(payload);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLegendRegistry(null);
+          setLegendRegistryError(
+            err instanceof Error ? err.message : "Plain-English legend registry failed",
+          );
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  const legendLookup = useMemo(
+    () => buildPlainEnglishLegendLookup(legendRegistry?.legends ?? []),
+    [legendRegistry],
+  );
 
   const shouldShowChart = activeSection === "overview" || activeSection === "chart" || activeSection === "evidence";
   const decisionContext = analysis?.decision_context ?? decisionContextPreview;
@@ -503,10 +535,12 @@ export default function Home() {
       return <div className="evidence-detail swing-detail readable-detail-reset"><div className="detail-title"><strong>{(selectedSwing.label ?? selectedSwing.type).toUpperCase()}</strong><button type="button" onClick={() => setSelectedSwing(null)}>×</button></div><div className="detail-meta">Structural point · observed {displayDate(selectedSwing.week)} · confirmed {displayDate(confirmationDate(selectedSwing))}</div><p>Confirmed {selectedSwing.type.toLowerCase()} at {selectedSwing.price.toFixed(2)}. {selectedSwing.is_failed ? "This structural point is marked failed." : "This structural point remains valid."}</p><small>Internal model grades are hidden from the main reading. Use this as structural context, not an order signal.</small></div>;
     }
     if (selectedEvidence) {
-      return <div className="evidence-detail readable-detail-reset professional-reading-detail"><div className="detail-title"><strong>Week {displayDate(evidenceDate(selectedEvidence))}</strong><button type="button" onClick={() => setSelectedEvidence(null)}>×</button></div><h4>Professional Reading</h4><p>{professionalReading(selectedEvidence)}</p>{selectedEvidence.description && <small>{selectedEvidence.description}</small>}</div>;
+      const legendText = selectedEvidencePlainEnglish(legendLookup, selectedEvidence);
+      return <div className="evidence-detail readable-detail-reset professional-reading-detail"><div className="detail-title"><strong>Week {displayDate(evidenceDate(selectedEvidence))}</strong><button type="button" onClick={() => setSelectedEvidence(null)}>×</button></div><h4>Professional Reading</h4><p>{professionalReading(selectedEvidence)}</p>{legendText ? <><h4>Plain-English meaning</h4><p>{legendText}</p></> : null}{selectedEvidence.description && <small>{selectedEvidence.description}</small>}{legendRegistryError ? <small>Plain-English legend registry unavailable: {legendRegistryError}</small> : null}</div>;
     }
     if (displayedEvidence) {
-      return <div className="evidence-detail latest-evidence readable-detail-reset professional-reading-detail"><h3>Latest VSA Evidence · {displayDate(evidenceDate(displayedEvidence))}</h3><h4>Professional Reading</h4><p>{professionalReading(displayedEvidence)}</p><small>The Bar-by-Bar table now comes from the dedicated backend weekly-reading API.</small></div>;
+      const legendText = selectedEvidencePlainEnglish(legendLookup, displayedEvidence);
+      return <div className="evidence-detail latest-evidence readable-detail-reset professional-reading-detail"><h3>Latest VSA Evidence · {displayDate(evidenceDate(displayedEvidence))}</h3><h4>Professional Reading</h4><p>{professionalReading(displayedEvidence)}</p>{legendText ? <><h4>Plain-English meaning</h4><p>{legendText}</p></> : null}<small>The Bar-by-Bar table now comes from the dedicated backend weekly-reading API.</small>{legendRegistryError ? <small>Plain-English legend registry unavailable: {legendRegistryError}</small> : null}</div>;
     }
     return <p>Select a chart marker to inspect the related VSA evidence here.</p>;
   }
