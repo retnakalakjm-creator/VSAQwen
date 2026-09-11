@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 from vsa_recovery_sequence_validation_report import (
     build_vsa_recovery_sequence_validation_artifacts,
@@ -150,6 +153,41 @@ def test_validation_artifacts_include_json_csv_and_markdown() -> None:
     assert "AMBUJACEM.NS" in artifacts.casebook_csv
     assert OUTCOME_FIRED in artifacts.label_firing_audit_csv
     assert "# Milestone 6C Saved-Output Validation Report" in artifacts.report_markdown
+
+
+def test_validation_report_cli_uses_root_modules_not_script_wrappers(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    input_path = tmp_path / "input.json"
+    input_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {
+                        "symbol": "LT.NS",
+                        "replay_bar_index": 1,
+                        "target_event_codes": ["stopping_volume"],
+                        "qualification": "persistent_bearish",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/vsa_recovery_sequence_validation_report.py",
+            str(input_path),
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Milestone 6C Saved-Output Validation Report" in result.stdout
 
 
 def test_validation_markdown_accepts_plain_mapping() -> None:

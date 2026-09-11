@@ -11,8 +11,17 @@ from typing import Any, Sequence
 MODULE_NAME = "_pro_vsa_recovery_sequence_validation_report"
 
 
+def _ensure_repo_root_imports_first(repo_root: Path) -> None:
+    """Prevent scripts/ wrappers from shadowing root helper modules."""
+
+    repo_root_text = str(repo_root)
+    sys.path[:] = [path for path in sys.path if path != repo_root_text]
+    sys.path.insert(0, repo_root_text)
+
+
 def _load_report_module() -> Any:
     repo_root = Path(__file__).resolve().parents[1]
+    _ensure_repo_root_imports_first(repo_root)
     module_path = repo_root / "vsa_recovery_sequence_validation_report.py"
     spec = importlib.util.spec_from_file_location(MODULE_NAME, module_path)
     if spec is None or spec.loader is None:
