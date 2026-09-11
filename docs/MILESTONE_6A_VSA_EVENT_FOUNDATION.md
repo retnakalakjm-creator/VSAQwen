@@ -126,6 +126,22 @@ To keep the expanded basket exactly 60 symbols, `IOC.NS` was removed from the ex
 
 This was basket maintenance only. It did not change scanner logic, detectors, scoring, ranking, replay, API behavior, frontend behavior, persistence, or market-data loading.
 
+## Post-PR #95 expanded rerun snapshot
+
+The expanded basket was rerun after PR #95 and documented separately in:
+
+```text
+docs/MILESTONE_6A_EXPANDED_RERUN_AUDIT_SNAPSHOT.md
+```
+
+The rerun confirmed:
+
+- `TATAMOTORS.NS` is no longer present in the basket or downstream rows;
+- `TMPV.NS` is present and returned audit rows;
+- `TMCV.NS` is present in the requested basket but skipped by data-depth validation with only 209 daily bars;
+- removing `IOC.NS` did not change the downstream audit conclusion;
+- the expanded audit still points to lifecycle/supersession and detector-gate review before any broad detector activation.
+
 ## Main 6A conclusion
 
 Milestone 6A showed that the next problem is not simply detector activation.
@@ -149,6 +165,8 @@ In March 2026, LT.NS showed persistent bearish qualification challenged by deman
 
 The expanded audit also produced other lifecycle-review examples, including DRREDDY.NS, GRASIM.NS, AMBUJACEM.NS, GODREJCP.NS, and BRITANNIA.NS.
 
+After the post-PR #95 rerun, DRREDDY.NS remains the strongest future supersession-rule candidate. LT.NS remains the key conflicted-pending-supersession casebook example.
+
 These cases should be used for chart review and future lifecycle-rule validation.
 
 ## What 6A deliberately did not do
@@ -165,19 +183,34 @@ Milestone 6A did not:
 
 ## Next phase
 
-The next backend event-foundation phase should start from the 6A conclusion and focus on:
+The next backend event-foundation phase should start from the 6A conclusion and focus on lifecycle/supersession review before any new event-family activation.
+
+The next production-safe backend candidate is not broad Stopping Volume or Spring/Shakeout activation yet. It is chart-confirmed lifecycle supersession review, especially:
 
 ```text
-Stopping Volume -> Spring / Shakeout recovery sequence
+DRREDDY.NS -> propose_supersede_bearish_context_with_demand_review
+LT.NS -> conflicted bearish lifecycle pending supersession casebook behavior
 ```
 
-Before implementation, the project should rerun the expanded basket after PR #95 and compare whether `TMPV.NS` or `TMCV.NS` adds new lifecycle or detector-gate clusters.
+After lifecycle/supersession review, Milestone 6C can focus on Stopping Volume -> Spring/Shakeout recovery sequence work.
 
-A later documentation split can use:
+After Milestone 6C, the project should continue to the next background-event foundation instead of moving directly into visualization.
+
+Visual replay remains a deferred holding area until the backend foundation is mature enough to support trustworthy replay semantics.
+
+Suggested split:
 
 ```text
-MILESTONE_6B_STOPPING_VOLUME_SPRING_SHAKEOUT.md
-MILESTONE_6C_VISUAL_REPLAY_CASEBOOK.md
+MILESTONE_6B_LIFECYCLE_SUPERSESSION_REVIEW.md
+MILESTONE_6C_STOPPING_VOLUME_SPRING_SHAKEOUT.md
+MILESTONE_6D_NEXT_BACKGROUND_EVENT_FOUNDATION.md
+MILESTONE_6D_VISUAL_REPLAY_CASEBOOK.md -> deferred / holding area, not the next active phase
+```
+
+The doctrine remains:
+
+```text
+foundation first, visualization second
 ```
 
 ## Guardrails for future audit/debug scripts
@@ -195,6 +228,6 @@ This prevents long audit runs from exposing issues that could have been caught b
 
 ## Current status
 
-Milestone 6A is complete after PR #95.
+Milestone 6A is complete after PR #95 and the post-PR #95 expanded rerun.
 
-The next recommended step is not detector activation. The next step is to rerun the expanded basket with the updated Tata Motors symbols and compare the output against the pre-PR #95 expanded audit artifacts.
+The next recommended step is not detector activation. The next step is lifecycle supersession review using the saved proposal rows and chart confirmation.
