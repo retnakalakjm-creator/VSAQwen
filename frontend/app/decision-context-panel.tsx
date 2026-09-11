@@ -454,6 +454,34 @@ export function DecisionContextPanel({
   const modeStatus = decisionContextModeStatus(activeContext.mode);
   const lifecycle = activeContext.qualification_lifecycle ?? null;
 
+  function codePlainEnglish(code: string) {
+    return (
+      plainEnglishLegendText(legendLookup, { code, family: "evidence_code" }) ??
+      plainEnglishLegendText(legendLookup, { code }) ??
+      "No plain-English explanation has been registered for this code yet."
+    );
+  }
+
+  function lifecycleEvidenceCodeList(title: string, codes: string[]) {
+    if (codes.length === 0) {
+      return <small>{title}: None.</small>;
+    }
+
+    return (
+      <div className="vsa-category-summary">
+        <span className="section-kicker">{title.toUpperCase()}</span>
+        <div className="vsa-category-list">
+          {codes.map((code) => (
+            <span key={`${title}-${code}`}>
+              <strong>{pretty(code)}</strong>
+              <small>{codePlainEnglish(code)}</small>
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   function eventPlainEnglish(event: DecisionContextEvent) {
     return (
       plainEnglishLegendText(legendLookup, { code: event.code, family: "event_label" }) ??
@@ -523,10 +551,8 @@ export function DecisionContextPanel({
           <small>{lifecycleEvidenceLine(lifecycle)}</small>
           {lifecycle ? (
             <>
-              <small>
-                Opposing evidence: {codesText(lifecycle.opposing_event_codes)}. Supporting evidence:{" "}
-                {codesText(lifecycle.supporting_event_codes)}.
-              </small>
+              {lifecycleEvidenceCodeList("Opposing evidence", lifecycle.opposing_event_codes)}
+              {lifecycleEvidenceCodeList("Supporting evidence", lifecycle.supporting_event_codes)}
               {isSupersessionReview(lifecycle) ? (
                 <small>
                   Supersession review: chart-confirmed review candidate only. Not a bullish flip,
@@ -540,10 +566,10 @@ export function DecisionContextPanel({
                 </small>
               ) : null}
               {lifecycle.ignored_audit_only_codes.length > 0 ? (
-                <small>
-                  Audit-only candidates ignored for this production-safe label:{" "}
-                  {codesText(lifecycle.ignored_audit_only_codes)}.
-                </small>
+                lifecycleEvidenceCodeList(
+                  "Audit-only candidates ignored for this production-safe label",
+                  lifecycle.ignored_audit_only_codes,
+                )
               ) : null}
               {lifecycle.used_fallback_evidence ? (
                 <small>Uses fallback scoring evidence; review freshness before acting.</small>
