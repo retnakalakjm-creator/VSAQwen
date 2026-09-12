@@ -39,11 +39,20 @@ EFFORT_RESULT_EVENTS = (
     "ABSORPTION",
     "EFFORT_RESULT",
 )
+EFFORT_RESULT_EVENT_SET = frozenset(EFFORT_RESULT_EVENTS)
+
+EFFORT_RESULT_RELATIONSHIPS = {
+    "high_effort_low_result": "EFFORT_GT_RESULT",
+    "low_effort_high_result": "RESULT_GT_EFFORT",
+    "high_effort_high_result": "EFFORT_RESULT",
+}
 
 READINESS_SCOPES = frozenset(
     {
         "effort_result_event",
         "effort_result_event_plus_relationship",
+        "effort_result_relationship",
+        "effort_result_relationship_plus_event",
     }
 )
 READINESS_CANDIDATE = "candidate_for_calibration_review"
@@ -96,6 +105,23 @@ def classify(effort: float, result: float) -> str:
         if predicate(effort, result):
             return name
     return "unclassified"
+
+
+def effort_result_candidate(relationship: object) -> str | None:
+    """Return the audit-only Effort/Result review label for a relationship.
+
+    These labels are derived only for offline audit grouping. They do not mutate
+    source event payloads, detector output, scanner state, scoring, ranking, or
+    actionability.
+    """
+
+    return EFFORT_RESULT_RELATIONSHIPS.get(str(relationship))
+
+
+def should_derive_effort_result_relationships(event_sets: Iterable[set[str]]) -> bool:
+    """Allow relationship-derived audit cohorts only when explicit labels are absent."""
+
+    return not any(bool(codes & EFFORT_RESULT_EVENT_SET) for codes in event_sets)
 
 
 def decision_value_readiness(
@@ -258,6 +284,14 @@ def audit(
         classify(e, r) for e, r in zip(df.volume_ratio, df.spread_ratio)
     ]
     df["events"] = df.existing_events.map(events)
+    derive_effort_result_relationships = should_derive_effort_result_relationships(
+        df["events"]
+    )
+    df["effort_result_candidate"] = (
+        df.relationship.map(effort_result_candidate)
+        if derive_effort_result_relationships
+        else None
+    )
 
     rows = []
     for symbol, group in df.groupby("symbol", sort=False):
@@ -277,13 +311,14 @@ def audit(
                         "bar_index": int(record.bar_index),
                         "relationship": record.relationship,
                         "events": record.events,
+                        "effort_result_candidate": record.effort_result_candidate,
                         "horizon": horizon,
                         "forward_return": forward_return,
                         "forward_up": forward_return > 0,
                     }
                 )
 
-    outcome = pd.DataFrame(rows, columns=OUTCOME_COLUMNS)
+    outcome = pd.DataFrame(rows, columns=(*OUTCOME_COLUMNS, "effort_result_candidate"))
     comparisons = []
     for horizon in horizons:
         h = outcome[outcome.horizon == horizon]
@@ -323,6 +358,18 @@ def audit(
                     group=g,
                     baseline=baseline,
                 )
+        for candidate in EFFORT_RESULT_EVENTS:
+            mask = h.effort_result_candidate == candidate
+            g = h[mask]
+            if len(g):
+                _append_comparison(
+                    comparisons,
+                    horizon=horizon,
+                    scope="effort_result_relationship",
+                    condition=candidate,
+                    group=g,
+                    baseline=baseline,
+                )
         for event in EVENTS:
             for relationship in RELATION:
                 mask = h.events.map(lambda x, event=event: event in x) & (
@@ -350,6 +397,24 @@ def audit(
                         horizon=horizon,
                         scope="effort_result_event_plus_relationship",
                         condition=f"{event}+{relationship}",
+                        group=g,
+                        baseline=baseline,
+                    )
+        for candidate in EFFORT_RESULT_EVENTS:
+            candidate_mask = h.effort_result_candidate == candidate
+            if not bool(candidate_mask.any()):
+                continue
+            for event in EVENTS:
+                mask = candidate_mask & h.events.map(
+                    lambda x, event=event: event in x
+                )
+                g = h[mask]
+                if len(g):
+                    _append_comparison(
+                        comparisons,
+                        horizon=horizon,
+                        scope="effort_result_relationship_plus_event",
+                        condition=f"{candidate}+{event}",
                         group=g,
                         baseline=baseline,
                     )
