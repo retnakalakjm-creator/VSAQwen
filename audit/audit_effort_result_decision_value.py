@@ -52,6 +52,13 @@ READINESS_OBSERVATION_ONLY = "observation_only"
 MIN_READINESS_BARS = 10
 MIN_READINESS_ABS_DELTA = 0.005
 
+CONSENSUS_CANDIDATE = "candidate_for_calibration_design_review"
+CONSENSUS_INSUFFICIENT_SAMPLE = "insufficient_consensus_sample"
+CONSENSUS_INCONSISTENT_DIRECTION = "inconsistent_direction"
+CONSENSUS_OBSERVATION_ONLY = "observation_only"
+MIN_CONSENSUS_HORIZONS = 2
+MIN_CONSENSUS_CANDIDATE_BARS = 20
+
 OUTCOME_COLUMNS = (
     "symbol",
     "bar_index",
@@ -142,6 +149,75 @@ def decision_value_readiness(
             }
         )
     return rows
+
+
+def readiness_consensus(
+    readiness_rows: Iterable[Mapping[str, Any]],
+    *,
+    min_horizons: int = MIN_CONSENSUS_HORIZONS,
+    min_candidate_bars: int = MIN_CONSENSUS_CANDIDATE_BARS,
+) -> list[dict[str, object]]:
+    """Aggregate per-horizon readiness into a review-only consensus gate.
+
+    This is a stricter audit review gate than per-row readiness. It requires a
+    condition to show candidate-level signal across multiple horizons and in one
+    direction before it can enter calibration design review. It still grants no
+    permission to change production behavior.
+    """
+
+    if min_horizons <= 0:
+        raise ValueError("min_horizons must be positive")
+    if min_candidate_bars <= 0:
+        raise ValueError("min_candidate_bars must be positive")
+
+    grouped: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    for row in readiness_rows:
+        scope = row.get("scope")
+        if scope not in READINESS_SCOPES:
+            continue
+        key = (str(scope), str(row.get("condition", "")))
+        grouped.setdefault(key, []).append(row)
+
+    consensus: list[dict[str, object]] = []
+    for (scope, condition), rows in sorted(grouped.items()):
+        candidate_rows = [
+            row for row in rows if row.get("readiness") == READINESS_CANDIDATE
+        ]
+        candidate_horizons = sorted(
+            {int(row["horizon"]) for row in candidate_rows}
+        )
+        candidate_bars = sum(int(row.get("bars", 0)) for row in candidate_rows)
+        signs = {
+            _delta_sign(float(row.get("delta_vs_baseline", 0.0)))
+            for row in candidate_rows
+        }
+        signs.discard("flat")
+        status = _consensus_status(
+            candidate_horizons=candidate_horizons,
+            candidate_bars=candidate_bars,
+            signs=signs,
+            min_horizons=min_horizons,
+            min_candidate_bars=min_candidate_bars,
+        )
+        consensus.append(
+            {
+                "scope": scope,
+                "condition": condition,
+                "horizons_seen": sorted({int(row["horizon"]) for row in rows}),
+                "candidate_horizons": candidate_horizons,
+                "candidate_bars": candidate_bars,
+                "candidate_direction": _candidate_direction(signs),
+                "consensus": status,
+                "may_change_scoring": False,
+                "may_change_ranking": False,
+                "may_change_actionability": False,
+                "may_activate_detector": False,
+                "requires_manual_case_review": True,
+                "requires_separate_production_pr": True,
+                "reason": _consensus_reason(status),
+            }
+        )
+    return consensus
 
 
 def audit(path: Path, horizons: tuple[int, ...]) -> dict[str, object]:
@@ -264,6 +340,7 @@ def audit(path: Path, horizons: tuple[int, ...]) -> dict[str, object]:
                     )
 
     readiness = decision_value_readiness(comparisons)
+    consensus = readiness_consensus(readiness)
     return {
         "source": str(path),
         "rows": len(df),
@@ -271,6 +348,7 @@ def audit(path: Path, horizons: tuple[int, ...]) -> dict[str, object]:
         "horizons": list(horizons),
         "comparisons": comparisons,
         "readiness": readiness,
+        "readiness_consensus": consensus,
         "audit_only": True,
     }
 
@@ -324,6 +402,58 @@ def _readiness_reason(status: str) -> str:
         "Observed cohort does not clear the decision-value threshold for "
         "calibration review."
     )
+
+
+def _consensus_status(
+    *,
+    candidate_horizons: list[int],
+    candidate_bars: int,
+    signs: set[str],
+    min_horizons: int,
+    min_candidate_bars: int,
+) -> str:
+    if not candidate_horizons:
+        return CONSENSUS_OBSERVATION_ONLY
+    if len(candidate_horizons) < min_horizons or candidate_bars < min_candidate_bars:
+        return CONSENSUS_INSUFFICIENT_SAMPLE
+    if len(signs) != 1:
+        return CONSENSUS_INCONSISTENT_DIRECTION
+    return CONSENSUS_CANDIDATE
+
+
+def _consensus_reason(status: str) -> str:
+    if status == CONSENSUS_CANDIDATE:
+        return (
+            "Consistent multi-horizon audit signal; eligible for manual "
+            "calibration design review only."
+        )
+    if status == CONSENSUS_INSUFFICIENT_SAMPLE:
+        return (
+            "Do not promote beyond audit review until candidate signal appears "
+            "across enough horizons and rows."
+        )
+    if status == CONSENSUS_INCONSISTENT_DIRECTION:
+        return (
+            "Do not promote beyond audit review because candidate horizons point "
+            "in conflicting directions."
+        )
+    return "No multi-horizon decision-value consensus; keep as observation only."
+
+
+def _candidate_direction(signs: set[str]) -> str:
+    if len(signs) == 1:
+        return next(iter(signs))
+    if signs:
+        return "mixed"
+    return "none"
+
+
+def _delta_sign(delta_vs_baseline: float) -> str:
+    if delta_vs_baseline > 0:
+        return "positive"
+    if delta_vs_baseline < 0:
+        return "negative"
+    return "flat"
 
 
 def main() -> None:
