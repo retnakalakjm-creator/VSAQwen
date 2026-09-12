@@ -100,6 +100,93 @@ def build_candidate_review_report(
     }
 
 
+def render_candidate_review_markdown(report: Mapping[str, Any]) -> str:
+    """Render a candidate-review report as human-readable Markdown.
+
+    Markdown output is still audit/report only. It is meant for manual review
+    and does not grant production permission.
+    """
+
+    lines = [
+        "# Effort/Result Candidate Review",
+        "",
+        "## Summary",
+        "",
+        f"- Source: `{_display(report.get('source'))}`",
+        f"- Rows: {int(report.get('rows', 0))}",
+        f"- Outcome rows: {int(report.get('outcome_rows', 0))}",
+        f"- Horizons: {_csv(report.get('horizons', []))}",
+        f"- Consensus rows reviewed: {int(report.get('total_consensus_rows', 0))}",
+        f"- Calibration-design candidates: {int(report.get('candidate_count', 0))}",
+        f"- Blocked / observation-only rows: {int(report.get('blocked_count', 0))}",
+        "",
+        "## Production Boundary",
+        "",
+        "- Audit/report only: true",
+        "- May change scoring: false",
+        "- May change ranking: false",
+        "- May change actionability: false",
+        "- May activate detector: false",
+        "- Requires manual case review: true",
+        "- Requires separate production PR: true",
+        "",
+        "## Calibration-Design Candidates",
+        "",
+    ]
+
+    candidates = _mapping_rows(report.get("calibration_design_candidates", []))
+    if candidates:
+        lines.extend(_candidate_table(candidates))
+    else:
+        lines.append("_No calibration-design candidates cleared the consensus gate._")
+
+    lines.extend(["", "## Blocked / Observation-Only Rows", ""])
+    blocked = _mapping_rows(report.get("blocked_or_observation_only", []))
+    if blocked:
+        lines.extend(_candidate_table(blocked))
+    else:
+        lines.append("_No blocked or observation-only rows were present._")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _candidate_table(rows: list[Mapping[str, Any]]) -> list[str]:
+    table = [
+        "| Priority | Scope | Condition | Consensus | Direction | Candidate horizons | Candidate bars |",
+        "| --- | --- | --- | --- | --- | --- | ---: |",
+    ]
+    for row in rows:
+        table.append(
+            "| "
+            f"{_display(row.get('priority'))} | "
+            f"`{_display(row.get('scope'))}` | "
+            f"`{_display(row.get('condition'))}` | "
+            f"{_display(row.get('consensus'))} | "
+            f"{_display(row.get('candidate_direction'))} | "
+            f"{_csv(row.get('candidate_horizons', []))} | "
+            f"{int(row.get('candidate_bars', 0))} |"
+        )
+    return table
+
+
+def _mapping_rows(value: object) -> list[Mapping[str, Any]]:
+    if not isinstance(value, Iterable) or isinstance(value, (str, bytes)):
+        return []
+    return [row for row in value if isinstance(row, Mapping)]
+
+
+def _display(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _csv(value: object) -> str:
+    items = _int_list(value)
+    return ", ".join(str(item) for item in items) if items else ""
+
+
 def _is_effort_result_review_scope(row: Mapping[str, Any]) -> bool:
     return row.get("scope") in EFFORT_RESULT_REVIEW_SCOPES
 
@@ -194,6 +281,12 @@ def main() -> None:
     parser.add_argument("path", type=Path)
     parser.add_argument("--horizons", default="1,2,4")
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format. Defaults to JSON for machine-readable review.",
+    )
     parser.add_argument("--max-candidates", type=int)
     parser.add_argument("--min-readiness-bars", type=int, default=10)
     parser.add_argument("--min-readiness-abs-delta", type=float, default=0.005)
@@ -213,7 +306,11 @@ def main() -> None:
         audit_report,
         max_candidates=args.max_candidates,
     )
-    rendered = json.dumps(review_report, indent=2, sort_keys=True)
+    rendered = (
+        render_candidate_review_markdown(review_report)
+        if args.format == "markdown"
+        else json.dumps(review_report, indent=2, sort_keys=True)
+    )
     if args.output:
         args.output.write_text(rendered + "\n", encoding="utf-8")
     else:

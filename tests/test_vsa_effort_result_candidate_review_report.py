@@ -9,7 +9,10 @@ from audit.audit_effort_result_decision_value import (
     CONSENSUS_INCONSISTENT_DIRECTION,
     CONSENSUS_INSUFFICIENT_SAMPLE,
 )
-from audit.review_effort_result_candidates import build_candidate_review_report
+from audit.review_effort_result_candidates import (
+    build_candidate_review_report,
+    render_candidate_review_markdown,
+)
 
 
 def _consensus_row(
@@ -158,3 +161,24 @@ def test_candidate_review_report_is_json_serializable_and_validates_limit() -> N
 
     with pytest.raises(ValueError, match="max_candidates"):
         build_candidate_review_report(_audit_report(), max_candidates=0)
+
+
+def test_candidate_review_report_renders_markdown_for_manual_review() -> None:
+    report = build_candidate_review_report(_audit_report(), max_candidates=2)
+
+    markdown = render_candidate_review_markdown(report)
+
+    assert markdown.startswith("# Effort/Result Candidate Review\n")
+    assert "- Source: `historical_effort_result_validation.csv`" in markdown
+    assert "- Audit/report only: true" in markdown
+    assert "- May change scoring: false" in markdown
+    assert "## Calibration-Design Candidates" in markdown
+    assert "## Blocked / Observation-Only Rows" in markdown
+    assert "`RESULT_GT_EFFORT`" in markdown
+    assert "`EFFORT_RESULT+SUPPLY_COMING_IN`" in markdown
+    assert "`EFFORT_RESULT+BUYING_CLIMAX`" not in markdown
+    assert "`EFFORT_RESULT+UPTHRUST`" in markdown
+    assert (
+        "| Priority | Scope | Condition | Consensus | Direction | "
+        "Candidate horizons | Candidate bars |"
+    ) in markdown
