@@ -1,8 +1,9 @@
-"""Effort-vs-Result engine invocation preflight validation.
+"""Effort-vs-Result engine invocation guard validation.
 
-This test suite is intentionally a guardrail before enabling the production
-EvidenceEngine effort hook. It validates the existing hook boundary and the
-zero-weight contextual behavior that must survive any later invocation PR.
+This suite protects the first production invocation of the existing
+EvidenceEngine effort hook. The hook may collect contextual Effort-vs-Result
+observations, but the family must remain neutral and zero-weight until a
+separate scoring/ranking validation explicitly changes that behavior.
 """
 
 from __future__ import annotations
@@ -49,16 +50,23 @@ def _active_collect_effort_calls(source: str) -> list[str]:
     ]
 
 
-def test_engine_collect_keeps_effort_invocation_disabled_until_explicit_enablement():
+def test_engine_collect_invokes_effort_hook_once_after_spring_before_structural():
     collect_source = inspect.getsource(EvidenceEngine.collect)
     hook_source = inspect.getsource(EvidenceEngine._collect_effort)
 
-    assert "self._collect_effort()" in collect_source
-    assert _active_collect_effort_calls(collect_source) == []
+    assert _active_collect_effort_calls(collect_source) == [
+        "self._collect_effort()"
+    ]
     assert "collect_effort(self._ctx)" in hook_source
+    assert collect_source.index("self._collect_spring()") < collect_source.index(
+        "self._collect_effort()"
+    )
+    assert collect_source.index("self._collect_effort()") < collect_source.index(
+        "self._collect_structural_progression()"
+    )
 
 
-def test_effort_greater_than_result_preflight_emits_zero_weight_neutral_context():
+def test_effort_greater_than_result_invocation_emits_zero_weight_neutral_context():
     evidence = collect_effort(
         _ctx(
             volume=VolumeClass.VERY_HIGH,
@@ -78,7 +86,7 @@ def test_effort_greater_than_result_preflight_emits_zero_weight_neutral_context(
     assert item.week_beginning == "2026-03-02"
 
 
-def test_result_greater_than_effort_preflight_emits_zero_weight_neutral_context():
+def test_result_greater_than_effort_invocation_emits_zero_weight_neutral_context():
     evidence = collect_effort(
         _ctx(
             volume=VolumeClass.LOW,
@@ -100,7 +108,7 @@ def test_result_greater_than_effort_preflight_emits_zero_weight_neutral_context(
     assert item.week_beginning == "2026-03-09"
 
 
-def test_weight_calculator_preflight_keeps_effort_family_non_scoring():
+def test_weight_calculator_invocation_guard_keeps_effort_family_non_scoring():
     ctx = _ctx()
 
     assert WeightCalculator.calculate(EvidenceCode.EFFORT_RESULT, ctx) == 0.0
@@ -109,7 +117,7 @@ def test_weight_calculator_preflight_keeps_effort_family_non_scoring():
     assert WeightCalculator.calculate(EvidenceCode.ABSORPTION, ctx) == 0.0
 
 
-def test_preflight_does_not_backfill_absorption_or_emit_for_unrelated_profiles():
+def test_invocation_does_not_backfill_absorption_or_emit_for_unrelated_profiles():
     high_effort_low_result = collect_effort(
         _ctx(
             volume=VolumeClass.VERY_HIGH,

@@ -128,7 +128,7 @@ class EvidenceEngine:
 
         # self._collect_demand()
 
-        # self._collect_effort()
+        self._collect_effort()
 
         # self._collect_trend()
 

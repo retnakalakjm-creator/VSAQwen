@@ -2,7 +2,7 @@
 
 ## Status
 
-**Design-frozen / analysis-only.** This document defines the canonical interpretation and production calculation contract. It does not enable `evidence/effort.py` invocation or introduce new scoring behavior.
+**Production invocation enabled / scoring disabled.** This document defines the canonical interpretation and production calculation contract. `evidence/effort.py` may now be invoked by `EvidenceEngine.collect()`, but Effort/Result observations remain contextual, neutral, and zero-weight. This contract does not introduce new scoring, ranking, persistence, API, frontend, broker, order, or account behavior.
 
 ## 1. Purpose
 
@@ -51,16 +51,14 @@ Historical rolling/relative metrics must therefore be evaluated at the target ba
 
 ## 4. Production Boundary
 
-The production flow remains:
+The production flow is:
 
 ```text
 point-in-time metrics
         ↓
-Effort / Result relationship
-        ↓
-contextual evidence
-        ↓
 existing VSA events and structural context
+        ↓
+zero-weight Effort / Result contextual observations
         ↓
 existing aggregation/scoring
 ```
@@ -68,10 +66,11 @@ existing aggregation/scoring
 Effort/Result must not:
 
 - introduce `EFFORT_GT_RESULT` or `RESULT_GT_EFFORT` as standalone scoring signals merely because those codes already exist;
-- create an event solely from the Effort/Result relationship;
+- create an actionable event solely from the Effort/Result relationship;
 - override an existing event;
 - apply an interaction penalty without separate evidence and audit justification;
-- bypass the existing evidence aggregation and professional scoring path.
+- bypass the existing evidence aggregation and professional scoring path;
+- change scanner ranking, persistence, backend/API output contracts, frontend behavior, broker behavior, order behavior, or account behavior.
 
 ## 5. Existing Implementation Boundary
 
@@ -79,7 +78,7 @@ Effort/Result must not:
 
 In particular, the current `ABSORPTION` detector is an implementation candidate, not proof that every high-effort/low-result observation is absorption.
 
-Engine invocation remains disabled until the implementation is audited against this contract.
+Engine invocation is allowed only as zero-weight contextual evidence. Any scoring, ranking, detector-threshold, or UI/API promotion must happen in a separate validation-backed PR.
 
 ## 6. Historical Decision-Value Finding
 
@@ -91,7 +90,7 @@ The observed duplicated `BUYING_CLIMAX` / `UPTHRUST` pattern is an existing even
 
 ## 7. Implementation Rule
 
-Before production invocation is enabled, the Effort/Result implementation must be audited for:
+Before Effort/Result is allowed to affect scoring, ranking, promotion, or UI/API output semantics, the implementation must be audited for:
 
 1. point-in-time metric usage;
 2. production-path consistency;
@@ -101,4 +100,4 @@ Before production invocation is enabled, the Effort/Result implementation must b
 6. scoring-map behavior;
 7. real-market imperfect-but-meaningful VSA evidence rather than textbook-only conformity.
 
-Only after that audit may the engine invocation be considered for enablement.
+Only after that audit may scoring or ranking changes be considered.
