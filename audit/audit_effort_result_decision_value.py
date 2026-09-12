@@ -220,7 +220,22 @@ def readiness_consensus(
     return consensus
 
 
-def audit(path: Path, horizons: tuple[int, ...]) -> dict[str, object]:
+def audit(
+    path: Path,
+    horizons: tuple[int, ...],
+    *,
+    min_readiness_bars: int = MIN_READINESS_BARS,
+    min_readiness_abs_delta: float = MIN_READINESS_ABS_DELTA,
+    min_consensus_horizons: int = MIN_CONSENSUS_HORIZONS,
+    min_consensus_candidate_bars: int = MIN_CONSENSUS_CANDIDATE_BARS,
+) -> dict[str, object]:
+    thresholds = _threshold_report(
+        min_readiness_bars=min_readiness_bars,
+        min_readiness_abs_delta=min_readiness_abs_delta,
+        min_consensus_horizons=min_consensus_horizons,
+        min_consensus_candidate_bars=min_consensus_candidate_bars,
+    )
+
     df = pd.read_csv(path)
     required = {
         "symbol",
@@ -339,13 +354,22 @@ def audit(path: Path, horizons: tuple[int, ...]) -> dict[str, object]:
                         baseline=baseline,
                     )
 
-    readiness = decision_value_readiness(comparisons)
-    consensus = readiness_consensus(readiness)
+    readiness = decision_value_readiness(
+        comparisons,
+        min_bars=min_readiness_bars,
+        min_abs_delta=min_readiness_abs_delta,
+    )
+    consensus = readiness_consensus(
+        readiness,
+        min_horizons=min_consensus_horizons,
+        min_candidate_bars=min_consensus_candidate_bars,
+    )
     return {
         "source": str(path),
         "rows": len(df),
         "outcome_rows": len(outcome),
         "horizons": list(horizons),
+        "thresholds": thresholds,
         "comparisons": comparisons,
         "readiness": readiness,
         "readiness_consensus": consensus,
@@ -374,6 +398,33 @@ def _append_comparison(
             "delta_vs_baseline": mean_forward_return - baseline,
         }
     )
+
+
+def _threshold_report(
+    *,
+    min_readiness_bars: int,
+    min_readiness_abs_delta: float,
+    min_consensus_horizons: int,
+    min_consensus_candidate_bars: int,
+) -> dict[str, dict[str, float | int]]:
+    if min_readiness_bars <= 0:
+        raise ValueError("min_readiness_bars must be positive")
+    if min_readiness_abs_delta < 0:
+        raise ValueError("min_readiness_abs_delta must be non-negative")
+    if min_consensus_horizons <= 0:
+        raise ValueError("min_consensus_horizons must be positive")
+    if min_consensus_candidate_bars <= 0:
+        raise ValueError("min_consensus_candidate_bars must be positive")
+    return {
+        "readiness": {
+            "min_bars": min_readiness_bars,
+            "min_abs_delta": min_readiness_abs_delta,
+        },
+        "consensus": {
+            "min_horizons": min_consensus_horizons,
+            "min_candidate_bars": min_consensus_candidate_bars,
+        },
+    }
 
 
 def _readiness_status(
@@ -469,8 +520,39 @@ def main() -> None:
         default=Path("effort_result_decision_value_audit.json"),
     )
     parser.add_argument("--horizons", nargs="+", type=int, default=[1, 2, 4])
+    parser.add_argument(
+        "--min-readiness-bars",
+        type=int,
+        default=MIN_READINESS_BARS,
+        help="Minimum cohort rows required before per-horizon readiness review.",
+    )
+    parser.add_argument(
+        "--min-readiness-abs-delta",
+        type=float,
+        default=MIN_READINESS_ABS_DELTA,
+        help="Minimum absolute delta-vs-baseline for readiness review.",
+    )
+    parser.add_argument(
+        "--min-consensus-horizons",
+        type=int,
+        default=MIN_CONSENSUS_HORIZONS,
+        help="Minimum candidate horizons required for consensus review.",
+    )
+    parser.add_argument(
+        "--min-consensus-candidate-bars",
+        type=int,
+        default=MIN_CONSENSUS_CANDIDATE_BARS,
+        help="Minimum candidate rows across horizons for consensus review.",
+    )
     args = parser.parse_args()
-    report = audit(args.input, tuple(args.horizons))
+    report = audit(
+        args.input,
+        tuple(args.horizons),
+        min_readiness_bars=args.min_readiness_bars,
+        min_readiness_abs_delta=args.min_readiness_abs_delta,
+        min_consensus_horizons=args.min_consensus_horizons,
+        min_consensus_candidate_bars=args.min_consensus_candidate_bars,
+    )
     args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"Audited {report['outcome_rows']} point-in-time outcomes")
     print(f"Wrote {args.output}")
