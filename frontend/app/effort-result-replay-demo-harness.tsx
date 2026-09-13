@@ -7,6 +7,7 @@ import {
   EFFORT_RESULT_REPLAY_DATASET_FIXTURE_SOURCE,
   offlineEffortResultDatasetReplaySequences,
 } from "./effort-result-replay-dataset-fixture";
+import { EffortResultReplayEvidenceDraftPanel } from "./effort-result-replay-evidence-draft-panel";
 import { EffortResultReplayReviewChecklist } from "./effort-result-replay-review-checklist";
 import {
   EFFORT_RESULT_REPLAY_FIXTURE_PRODUCTION_BOUNDARY,
@@ -34,6 +35,7 @@ export function EffortResultReplayDemoHarness() {
       data-production-change-allowed="false"
       data-dataset-backed-preview="true"
       data-visual-review-checklist="true"
+      data-visual-evidence-draft-panel="true"
     >
       <div className="workspace-heading">
         <div>
@@ -75,9 +77,14 @@ export function EffortResultReplayDemoHarness() {
         </div>
       </dl>
 
-      <div className="replay-preview-workbench" data-visual-review-workbench="true">
+      <div
+        className="replay-preview-workbench"
+        data-visual-review-workbench="true"
+        data-visual-evidence-draft-panel="true"
+      >
         <EffortResultReplayBar replaySequences={replaySequences} />
         <EffortResultReplayReviewChecklist replaySequences={replaySequences} />
+        <EffortResultReplayEvidenceDraftPanel replaySequences={replaySequences} />
       </div>
     </section>
   );
