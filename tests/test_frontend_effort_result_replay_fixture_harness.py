@@ -1,6 +1,7 @@
 from pathlib import Path
 
 FIXTURE_PATH = Path("frontend/app/effort-result-replay-fixtures.ts")
+DATASET_FIXTURE_PATH = Path("frontend/app/effort-result-replay-dataset-fixture.ts")
 HARNESS_PATH = Path("frontend/app/effort-result-replay-demo-harness.tsx")
 ROOT_PAGE_PATH = Path("frontend/app/page.tsx")
 REPLAY_ROUTE_PATH = Path("frontend/app/replay/page.tsx")
@@ -8,6 +9,10 @@ REPLAY_ROUTE_PATH = Path("frontend/app/replay/page.tsx")
 
 def fixture_source() -> str:
     return FIXTURE_PATH.read_text(encoding="utf-8")
+
+
+def dataset_fixture_source() -> str:
+    return DATASET_FIXTURE_PATH.read_text(encoding="utf-8")
 
 
 def harness_source() -> str:
@@ -58,18 +63,45 @@ def test_offline_fixture_keeps_all_production_boundaries_closed() -> None:
     assert "/api/" not in text
 
 
-def test_demo_harness_renders_fixture_data_only() -> None:
+def test_dataset_fixture_uses_read_only_adapter_for_dataset_shape() -> None:
+    text = dataset_fixture_source()
+
+    for snippet in [
+        'from "./effort-result-replay-dataset-adapter";',
+        "EFFORT_RESULT_REPLAY_DATASET_ADAPTER_BOUNDARY",
+        "adaptEffortResultShadowReplayDataset",
+        "isEffortResultShadowReplayDatasetReady",
+        "offlineEffortResultShadowReplayDatasetFixture",
+        "offlineEffortResultDatasetReplaySequences",
+        "getOfflineEffortResultDatasetReplaySequences",
+        "effort_result_shadow_replay_dataset",
+        "shadow_replay_dataset_ready",
+        "RESULT_GT_EFFORT|LT.NS|11",
+        "SUPPLY_PRESSURE|LT.NS|41",
+    ]:
+        assert snippet in text
+
+
+def test_demo_harness_renders_static_and_dataset_fixture_data_only() -> None:
     text = harness_source()
 
     assert '"use client";' in text
     assert 'import { EffortResultReplayBar } from "./effort-result-replay-bar";' in text
     assert 'from "./effort-result-replay-fixtures";' in text
+    assert 'from "./effort-result-replay-dataset-fixture";' in text
+    assert "offlineEffortResultReplayPreviewSequences: EffortResultReplaySequence[]" in text
+    assert "...offlineEffortResultReplaySequences" in text
+    assert "...offlineEffortResultDatasetReplaySequences" in text
+    assert "getOfflineEffortResultReplayPreviewSequences" in text
     assert "offlineEffortResultReplaySequences.length" in text
+    assert "offlineEffortResultDatasetReplaySequences.length" in text
     assert "Static visual validation harness only." in text
+    assert "adapted dataset-shaped" in text
     assert "does not fetch live data" in text
     assert 'data-demo-only="true"' in text
     assert 'data-production-change-allowed="false"' in text
-    assert "<EffortResultReplayBar replaySequences={offlineEffortResultReplaySequences} />" in text
+    assert 'data-dataset-backed-preview="true"' in text
+    assert "<EffortResultReplayBar replaySequences={replaySequences} />" in text
 
 
 def test_demo_harness_has_no_live_or_production_side_effects() -> None:
@@ -89,10 +121,11 @@ def test_demo_harness_has_no_live_or_production_side_effects() -> None:
         assert forbidden not in text
 
 
-def test_offline_demo_harness_is_not_routed_or_imported_yet() -> None:
+def test_offline_demo_harness_keeps_root_dashboard_unchanged() -> None:
     assert not REPLAY_ROUTE_PATH.exists()
     if ROOT_PAGE_PATH.exists():
         root_page = ROOT_PAGE_PATH.read_text(encoding="utf-8")
         assert "EffortResultReplayDemoHarness" not in root_page
         assert "effort-result-replay-demo-harness" not in root_page
         assert "effort-result-replay-fixtures" not in root_page
+        assert "effort-result-replay-dataset-fixture" not in root_page
