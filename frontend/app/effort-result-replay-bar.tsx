@@ -9,6 +9,8 @@ export type EffortResultShadowMarker = {
   week_beginning: string;
   shadow_signal_role: string;
   observation_status: string;
+  relationship?: string;
+  effort_result_candidate?: string;
   event_labels?: string[];
   include_in_scoring?: false;
   include_in_ranking?: false;
@@ -48,6 +50,18 @@ export type EffortResultReplaySequence = {
   frames: EffortResultReplayFrame[];
 };
 
+export type EffortResultMarkerOverlayTone = "accumulation" | "distribution" | "neutral";
+
+export type EffortResultMarkerOverlay = {
+  marker: EffortResultShadowMarker;
+  frameIndex: number;
+  barIndex: number;
+  replayOffset: number;
+  lane: number;
+  label: string;
+  tone: EffortResultMarkerOverlayTone;
+};
+
 type PlaybackState = "paused" | "playing";
 
 type EffortResultReplayBarProps = {
@@ -75,6 +89,53 @@ function displayWeek(value: string | undefined) {
   });
 }
 
+function markerLabel(marker: EffortResultShadowMarker) {
+  const firstEvent = marker.event_labels?.[0];
+  return firstEvent ?? marker.effort_result_candidate ?? marker.target;
+}
+
+export function classifyEffortResultShadowMarker(
+  marker: EffortResultShadowMarker | null | undefined,
+): EffortResultMarkerOverlayTone {
+  if (!marker) return "neutral";
+  const evidence = [
+    marker.target,
+    marker.shadow_signal_role,
+    marker.relationship,
+    marker.effort_result_candidate,
+    ...(marker.event_labels ?? []),
+  ]
+    .join(" ")
+    .toUpperCase();
+
+  if (evidence.includes("SUPPLY") || evidence.includes("NO_DEMAND") || evidence.includes("BEARISH")) {
+    return "distribution";
+  }
+  if (evidence.includes("RESULT_GT_EFFORT") || evidence.includes("DEMAND") || evidence.includes("BULLISH")) {
+    return "accumulation";
+  }
+  return "neutral";
+}
+
+export function buildEffortResultMarkerOverlays(
+  frames: EffortResultReplayFrame[],
+): EffortResultMarkerOverlay[] {
+  return frames
+    .map((frame, frameIndex) => {
+      if (!frame.has_shadow_marker || !frame.shadow_marker) return null;
+      return {
+        marker: frame.shadow_marker,
+        frameIndex,
+        barIndex: frame.bar_index,
+        replayOffset: frame.replay_offset,
+        lane: Math.abs(frame.replay_offset) % 3,
+        label: markerLabel(frame.shadow_marker),
+        tone: classifyEffortResultShadowMarker(frame.shadow_marker),
+      };
+    })
+    .filter((overlay): overlay is EffortResultMarkerOverlay => overlay !== null);
+}
+
 export function EffortResultReplayBar({
   replaySequences,
   initialSequenceId,
@@ -96,6 +157,8 @@ export function EffortResultReplayBar({
   const frames = activeSequence?.frames ?? [];
   const safeFrameIndex = clampFrameIndex(activeFrameIndex, frames.length);
   const activeFrame = frames[safeFrameIndex] ?? null;
+  const markerOverlays = useMemo(() => buildEffortResultMarkerOverlays(frames), [frames]);
+  const activeOverlay = markerOverlays.find((overlay) => overlay.frameIndex === safeFrameIndex) ?? null;
 
   function publishFrame(index: number) {
     if (!activeSequence || frames.length === 0) return;
@@ -179,9 +242,30 @@ export function EffortResultReplayBar({
 
       <ol className="shadow-marker-rail" aria-label="Shadow marker rail">
         {frames.map((frame, index) => (
-          <li key={`${activeSequence?.sequence_id ?? "sequence"}-${frame.bar_index}`} data-active={index === safeFrameIndex}>
+          <li
+            key={`${activeSequence?.sequence_id ?? "sequence"}-${frame.bar_index}`}
+            data-active={index === safeFrameIndex}
+            data-shadow-overlay={frame.has_shadow_marker ? "true" : "false"}
+          >
             <button type="button" onClick={() => publishFrame(index)} aria-label={`Replay bar ${frame.bar_index}`}>
               {frame.has_shadow_marker ? "◆" : "•"}
+            </button>
+          </li>
+        ))}
+      </ol>
+
+      <ol className="effort-result-shadow-marker-overlay" aria-label="Effort Result shadow marker overlay">
+        {markerOverlays.map((overlay) => (
+          <li
+            key={`${activeSequence?.sequence_id ?? "sequence"}-${overlay.barIndex}-overlay`}
+            data-marker-tone={overlay.tone}
+            data-marker-lane={overlay.lane}
+            data-replay-offset={overlay.replayOffset}
+            data-active={overlay.frameIndex === safeFrameIndex}
+          >
+            <button type="button" onClick={() => publishFrame(overlay.frameIndex)} aria-label={`Shadow marker ${overlay.label}`}>
+              <strong>{overlay.label}</strong>
+              <span>{displayWeek(overlay.marker.week_beginning)}</span>
             </button>
           </li>
         ))}
@@ -194,6 +278,7 @@ export function EffortResultReplayBar({
           <p>Close: {activeFrame.close}</p>
           <p>Volume ratio: {activeFrame.volume_ratio ?? "—"}</p>
           {activeFrame.shadow_marker && <p>Shadow marker: {activeFrame.shadow_marker.shadow_signal_role}</p>}
+          {activeOverlay && <p>Overlay tone: {activeOverlay.tone}</p>}
         </article>
       )}
     </section>
