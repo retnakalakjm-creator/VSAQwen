@@ -7,6 +7,7 @@ import {
   EFFORT_RESULT_REPLAY_DATASET_FIXTURE_SOURCE,
   offlineEffortResultDatasetReplaySequences,
 } from "./effort-result-replay-dataset-fixture";
+import { EffortResultReplayReviewChecklist } from "./effort-result-replay-review-checklist";
 import {
   EFFORT_RESULT_REPLAY_FIXTURE_PRODUCTION_BOUNDARY,
   EFFORT_RESULT_REPLAY_FIXTURE_SOURCE,
@@ -32,6 +33,7 @@ export function EffortResultReplayDemoHarness() {
       data-demo-only="true"
       data-production-change-allowed="false"
       data-dataset-backed-preview="true"
+      data-visual-review-checklist="true"
     >
       <div className="workspace-heading">
         <div>
@@ -73,7 +75,10 @@ export function EffortResultReplayDemoHarness() {
         </div>
       </dl>
 
-      <EffortResultReplayBar replaySequences={replaySequences} />
+      <div className="replay-preview-workbench" data-visual-review-workbench="true">
+        <EffortResultReplayBar replaySequences={replaySequences} />
+        <EffortResultReplayReviewChecklist replaySequences={replaySequences} />
+      </div>
     </section>
   );
 }
