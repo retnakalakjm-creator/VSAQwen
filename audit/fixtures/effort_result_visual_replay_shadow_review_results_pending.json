@@ -1,0 +1,44 @@
+[
+  {
+    "case_id": "LT.NS|2025-02-24|STRUCTURAL_WEAKENING",
+    "review_outcome": "undecided",
+    "lane_results": {
+      "marker_alignment_recheck": "undecided",
+      "pre_event_context_recheck": "undecided",
+      "post_event_follow_through_recheck": "undecided",
+      "counterfactual_quality_check": "undecided",
+      "vsa_smc_quality_judgment": "undecided",
+      "evidence_artifact_traceability": "undecided"
+    },
+    "reviewer": "",
+    "reviewed_at": "",
+    "reviewer_notes": "",
+    "evidence_artifact": "",
+    "automatic_promotion_allowed": false,
+    "production_change_allowed": false,
+    "manual_review_only": true,
+    "offline_replay_only": true,
+    "notes": "Pending human review. Do not mark pass/fail until marker alignment, pre-event context, post-event follow-through, counterfactual quality, VSA/SMC quality, and evidence traceability have all been inspected manually."
+  },
+  {
+    "case_id": "LT.NS|2026-03-02|RESULT_GT_EFFORT",
+    "review_outcome": "undecided",
+    "lane_results": {
+      "marker_alignment_recheck": "undecided",
+      "pre_event_context_recheck": "undecided",
+      "post_event_follow_through_recheck": "undecided",
+      "counterfactual_quality_check": "undecided",
+      "vsa_smc_quality_judgment": "undecided",
+      "evidence_artifact_traceability": "undecided"
+    },
+    "reviewer": "",
+    "reviewed_at": "",
+    "reviewer_notes": "",
+    "evidence_artifact": "",
+    "automatic_promotion_allowed": false,
+    "production_change_allowed": false,
+    "manual_review_only": true,
+    "offline_replay_only": true,
+    "notes": "Pending human review. Do not mark pass/fail until marker alignment, pre-event context, post-event follow-through, counterfactual quality, VSA/SMC quality, and evidence traceability have all been inspected manually."
+  }
+]
