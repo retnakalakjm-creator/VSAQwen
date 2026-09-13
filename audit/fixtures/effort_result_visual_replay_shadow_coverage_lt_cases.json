@@ -1,0 +1,50 @@
+[
+  {
+    "case_id": "LT.NS|2025-02-24|STRUCTURAL_WEAKENING",
+    "symbol": "LT.NS",
+    "event_week_beginning": "2025-02-24",
+    "target": "STRUCTURAL_WEAKENING",
+    "offline_dataset_fixture": "offline_replay/LT_2025-02-24.json",
+    "expected_marker_labels": [
+      "effort_without_result",
+      "supply_present",
+      "structural_weakening",
+      "follow_through_required"
+    ],
+    "review_lanes": [
+      "marker_alignment_recheck",
+      "pre_event_context_recheck",
+      "post_event_follow_through_recheck",
+      "counterfactual_quality_check",
+      "vsa_smc_quality_judgment",
+      "evidence_artifact_traceability"
+    ],
+    "notes": "Manual shadow replay case for the LT Feb-Mar 2025 structural weakening sample. Review marker placement, pre-event context, and follow-through before any integration decision.",
+    "automatic_promotion_allowed": false,
+    "production_change_allowed": false
+  },
+  {
+    "case_id": "LT.NS|2026-03-02|RESULT_GT_EFFORT",
+    "symbol": "LT.NS",
+    "event_week_beginning": "2026-03-02",
+    "target": "RESULT_GT_EFFORT",
+    "offline_dataset_fixture": "offline_replay/LT_2026-03-02.json",
+    "expected_marker_labels": [
+      "result_greater_than_effort",
+      "demand_absorption",
+      "constructive_follow_through",
+      "counterfactual_required"
+    ],
+    "review_lanes": [
+      "marker_alignment_recheck",
+      "pre_event_context_recheck",
+      "post_event_follow_through_recheck",
+      "counterfactual_quality_check",
+      "vsa_smc_quality_judgment",
+      "evidence_artifact_traceability"
+    ],
+    "notes": "Manual shadow replay case for the LT Mar 2026 result-greater-than-effort sample. Review whether the visual replay confirms effort/result behavior and later follow-through.",
+    "automatic_promotion_allowed": false,
+    "production_change_allowed": false
+  }
+]
