@@ -121,6 +121,105 @@
   line-height: 1.7;
 }
 
+.readOnlyDetectorPanel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #dbe3ec;
+  border-radius: 14px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.readOnlyDetectorHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.readOnlyDetectorHeading h2 {
+  margin: 4px 0 0;
+  color: #172033;
+  font-size: 18px;
+}
+
+.readOnlyDetectorHeading > span {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.readOnlyDetectorGuardrail {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.readOnlyDetectorGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.readOnlyDetectorCard {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dbe3ec;
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+}
+
+.readOnlyDetectorCard:hover:not(:disabled) {
+  border-color: #94a3b8;
+}
+
+.readOnlyDetectorCard:disabled {
+  cursor: default;
+}
+
+.readOnlyDetectorCard strong {
+  color: #172033;
+  font-size: 15px;
+}
+
+.readOnlyDetectorCard p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.readOnlyDetectorCard small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.readOnlyDetectorBadge {
+  width: fit-content;
+  border: 1px solid #dbe3ec;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.emptyDetectorCard {
+  opacity: .72;
+}
+
 @media (max-width: 1000px) {
   .barReadingWorkspace {
     grid-template-columns: 1fr;
@@ -134,5 +233,14 @@
 @media (max-width: 640px) {
   .barReadingRail {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .readOnlyDetectorHeading,
+  .readOnlyDetectorGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .readOnlyDetectorHeading {
+    display: grid;
   }
 }

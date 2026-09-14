@@ -19,9 +19,57 @@ type WeeklyBarReadingsResponse = {
   readings: WeeklyBarReading[];
 };
 
+type AnalysisEvidence = {
+  code: string;
+  category: string;
+  direction: string;
+  bar_index: number;
+  week: string;
+  observation: string;
+  description: string;
+};
+
+type AnalysisResponse = {
+  evidence: AnalysisEvidence[];
+};
+
+type ReadOnlyDetectorFamilyKey = "effort_result" | "absorption";
+
+type ReadOnlyDetectorFamily = {
+  key: ReadOnlyDetectorFamilyKey;
+  title: string;
+  helper: string;
+  codes: readonly string[];
+};
+
 type ApiErrorBody = {
   detail?: string;
 };
+
+const READ_ONLY_DETECTOR_FAMILIES: readonly ReadOnlyDetectorFamily[] = [
+  {
+    key: "effort_result",
+    title: "Effort / Result",
+    helper: "Backend observations comparing volume effort against price result.",
+    codes: ["effort_gt_result", "result_gt_effort"],
+  },
+  {
+    key: "absorption",
+    title: "Absorption",
+    helper: "Backend absorption observations exposed for review visibility only.",
+    codes: ["absorption"],
+  },
+];
+
+const READ_ONLY_DETECTOR_CODE_LABELS: Record<string, string> = {
+  effort_gt_result: "Effort > Result",
+  result_gt_effort: "Result > Effort",
+  absorption: "Absorption",
+};
+
+const READ_ONLY_DETECTOR_CODES = new Set(
+  READ_ONLY_DETECTOR_FAMILIES.flatMap((family) => family.codes),
+);
 
 type BarByBarPanelProps = {
   symbol: string;
@@ -53,6 +101,26 @@ function shortDate(value: string | undefined | null) {
       });
 }
 
+function normalizeDetectorCode(code: string) {
+  return code.trim().toLowerCase();
+}
+
+function detectorCodeLabel(code: string) {
+  return READ_ONLY_DETECTOR_CODE_LABELS[normalizeDetectorCode(code)] ?? code;
+}
+
+function detectorReading(event: AnalysisEvidence) {
+  return event.observation || event.description || "Read-only detector evidence is available for this bar.";
+}
+
+function readOnlyDetectorEvidence(events: AnalysisEvidence[]) {
+  return events.filter((event) => READ_ONLY_DETECTOR_CODES.has(normalizeDetectorCode(event.code)));
+}
+
+function eventsForFamily(events: AnalysisEvidence[], family: ReadOnlyDetectorFamily) {
+  return events.filter((event) => family.codes.includes(normalizeDetectorCode(event.code)));
+}
+
 async function fetchJson<T>(url: string, fallbackError: string): Promise<T> {
   const response = await fetch(url);
   if (response.ok) return (await response.json()) as T;
@@ -74,16 +142,22 @@ export function BarByBarPanel({
   onSelectWeek,
 }: BarByBarPanelProps) {
   const [response, setResponse] = useState<WeeklyBarReadingsResponse | null>(null);
+  const [detectorEvidence, setDetectorEvidence] = useState<AnalysisEvidence[]>([]);
   const [localSelectedWeek, setLocalSelectedWeek] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [detectorError, setDetectorError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isDetectorLoading, setIsDetectorLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const encodedSymbol = encodeURIComponent(symbol);
     setIsLoading(true);
+    setIsDetectorLoading(true);
     setError("");
+    setDetectorError("");
     setResponse(null);
+    setDetectorEvidence([]);
     setLocalSelectedWeek(null);
     onSelectWeek?.(null);
 
@@ -108,7 +182,26 @@ export function BarByBarPanel({
       }
     }
 
+    async function loadReadOnlyDetectorEvidence() {
+      try {
+        const payload = await fetchJson<AnalysisResponse>(
+          `${API}/api/symbols/${encodedSymbol}/analysis`,
+          "Read-only detector evidence failed",
+        );
+        if (!cancelled) {
+          setDetectorEvidence(readOnlyDetectorEvidence(payload.evidence ?? []));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDetectorError(err instanceof Error ? err.message : "Read-only detector evidence failed");
+        }
+      } finally {
+        if (!cancelled) setIsDetectorLoading(false);
+      }
+    }
+
     void loadReadings();
+    void loadReadOnlyDetectorEvidence();
     return () => {
       cancelled = true;
     };
@@ -123,6 +216,55 @@ export function BarByBarPanel({
   function selectReading(item: WeeklyBarReading) {
     setLocalSelectedWeek(item.week);
     onSelectWeek?.(item.week);
+  }
+
+  function selectDetectorEvent(event: AnalysisEvidence) {
+    setLocalSelectedWeek(event.week);
+    onSelectWeek?.(event.week);
+  }
+
+  function renderReadOnlyDetectorEvidence() {
+    return (
+      <section className={styles.readOnlyDetectorPanel}>
+        <div className={styles.readOnlyDetectorHeading}>
+          <div>
+            <span className="section-kicker">READ-ONLY DETECTOR EVIDENCE</span>
+            <h2>Effort / Result and Absorption</h2>
+          </div>
+          <span>{isDetectorLoading ? "Loading" : `${detectorEvidence.length} events`}</span>
+        </div>
+        <p className={styles.readOnlyDetectorGuardrail}>
+          These backend detector families are production-visible for review only. They do not change the decision, ranking, actionability, trade plan, alerts, or orders.
+        </p>
+        {detectorError && <div className="status error-status">{detectorError}</div>}
+        <div className={styles.readOnlyDetectorGrid}>
+          {READ_ONLY_DETECTOR_FAMILIES.map((family) => {
+            const familyEvents = eventsForFamily(detectorEvidence, family);
+            const latestEvent = familyEvents.at(-1) ?? null;
+            return (
+              <button
+                type="button"
+                className={`${styles.readOnlyDetectorCard} ${latestEvent ? "" : styles.emptyDetectorCard}`}
+                key={family.key}
+                disabled={!latestEvent}
+                onClick={() => {
+                  if (latestEvent) selectDetectorEvent(latestEvent);
+                }}
+              >
+                <span className={styles.readOnlyDetectorBadge}>Read-only / not scoring</span>
+                <strong>{family.title}</strong>
+                <p>{latestEvent ? detectorReading(latestEvent) : family.helper}</p>
+                <small>
+                  {latestEvent
+                    ? `${detectorCodeLabel(latestEvent.code)} · latest ${displayDate(latestEvent.week)} · ${familyEvents.length} ${familyEvents.length === 1 ? "event" : "events"}`
+                    : "No event in current analysis response"}
+                </small>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -180,6 +322,8 @@ export function BarByBarPanel({
           )}
         </div>
       )}
+
+      {renderReadOnlyDetectorEvidence()}
     </section>
   );
 }
