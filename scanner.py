@@ -7,6 +7,7 @@ import pandas as pd
 from background.qualification import PatternQualification, PatternQualificationEngine, PatternQualificationResult
 from engine.columns import COL_CORPORATE_ACTION_ANOMALY
 from evidence.engine import EvidenceEngine
+from evidence.high_volume_reversal import HIGH_VOLUME_REVERSAL_CODE
 from model.evidence_result_model import EvidenceResult
 from model.score_model import ProfessionalScoreResult
 from models import Evidence, EvidenceCode
@@ -27,6 +28,14 @@ EFFORT_RESULT_READ_ONLY_CODES = frozenset({
 ABSORPTION_READ_ONLY_CODES = frozenset({
     EvidenceCode.ABSORPTION,
 })
+
+HIGH_VOLUME_REVERSAL_READ_ONLY_CODES = frozenset({
+    HIGH_VOLUME_REVERSAL_CODE,
+})
+
+
+def _evidence_code_value(code: object) -> str:
+    return str(getattr(code, "value", code))
 
 
 @dataclass(slots=True, frozen=True)
@@ -130,11 +139,11 @@ class ScannerCandidate:
 
     @property
     def current_evidence_codes(self) -> tuple[str, ...]:
-        return tuple(str(item.code) for item in self.target_bar_evidence)
+        return tuple(_evidence_code_value(item.code) for item in self.target_bar_evidence)
 
     @property
     def campaign_evidence_codes(self) -> tuple[str, ...]:
-        return tuple(str(item.code) for item in self.campaign_evidence)
+        return tuple(_evidence_code_value(item.code) for item in self.campaign_evidence)
 
     @property
     def target_bar_evidence_codes(self) -> tuple[str, ...]:
@@ -142,11 +151,11 @@ class ScannerCandidate:
 
     @property
     def qualifying_evidence_codes(self) -> tuple[str, ...]:
-        return tuple(str(item.code) for item in self.qualifying_evidence)
+        return tuple(_evidence_code_value(item.code) for item in self.qualifying_evidence)
 
     @property
     def scoring_evidence_codes(self) -> tuple[str, ...]:
-        return tuple(str(item.code) for item in self.scoring_evidence)
+        return tuple(_evidence_code_value(item.code) for item in self.scoring_evidence)
 
     @property
     def effort_result_evidence(self) -> tuple[Evidence, ...]:
@@ -165,7 +174,7 @@ class ScannerCandidate:
 
     @property
     def effort_result_evidence_codes(self) -> tuple[str, ...]:
-        return tuple(str(item.code) for item in self.effort_result_evidence)
+        return tuple(_evidence_code_value(item.code) for item in self.effort_result_evidence)
 
     @property
     def absorption_evidence(self) -> tuple[Evidence, ...]:
@@ -184,7 +193,25 @@ class ScannerCandidate:
 
     @property
     def absorption_evidence_codes(self) -> tuple[str, ...]:
-        return tuple(str(item.code) for item in self.absorption_evidence)
+        return tuple(_evidence_code_value(item.code) for item in self.absorption_evidence)
+
+    @property
+    def high_volume_reversal_evidence(self) -> tuple[Evidence, ...]:
+        """Production-visible High Volume Reversal observations.
+
+        High Volume Reversal is exposed for API/CLI/frontend review only. It is
+        deliberately excluded from scanner scoring, ranking, qualification,
+        actionability, alerts, and orders until a later validated promotion PR.
+        """
+        return tuple(
+            item
+            for item in self.evidence.evidence
+            if item.code in HIGH_VOLUME_REVERSAL_READ_ONLY_CODES
+        )
+
+    @property
+    def high_volume_reversal_evidence_codes(self) -> tuple[str, ...]:
+        return tuple(_evidence_code_value(item.code) for item in self.high_volume_reversal_evidence)
 
 
 def rank_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:
@@ -209,6 +236,7 @@ class ScannerEngine:
 
     _EFFORT_RESULT_READ_ONLY_CODES = EFFORT_RESULT_READ_ONLY_CODES
     _ABSORPTION_READ_ONLY_CODES = ABSORPTION_READ_ONLY_CODES
+    _HIGH_VOLUME_REVERSAL_READ_ONLY_CODES = HIGH_VOLUME_REVERSAL_READ_ONLY_CODES
 
     _BULLISH_VSA_CODES = frozenset({
         EvidenceCode.STOPPING_VOLUME, EvidenceCode.DEMAND_COMING_IN, EvidenceCode.INCREASING_DEMAND,
@@ -227,16 +255,20 @@ class ScannerEngine:
 
     @classmethod
     def _meaningful_vsa_evidence(cls, result: EvidenceResult, bar_index: int, *, earliest_bar_index: int | None = None) -> tuple[Evidence, ...]:
-        readonly_codes = (
-            cls._STRUCTURAL_CODES
-            | cls._EFFORT_RESULT_READ_ONLY_CODES
-            | cls._ABSORPTION_READ_ONLY_CODES
+        readonly_code_values = frozenset(
+            _evidence_code_value(code)
+            for code in (
+                cls._STRUCTURAL_CODES
+                | cls._EFFORT_RESULT_READ_ONLY_CODES
+                | cls._ABSORPTION_READ_ONLY_CODES
+                | cls._HIGH_VOLUME_REVERSAL_READ_ONLY_CODES
+            )
         )
         return tuple(
             item
             for item in result.evidence
             if item.bar_index == bar_index
-            and item.code not in readonly_codes
+            and _evidence_code_value(item.code) not in readonly_code_values
             and (earliest_bar_index is None or item.bar_index >= earliest_bar_index)
         )
 

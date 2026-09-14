@@ -50,6 +50,7 @@ const READ_ONLY_DETECTOR_CODE_LABELS: Record<string, string> = {
   effort_gt_result: "Effort > Result",
   result_gt_effort: "Result > Effort",
   absorption: "Absorption",
+  high_volume_reversal: "High Volume Reversal",
 };
 
 const READ_ONLY_DETECTOR_CODES = new Set(Object.keys(READ_ONLY_DETECTOR_CODE_LABELS));
@@ -252,7 +253,7 @@ export function BarByBarPanel({
         {isDetectorLoading && <small>Loading selected-week audit evidence...</small>}
         {!isDetectorLoading && detectorError && <small>Selected-week audit evidence unavailable: {detectorError}</small>}
         {!isDetectorLoading && !detectorError && selectedWeekDetectorEvidence.length === 0 && (
-          <small>No Effort/Result or Absorption event in the historical audit response for this selected week.</small>
+          <small>No Effort/Result, Absorption, or High Volume Reversal event in the historical audit response for this selected week.</small>
         )}
         {!isDetectorLoading && !detectorError && selectedWeekDetectorEvidence.length > 0 && (
           <ul className={styles.selectedWeekDetectorList}>

@@ -5,6 +5,7 @@ from __future__ import annotations
 from models import BackgroundContext, Evidence, EvidenceCode
 from .absorption import collect_absorption
 from .helpers import EvidenceCollector, add_evidence
+from .high_volume_reversal import collect_high_volume_reversal
 from .rules import (
     is_average_spread,
     is_below_average_spread,
@@ -22,16 +23,18 @@ from .rules import (
 def collect_effort(ctx: BackgroundContext) -> list[Evidence]:
     """Collect contextual Effort vs Result evidence.
 
-    Effort/Result and Absorption remain production-visible read-only evidence:
-    these collectors may emit evidence for API/frontend review visibility, but
-    scanner scoring, ranking, qualification, actionability, alerts, and orders
-    continue to exclude their read-only codes.
+    Effort/Result, Absorption, and High Volume Reversal remain
+    production-visible read-only evidence: these collectors may emit evidence
+    for API/frontend review visibility, but scanner scoring, ranking,
+    qualification, actionability, alerts, and orders continue to exclude their
+    read-only codes.
     """
     evidence: list[Evidence] = []
 
     _detect_effort_greater_than_result(ctx, evidence)
     _detect_result_greater_than_effort(ctx, evidence)
     evidence.extend(collect_absorption(ctx))
+    evidence.extend(collect_high_volume_reversal(ctx))
 
     return evidence
 
