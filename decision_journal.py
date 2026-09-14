@@ -335,7 +335,17 @@ class DecisionJournalStore:
         return destination
 
     def upsert(self, entry: DecisionJournalEntry) -> Path:
-        existing = self.load_all(entry.symbol, entry.timeframe)
+        """Insert or replace an entry, rebuilding invalid persisted journals.
+
+        `/analysis` persists a fresh decision journal entry as a side effect.
+        A corrupt or legacy journal file must not turn that analysis request into
+        a 500 response. When the existing persisted journal cannot be read, treat
+        it as empty and overwrite it with the current valid entry.
+        """
+        try:
+            existing = self.load_all(entry.symbol, entry.timeframe)
+        except ValueError:
+            existing = ()
         by_id = {item.entry_id: item for item in existing}
         by_id[entry.entry_id] = entry
         ordered = sorted(
@@ -485,8 +495,7 @@ def _evaluation(
     )
 
 
-def _bullish_confirmation(
-    entry: DecisionJournalEntry, bars: tuple[BarObservation, ...]) -> bool:
+def _bullish_confirmation(entry: DecisionJournalEntry, bars: tuple[BarObservation, ...]) -> bool:
     if entry.resistance_price is not None:
         return any(bar.close > entry.resistance_price for bar in bars)
     if entry.reference_price is not None:
@@ -494,8 +503,7 @@ def _bullish_confirmation(
     return False
 
 
-def _bullish_invalidation(
-    entry: DecisionJournalEntry, bars: tuple[BarObservation, ...]) -> bool:
+def _bullish_invalidation(entry: DecisionJournalEntry, bars: tuple[BarObservation, ...]) -> bool:
     if entry.support_price is not None:
         return any(bar.close < entry.support_price for bar in bars)
     if entry.reference_price is not None:
@@ -503,8 +511,7 @@ def _bullish_invalidation(
     return False
 
 
-def _bearish_confirmation(
-    entry: DecisionJournalEntry, bars: tuple[BarObservation, ...]) -> bool:
+def _bearish_confirmation(entry: DecisionJournalEntry, bars: tuple[BarObservation, ...]) -> bool:
     if entry.support_price is not None:
         return any(bar.close < entry.support_price for bar in bars)
     if entry.reference_price is not None:
@@ -512,8 +519,7 @@ def _bearish_confirmation(
     return False
 
 
-def _bearish_invalidation(
-    entry: DecisionJournalEntry, bars: tuple[BarObservation, ...]) -> bool:
+def _bearish_invalidation(entry: DecisionJournalEntry, bars: tuple[BarObservation, ...]) -> bool:
     if entry.resistance_price is not None:
         return any(bar.close > entry.resistance_price for bar in bars)
     if entry.reference_price is not None:

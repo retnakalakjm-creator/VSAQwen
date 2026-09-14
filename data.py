@@ -26,6 +26,10 @@ CACHE_FORMAT_VERSION = 1
 CACHE_INTERVAL = "1d"
 CACHE_FORMAT_PARQUET = "parquet"
 CACHE_FORMAT_CSV = "csv"
+PARQUET_CACHE_UNUSABLE_REASON = (
+    "Parquet cache exists, but no usable Parquet engine is installed or "
+    "the engine DLL is blocked by policy. CSV fallback will be rebuilt."
+)
 
 
 class _DataModuleYFinanceProvider:
@@ -262,11 +266,7 @@ def read_cache_metadata(symbol: str) -> CacheMetadata | None:
 
 def _read_parquet_cache(symbol: str) -> pd.DataFrame:
     if not _parquet_engine_available():
-        raise RuntimeError(
-            "Parquet cache exists, but no usable Parquet engine is installed or "
-            "the engine DLL is blocked by policy. Delete the .parquet cache so "
-            "CSV fallback can be rebuilt, or unblock/install pyarrow/fastparquet."
-        )
+        raise RuntimeError(PARQUET_CACHE_UNUSABLE_REASON)
     df = pd.read_parquet(_cache_data_path(symbol))
     df.index = pd.to_datetime(df.index)
     df.index.name = "date"
@@ -284,13 +284,21 @@ def _read_cached_data(symbol: str) -> tuple[pd.DataFrame, Path, str] | None:
     legacy_path = _legacy_cache_path(symbol)
 
     if parquet_path.exists() and _parquet_engine_available():
-        return _read_parquet_cache(symbol), parquet_path, CACHE_FORMAT_PARQUET
+        try:
+            return _read_parquet_cache(symbol), parquet_path, CACHE_FORMAT_PARQUET
+        except Exception:
+            # Treat unreadable/corrupt parquet as a cache miss. If CSV exists,
+            # the next branch uses it; otherwise download_data rebuilds CSV.
+            pass
 
     if legacy_path.exists():
         return _read_legacy_csv_cache(symbol), legacy_path, CACHE_FORMAT_CSV
 
     if parquet_path.exists():
-        return _read_parquet_cache(symbol), parquet_path, CACHE_FORMAT_PARQUET
+        # A parquet-only cache must not crash the API when the local environment
+        # cannot load pyarrow/fastparquet. Returning a miss lets download_data
+        # fetch fresh data and write the CSV fallback used on this machine.
+        return None
 
     return None
 
@@ -371,7 +379,8 @@ def download_data(
             )
             return cached
 
-    # First use only: build the historical baseline.
+    # First use only: build the historical baseline, or recover from an unusable
+    # parquet-only cache by writing a CSV fallback on machines without Parquet.
     df = _download_history(symbol, market_data_provider)
     validate_data(df)
     _write_cached_data(symbol, df, source="historical_download")
