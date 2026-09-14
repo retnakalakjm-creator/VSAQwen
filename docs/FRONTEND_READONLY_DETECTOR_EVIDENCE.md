@@ -2,7 +2,9 @@
 
 ## Status
 
-Effort/Result, Absorption, and High Volume Reversal are production-connected backend detector families with frontend read-only visibility.
+Effort/Result and Absorption are production-connected backend detector families with frontend read-only visibility.
+
+High Volume Reversal is intentionally on hold and is not shown in frontend read-only detector evidence. A single bar is not enough to define reversal, and the rule needs further analysis/testing before implementation.
 
 This frontend display is intentionally limited to evidence review. It does not promote these detector families into scoring, ranking, qualification, actionability, trade-plan generation, alerts, or orders.
 
@@ -10,7 +12,8 @@ This frontend display is intentionally limited to evidence review. It does not p
 
 ```text
 frontend display                 = YES
-backend detector activation       = READ-ONLY DETECTOR FAMILIES ONLY
+backend detector activation       = EFFORT/RESULT + ABSORPTION ONLY
+high volume reversal display      = NO, ON HOLD
 scoring/ranking mutation          = NO
 actionability mutation            = NO
 trade-plan promotion              = NO
@@ -40,9 +43,8 @@ It displays matching read-only detector event codes from the selected audit row 
 - `effort_gt_result`
 - `result_gt_effort`
 - `absorption`
-- `high_volume_reversal`
 
-When the selected week has no matching detector event in the historical audit response, the block states that no Effort/Result, Absorption, or High Volume Reversal event is present for that selected week.
+When the selected week has no matching detector event in the historical audit response, the block states that no Effort/Result or Absorption event is present for that selected week.
 
 The selected-week block is review-only. It does not change the weekly professional reading text, scanner scoring, ranking, actionability, trade plan, alerts, or orders.
 
@@ -55,6 +57,6 @@ This follows the roadmap order:
 3. Absorption production read-only evidence.
 4. Frontend read-only visibility for detector families.
 5. Selected-week frontend read-only evidence visibility using historical audit data.
-6. High Volume Reversal backend read-only evidence.
+6. High Volume Reversal research/calibration remains on hold until a separate, validated multi-bar rule exists.
 
 Manual-review and historical replay work remain deferred.

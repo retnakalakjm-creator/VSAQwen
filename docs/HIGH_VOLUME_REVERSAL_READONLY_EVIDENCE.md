@@ -1,34 +1,23 @@
-# High Volume Reversal Read-Only Evidence
+# High Volume Reversal Research Hold
 
 ## Status
 
-High Volume Reversal is connected as production-visible read-only evidence.
+High Volume Reversal is on hold.
 
-It can appear in API, audit, CLI/candidate evidence accessors, and the selected-week Bar-by-Bar read-only detector block, but it is not promoted into scoring or actionability.
+It is not collected as production-visible evidence and should not appear in API, audit, CLI/candidate evidence accessors, or the selected-week Bar-by-Bar read-only detector block.
 
-## Detector intent
+## Reason
 
-High Volume Reversal captures a bullish reversal-style bar where heavy volume pushes price to a lower low, but the same bar recovers off the low enough to show possible professional demand.
+A reversal cannot be reliably defined by a single bar. The previous single-bar trigger profile was too broad and could confuse high-volume stopping/climactic action with a confirmed reversal event.
 
-The detector is point-in-time and does not use future bars.
+TradeGuider-style reversal concepts such as Bottom Reversal and 2 Bar Reversal require multi-bar structure and context. ProVSA should not expose a primary High Volume Reversal event until a causal, tested multi-bar rule is designed.
 
-## Generic trigger profile
-
-```text
-High volume
-Lower low versus previous completed bar
-Close off the low
-Mid/upper recovery or bullish recovery body
-```
-
-This is not symbol-specific and does not hardcode any JUBLFOOD, LT, or other ticker behavior.
-
-## Read-only boundary
+## Boundary while on hold
 
 ```text
-Evidence visibility              = YES
-Historical audit visibility       = YES
-Selected-week frontend visibility = YES
+Production evidence collection    = NO
+Historical audit event visibility = NO
+Selected-week frontend visibility = NO
 Scanner scoring                   = NO
 Ranking                           = NO
 Qualification                     = NO
@@ -39,8 +28,18 @@ Manual-review workflow            = NO
 Replay engine                     = NO
 ```
 
-## Implementation notes
+## Future requirements before reactivation
 
-The detector is connected through the existing read-only Effort/Result collection path, the same practical integration path used when Absorption was first connected.
+Any future HVR implementation should be introduced in a separate PR with:
 
-Scanner scoring explicitly excludes High Volume Reversal from meaningful VSA evidence so `high_volume_reversal` does not become a directional confirmation or fallback scoring event.
+```text
+multi-bar confirmation rules
+falling/background context requirements
+causal timing, no production lookahead
+synthetic regression fixtures
+negative tests for ordinary high-volume continuation bars
+docs under docs/
+read-only evidence first
+```
+
+Until then, Effort/Result and Absorption remain the active production-visible read-only detector families.

@@ -21,7 +21,7 @@ def test_selected_week_detector_evidence_uses_historical_audit_endpoint() -> Non
     assert "selectedWeekDetectorEventsFromAudit(payload, selectedWeekForAudit)" in panel
 
 
-def test_selected_week_detector_evidence_extracts_readonly_codes_from_audit_row() -> None:
+def test_selected_week_detector_evidence_extracts_active_readonly_codes_from_audit_row() -> None:
     panel = source(PANEL_PATH)
 
     assert "row.target_event_codes ?? []" in panel
@@ -30,7 +30,7 @@ def test_selected_week_detector_evidence_extracts_readonly_codes_from_audit_row(
     assert "effort_gt_result" in panel
     assert "result_gt_effort" in panel
     assert "absorption" in panel
-    assert "high_volume_reversal" in panel
+    assert "high_volume_reversal" not in panel
 
 
 def test_selected_week_detector_evidence_renders_below_professional_reading() -> None:
@@ -71,7 +71,7 @@ def test_selected_week_detector_evidence_keeps_readonly_guardrails_visible() -> 
     assert "<h4>Read-only Detector Evidence</h4>" in panel
     assert "Selected-week detector evidence comes from the historical audit endpoint" in panel
     assert "does not change scoring, ranking, actionability, trade plan, alerts, or orders" in panel
-    assert "No Effort/Result, Absorption, or High Volume Reversal event in the historical audit response for this selected week." in panel
+    assert "No Effort/Result or Absorption event in the historical audit response for this selected week." in panel
     assert "Selected-week audit evidence unavailable: {detectorError}" in panel
     assert "Loading selected-week audit evidence..." in panel
 
@@ -84,7 +84,6 @@ def test_selected_week_detector_evidence_lists_labels_notes_and_audit_date() -> 
     assert "<strong>{detectorCodeLabel(event.code)}</strong>" in panel
     assert "<p>{detectorReading(event)}</p>" in panel
     assert "<small>Historical audit · {displayDate(event.week)}</small>" in panel
-    assert "High Volume Reversal" in panel
 
 
 def test_selected_week_detector_evidence_has_css_and_docs() -> None:
@@ -103,5 +102,6 @@ def test_selected_week_detector_evidence_has_css_and_docs() -> None:
     assert "historical audit endpoint" in doc
     assert "/api/vsa-audit/events?symbols={symbol}&start_week={selected_week}&horizon_weeks=1" in doc
     assert "older separate bottom summary cards were removed" in doc
-    assert "high_volume_reversal" in doc
+    assert "high_volume_reversal" not in doc
+    assert "High Volume Reversal is intentionally on hold" in doc
     assert "The selected-week block is review-only" in doc

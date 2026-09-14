@@ -1,104 +1,77 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from evidence.effort import collect_effort
 from evidence.high_volume_reversal import HIGH_VOLUME_REVERSAL_CODE
 from model.evidence_result_model import EvidenceResult
-from model.score_model import ProfessionalScore, ProfessionalScoreResult
-from models import Evidence, EvidenceCategory, EvidenceCode, EvidenceDirection
-from scanner import ScannerCandidate, ScannerEngine
+from models import ClosePosition, Direction, SpreadClass, VolumeClass
+from scanner import ScannerEngine
 
 
-def _evidence(
-    code: object,
-    *,
-    bar_index: int = 20,
-    direction: EvidenceDirection = EvidenceDirection.BULLISH,
-    category: EvidenceCategory = EvidenceCategory.DEMAND,
-    weight: float = 0.0,
-) -> Evidence:
-    code_value = str(getattr(code, "value", code))
-    return Evidence(
-        code=code,
-        category=category,
-        direction=direction,
-        strength=0.5,
-        weight=weight,
-        observation=code_value,
-        description="test evidence",
-        bar_index=bar_index,
-        week_beginning="2026-09-14",
+EFFORT_PATH = Path("evidence/effort.py")
+FRONTEND_PATH = Path("frontend/app/bar-by-bar-panel.tsx")
+HVR_DOC_PATH = Path("docs/HIGH_VOLUME_REVERSAL_READONLY_EVIDENCE.md")
+
+
+def _hvr_like_context():
+    from types import SimpleNamespace
+
+    current = SimpleNamespace(
+        direction=Direction.DOWN,
+        volume=VolumeClass.HIGH,
+        spread=SpreadClass.ABOVE_AVERAGE,
+        close_position=ClosePosition.UPPER,
+        close_ratio=0.62,
+        low=90.0,
+        bar_index=42,
+        week_beginning="2026-01-05",
     )
-
-
-def _candidate(*items: Evidence) -> ScannerCandidate:
-    score = ProfessionalScore(
-        trend=0.0,
-        supply=0.0,
-        demand=0.0,
-        effort=0.0,
-        strength=0.0,
-        weakness=0.0,
-        confidence=0.0,
+    previous = SimpleNamespace(
+        direction=Direction.DOWN,
+        volume=VolumeClass.AVERAGE,
+        spread=SpreadClass.AVERAGE,
+        close_position=ClosePosition.LOWER,
+        close_ratio=0.25,
+        low=100.0,
+        bar_index=41,
+        week_beginning="2025-12-29",
     )
-    return ScannerCandidate(
-        evidence=EvidenceResult(context=object(), evidence=tuple(items)),
-        professional=ProfessionalScoreResult(scores=score, evidence=()),
-        target_bar_evidence=tuple(items),
-        campaign_evidence=tuple(items),
-        bar_index=20,
-        week="2026-09-14",
-    )
+    return SimpleNamespace(current=current, previous=previous)
 
 
-def test_high_volume_reversal_is_exposed_as_read_only_candidate_evidence() -> None:
-    hvr = _evidence(HIGH_VOLUME_REVERSAL_CODE)
-    no_supply = _evidence(
-        EvidenceCode.NO_SUPPLY,
-        direction=EvidenceDirection.BULLISH,
-        category=EvidenceCategory.DEMAND,
-        weight=1.0,
-    )
+def test_high_volume_reversal_is_not_collected_in_production_effort_path() -> None:
+    evidence = collect_effort(_hvr_like_context())
 
-    candidate = _candidate(hvr, no_supply)
-
-    assert candidate.high_volume_reversal_evidence == (hvr,)
-    assert candidate.high_volume_reversal_evidence_codes == ("high_volume_reversal",)
+    assert HIGH_VOLUME_REVERSAL_CODE not in {item.code for item in evidence}
 
 
-def test_high_volume_reversal_does_not_become_scoring_vsa_evidence() -> None:
-    hvr = _evidence(HIGH_VOLUME_REVERSAL_CODE, bar_index=21)
-    no_supply = _evidence(
-        EvidenceCode.NO_SUPPLY,
-        bar_index=20,
-        direction=EvidenceDirection.BULLISH,
-        category=EvidenceCategory.DEMAND,
-        weight=1.0,
-    )
-    evidence = EvidenceResult(
-        context=object(),
-        evidence=(no_supply, hvr),
-    )
+def test_effort_collector_documents_hvr_hold_boundary() -> None:
+    source = EFFORT_PATH.read_text(encoding="utf-8")
 
-    scoring = ScannerEngine._scoring_evidence(evidence, 21)
-
-    assert scoring == (no_supply,)
-    assert hvr not in scoring
+    assert "collect_high_volume_reversal" not in source
+    assert "High Volume Reversal is intentionally not collected here" in source
+    assert "A single bar is not enough to define reversal" in source
 
 
-def test_high_volume_reversal_only_bar_does_not_create_scoring_evidence() -> None:
-    evidence = EvidenceResult(
-        context=object(),
-        evidence=(
-            _evidence(HIGH_VOLUME_REVERSAL_CODE, bar_index=21),
-        ),
-    )
+def test_high_volume_reversal_is_not_frontend_visible_detector_code() -> None:
+    source = FRONTEND_PATH.read_text(encoding="utf-8")
 
-    assert ScannerEngine._scoring_evidence(evidence, 21) == ()
+    assert "high_volume_reversal" not in source
+    assert "High Volume Reversal" not in source
+    assert "No Effort/Result or Absorption event" in source
 
 
-def test_high_volume_reversal_is_not_directional_scanner_confirmation() -> None:
-    hvr = _evidence(HIGH_VOLUME_REVERSAL_CODE)
+def test_high_volume_reversal_hold_doc_is_explicit() -> None:
+    source = HVR_DOC_PATH.read_text(encoding="utf-8")
 
-    bullish, bearish = ScannerEngine._vsa_directional_evidence((hvr,))
+    assert "High Volume Reversal is on hold" in source
+    assert "not collected as production-visible evidence" in source
+    assert "A reversal cannot be reliably defined by a single bar" in source
+    assert "multi-bar rule" in source
 
-    assert bullish == ()
-    assert bearish == ()
+
+def test_hvr_code_remains_excluded_from_scoring_if_historical_payload_exists() -> None:
+    result = EvidenceResult(context=object(), evidence=())
+
+    assert ScannerEngine._scoring_evidence(result, 42) == ()
