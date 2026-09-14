@@ -22,7 +22,7 @@ High Volume Reversal              = NOT IN THIS PR
 
 ## Frontend behavior
 
-The Bar-by-Bar workspace now includes a dedicated read-only detector evidence panel for:
+The Bar-by-Bar workspace includes a dedicated read-only detector evidence panel for:
 
 - Effort / Result
 - Absorption
@@ -30,6 +30,20 @@ The Bar-by-Bar workspace now includes a dedicated read-only detector evidence pa
 The panel shows latest matching backend evidence from the production analysis response and labels the families as `Read-only / not scoring`.
 
 When no current matching detector event exists, the panel keeps the detector family visible but marks that no event is present in the current analysis response.
+
+## Selected-week behavior
+
+The selected weekly professional reading now includes a `Read-only Detector Evidence` block directly below the narrative paragraph.
+
+That selected-week block filters the same production analysis response to the selected week and displays any matching read-only detector events for:
+
+- `effort_gt_result`
+- `result_gt_effort`
+- `absorption`
+
+When the selected week has no matching detector event in the current analysis response, the block states that no Effort/Result or Absorption event is present for that selected week.
+
+The selected-week block is also review-only. It does not change the weekly professional reading text, scanner scoring, ranking, actionability, trade plan, alerts, or orders.
 
 ## Roadmap alignment
 
@@ -39,6 +53,7 @@ This follows the roadmap order:
 2. Effort/Result production read-only evidence.
 3. Absorption production read-only evidence.
 4. Frontend read-only visibility for both families.
-5. High Volume Reversal backend work next.
+5. Selected-week frontend read-only evidence visibility.
+6. High Volume Reversal backend work next.
 
 Manual-review and historical replay work remain deferred.

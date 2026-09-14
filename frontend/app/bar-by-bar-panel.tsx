@@ -212,6 +212,10 @@ export function BarByBarPanel({
     const targetWeek = selectedWeek ?? localSelectedWeek;
     return readings.find((item) => item.week === targetWeek) ?? readings.at(-1) ?? null;
   }, [localSelectedWeek, readings, selectedWeek]);
+  const selectedWeekDetectorEvidence = useMemo(() => {
+    if (!selectedReading) return [];
+    return detectorEvidence.filter((event) => event.week === selectedReading.week);
+  }, [detectorEvidence, selectedReading]);
 
   function selectReading(item: WeeklyBarReading) {
     setLocalSelectedWeek(item.week);
@@ -221,6 +225,36 @@ export function BarByBarPanel({
   function selectDetectorEvent(event: AnalysisEvidence) {
     setLocalSelectedWeek(event.week);
     onSelectWeek?.(event.week);
+  }
+
+  function renderSelectedWeekDetectorEvidence() {
+    if (!selectedReading) return null;
+
+    return (
+      <div className={styles.selectedWeekDetectorEvidence}>
+        <h4>Read-only Detector Evidence</h4>
+        <small className={styles.selectedWeekDetectorGuardrail}>
+          Selected-week detector evidence is review-only and does not change scoring, ranking, actionability, trade plan, alerts, or orders.
+        </small>
+        {isDetectorLoading && <small>Loading detector evidence for selected week...</small>}
+        {!isDetectorLoading && detectorError && <small>Detector evidence unavailable: {detectorError}</small>}
+        {!isDetectorLoading && !detectorError && selectedWeekDetectorEvidence.length === 0 && (
+          <small>No Effort/Result or Absorption event in the current analysis response for this selected week.</small>
+        )}
+        {!isDetectorLoading && !detectorError && selectedWeekDetectorEvidence.length > 0 && (
+          <ul className={styles.selectedWeekDetectorList}>
+            {selectedWeekDetectorEvidence.map((event) => (
+              <li className={styles.selectedWeekDetectorItem} key={`${event.week}-${event.bar_index}-${event.code}`}>
+                <span className={styles.readOnlyDetectorBadge}>Read-only / not scoring</span>
+                <strong>{detectorCodeLabel(event.code)}</strong>
+                <p>{detectorReading(event)}</p>
+                <small>{event.category} · {event.direction}</small>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
   }
 
   function renderReadOnlyDetectorEvidence() {
@@ -318,6 +352,7 @@ export function BarByBarPanel({
               <h3>{displayDate(selectedReading.week)}</h3>
               <h4>Professional Reading</h4>
               <p>{selectedReading.professional_reading}</p>
+              {renderSelectedWeekDetectorEvidence()}
             </article>
           )}
         </div>

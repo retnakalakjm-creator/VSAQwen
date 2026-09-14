@@ -121,6 +121,52 @@
   line-height: 1.7;
 }
 
+.selectedWeekDetectorEvidence {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  border-top: 1px solid #dbe3ec;
+  padding-top: 12px;
+}
+
+.selectedWeekDetectorGuardrail {
+  color: #475569;
+  line-height: 1.45;
+}
+
+.selectedWeekDetectorList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selectedWeekDetectorItem {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #dbe3ec;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.selectedWeekDetectorItem strong {
+  color: #172033;
+  font-size: 14px;
+}
+
+.selectedWeekDetectorItem p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.selectedWeekDetectorItem small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .readOnlyDetectorPanel {
   display: grid;
   gap: 12px;
