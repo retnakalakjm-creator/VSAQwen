@@ -19,6 +19,11 @@ ANOMALY_SIGNAL_BAR_REASON = (
     "review adjusted OHLCV data before treating the setup as actionable."
 )
 
+EFFORT_RESULT_READ_ONLY_CODES = frozenset({
+    EvidenceCode.EFFORT_GT_RESULT,
+    EvidenceCode.RESULT_GT_EFFORT,
+})
+
 
 @dataclass(slots=True, frozen=True)
 class ScannerCandidate:
@@ -139,6 +144,25 @@ class ScannerCandidate:
     def scoring_evidence_codes(self) -> tuple[str, ...]:
         return tuple(str(item.code) for item in self.scoring_evidence)
 
+    @property
+    def effort_result_evidence(self) -> tuple[Evidence, ...]:
+        """Production-visible Effort/Result observations.
+
+        These are read-only scanner evidence. They are exposed for review and
+        API/CLI visibility, but they must not participate in scoring, ranking,
+        qualification, actionability, alerts, or orders until a later validated
+        production PR explicitly promotes them.
+        """
+        return tuple(
+            item
+            for item in self.evidence.evidence
+            if item.code in EFFORT_RESULT_READ_ONLY_CODES
+        )
+
+    @property
+    def effort_result_evidence_codes(self) -> tuple[str, ...]:
+        return tuple(str(item.code) for item in self.effort_result_evidence)
+
 
 def rank_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:
     return sorted(candidates, key=lambda candidate: (candidate.actionable, candidate.ranking_score), reverse=True)
@@ -160,6 +184,8 @@ class ScannerEngine:
         EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
     })
 
+    _EFFORT_RESULT_READ_ONLY_CODES = EFFORT_RESULT_READ_ONLY_CODES
+
     _BULLISH_VSA_CODES = frozenset({
         EvidenceCode.STOPPING_VOLUME, EvidenceCode.DEMAND_COMING_IN, EvidenceCode.INCREASING_DEMAND,
         EvidenceCode.HIDDEN_DEMAND, EvidenceCode.DEMAND_DRYING_UP, EvidenceCode.NO_SUPPLY,
@@ -177,7 +203,14 @@ class ScannerEngine:
 
     @classmethod
     def _meaningful_vsa_evidence(cls, result: EvidenceResult, bar_index: int, *, earliest_bar_index: int | None = None) -> tuple[Evidence, ...]:
-        return tuple(item for item in result.evidence if item.bar_index == bar_index and item.code not in cls._STRUCTURAL_CODES and (earliest_bar_index is None or item.bar_index >= earliest_bar_index))
+        readonly_codes = cls._STRUCTURAL_CODES | cls._EFFORT_RESULT_READ_ONLY_CODES
+        return tuple(
+            item
+            for item in result.evidence
+            if item.bar_index == bar_index
+            and item.code not in readonly_codes
+            and (earliest_bar_index is None or item.bar_index >= earliest_bar_index)
+        )
 
     @staticmethod
     def _target_bar_evidence(result: EvidenceResult, bar_index: int | None) -> tuple[Evidence, ...]:

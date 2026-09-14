@@ -23,11 +23,9 @@ from models import (
 from scanner import ScannerCandidate, ScannerEngine, rank_actionable_candidates, rank_candidates
 
 
-EFFORT_RESULT_CODES = (
+EFFORT_RESULT_READ_ONLY_CODES = (
     EvidenceCode.EFFORT_GT_RESULT,
     EvidenceCode.RESULT_GT_EFFORT,
-    EvidenceCode.ABSORPTION,
-    EvidenceCode.EFFORT_RESULT,
 )
 
 
@@ -169,15 +167,16 @@ def test_effort_result_only_candidates_are_not_promoted_into_actionable_ranking(
     actionable = _candidate_with_current(_bearish_vsa())
     contextual_only = tuple(
         _candidate_with_current(_effort_result(code))
-        for code in EFFORT_RESULT_CODES
+        for code in EFFORT_RESULT_READ_ONLY_CODES
     )
 
     ranked = rank_candidates((*contextual_only, actionable))
 
     assert ranked[0] == actionable
     assert rank_actionable_candidates((*contextual_only, actionable)) == [actionable]
-    for candidate, code in zip(contextual_only, EFFORT_RESULT_CODES):
-        assert candidate.scoring_evidence_codes == (str(code),)
+    for candidate, code in zip(contextual_only, EFFORT_RESULT_READ_ONLY_CODES):
+        assert candidate.effort_result_evidence_codes == (str(code),)
+        assert candidate.scoring_evidence_codes == ()
         assert not candidate.actionable
         assert not candidate.qualification_result.is_actionable_evidence
 
@@ -188,12 +187,16 @@ def test_effort_result_context_does_not_add_bearish_ranking_tiebreaker():
         _bearish_vsa(),
         _effort_result(EvidenceCode.EFFORT_GT_RESULT),
         _effort_result(EvidenceCode.RESULT_GT_EFFORT),
-        _effort_result(EvidenceCode.ABSORPTION),
     )
 
     assert baseline.actionable
     assert with_context.actionable
-    assert len(with_context.scoring_evidence) > len(baseline.scoring_evidence)
+    assert with_context.scoring_evidence == baseline.scoring_evidence
+    assert with_context.scoring_evidence_codes == baseline.scoring_evidence_codes
+    assert with_context.effort_result_evidence_codes == (
+        str(EvidenceCode.EFFORT_GT_RESULT),
+        str(EvidenceCode.RESULT_GT_EFFORT),
+    )
     assert _rank_key(with_context) == _rank_key(baseline)
     assert rank_actionable_candidates((baseline, with_context)) == [baseline, with_context]
     assert rank_actionable_candidates((with_context, baseline)) == [with_context, baseline]
@@ -206,13 +209,17 @@ def test_effort_result_context_does_not_add_bullish_ranking_tiebreaker():
         _bullish_vsa(),
         _effort_result(EvidenceCode.EFFORT_GT_RESULT),
         _effort_result(EvidenceCode.RESULT_GT_EFFORT),
-        _effort_result(EvidenceCode.EFFORT_RESULT),
         history=history,
     )
 
     assert baseline.actionable
     assert with_context.actionable
-    assert len(with_context.scoring_evidence) > len(baseline.scoring_evidence)
+    assert with_context.scoring_evidence == baseline.scoring_evidence
+    assert with_context.scoring_evidence_codes == baseline.scoring_evidence_codes
+    assert with_context.effort_result_evidence_codes == (
+        str(EvidenceCode.EFFORT_GT_RESULT),
+        str(EvidenceCode.RESULT_GT_EFFORT),
+    )
     assert _rank_key(with_context) == _rank_key(baseline)
     assert rank_actionable_candidates((baseline, with_context)) == [baseline, with_context]
     assert rank_actionable_candidates((with_context, baseline)) == [with_context, baseline]
@@ -229,13 +236,17 @@ def test_effort_result_context_does_not_change_relative_scanner_ordering():
         _bearish_vsa(code=EvidenceCode.NO_DEMAND),
         _effort_result(EvidenceCode.EFFORT_GT_RESULT),
         _effort_result(EvidenceCode.RESULT_GT_EFFORT),
-        _effort_result(EvidenceCode.ABSORPTION),
     )
 
     assert stronger.actionable
     assert weaker.actionable
     assert weaker_with_context.actionable
     assert stronger.ranking_score > weaker.ranking_score
+    assert weaker_with_context.scoring_evidence == weaker.scoring_evidence
+    assert weaker_with_context.effort_result_evidence_codes == (
+        str(EvidenceCode.EFFORT_GT_RESULT),
+        str(EvidenceCode.RESULT_GT_EFFORT),
+    )
     assert weaker_with_context.ranking_score == weaker.ranking_score
     assert rank_actionable_candidates((weaker_with_context, stronger)) == [
         stronger,

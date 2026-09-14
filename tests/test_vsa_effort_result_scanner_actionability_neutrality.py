@@ -3,8 +3,9 @@
 PR #138 enabled contextual Effort/Result collection, PR #139 neutralized
 professional scoring weights, and PR #140 protected aggregation neutrality.
 These tests protect the scanner actionability path so Effort/Result observations
-can appear in the current scoring window without becoming directional VSA
-confirmation or actionable scanner evidence before a separate scoring/ranking PR.
+can appear in production scanner output as read-only evidence without becoming
+directional VSA confirmation or actionable scanner evidence before a separate
+scoring/ranking PR.
 """
 
 from __future__ import annotations
@@ -23,11 +24,9 @@ from models import (
 from scanner import ScannerEngine
 
 
-EFFORT_RESULT_CODES = (
+EFFORT_RESULT_READ_ONLY_CODES = (
     EvidenceCode.EFFORT_GT_RESULT,
     EvidenceCode.RESULT_GT_EFFORT,
-    EvidenceCode.ABSORPTION,
-    EvidenceCode.EFFORT_RESULT,
 )
 
 
@@ -128,22 +127,24 @@ def test_effort_result_only_current_scoring_window_is_not_actionable_confirmatio
         _effort_result(EvidenceCode.RESULT_GT_EFFORT),
     )
 
-    assert candidate.scoring_evidence_codes == (
+    assert candidate.effort_result_evidence_codes == (
         str(EvidenceCode.EFFORT_GT_RESULT),
         str(EvidenceCode.RESULT_GT_EFFORT),
     )
-    assert candidate.scoring_bar_index == 42
-    assert candidate.scoring_evidence_age == 0
+    assert candidate.scoring_evidence_codes == ()
+    assert candidate.scoring_bar_index is None
+    assert candidate.scoring_evidence_age is None
     assert not candidate.actionable
     assert not candidate.qualification_result.is_actionable_evidence
     assert "no directional VSA confirmation" in candidate.reason
 
 
 def test_each_effort_result_code_alone_fails_scanner_actionability_gate():
-    for code in EFFORT_RESULT_CODES:
+    for code in EFFORT_RESULT_READ_ONLY_CODES:
         candidate = _candidate_with_current(_effort_result(code))
 
-        assert candidate.scoring_evidence_codes == (str(code),)
+        assert candidate.effort_result_evidence_codes == (str(code),)
+        assert candidate.scoring_evidence_codes == ()
         assert candidate.professional.effort == 0.0
         assert candidate.professional.scores.net_pressure == 0.0
         assert not candidate.actionable
@@ -161,6 +162,11 @@ def test_effort_result_context_does_not_change_directional_vsa_actionability():
     assert baseline.actionable
     assert with_context.actionable
     assert with_context.qualification == baseline.qualification
+    assert with_context.scoring_evidence_codes == baseline.scoring_evidence_codes
+    assert with_context.effort_result_evidence_codes == (
+        str(EvidenceCode.EFFORT_GT_RESULT),
+        str(EvidenceCode.RESULT_GT_EFFORT),
+    )
     assert with_context.professional.effort == baseline.professional.effort
     assert with_context.professional.scores.net_pressure == baseline.professional.scores.net_pressure
     assert with_context.professional.scores.net_strength == baseline.professional.scores.net_strength
@@ -170,7 +176,7 @@ def test_effort_result_context_does_not_change_directional_vsa_actionability():
 def test_effort_result_codes_are_not_directional_scanner_vsa_evidence():
     scoring_evidence = tuple(
         _effort_result(code, bar_index=index)
-        for index, code in enumerate(EFFORT_RESULT_CODES, start=42)
+        for index, code in enumerate(EFFORT_RESULT_READ_ONLY_CODES, start=42)
     )
 
     bullish, bearish = ScannerEngine._vsa_directional_evidence(scoring_evidence)
