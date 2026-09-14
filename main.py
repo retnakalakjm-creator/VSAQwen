@@ -78,6 +78,7 @@ def main() -> None:
             "qualifying_evidence_codes": candidate.qualifying_evidence_codes,
             "scoring_evidence_codes": candidate.scoring_evidence_codes,
             "effort_result_evidence_codes": candidate.effort_result_evidence_codes,
+            "absorption_evidence_codes": candidate.absorption_evidence_codes,
             "scoring_bar_index": candidate.scoring_bar_index,
         })
 

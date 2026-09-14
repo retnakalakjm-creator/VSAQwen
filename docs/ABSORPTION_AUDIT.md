@@ -2,17 +2,19 @@
 
 ## Status
 
-`ABSORPTION` is **production-connected / non-scoring / frozen**.
+`ABSORPTION` is **production-connected / read-only scanner evidence / non-scoring / frozen**.
 
-The canonical detector is connected to the production `EvidenceEngine` through the demand collection path and registered in the evidence registries. It remains excluded from professional scoring and scanner ranking because the completed production ranking/actionability audit did not justify a production scoring weight.
+The canonical detector is connected to the production `EvidenceEngine` through the demand collection path and registered in the evidence registries. It is visible in scanner outputs for review, but remains excluded from scanner scoring evidence, directional VSA confirmation, professional scoring, scanner ranking, qualification, actionability, alerts, and orders because the completed production ranking/actionability audit did not justify a production scoring weight.
 
 ```text
-base weight        = 0.38   # research/audit reference only
-conflict penalty   = 0.20   # research counterfactual only
-production weight  = 0.00
-rejection          = NO
-production path    = YES
-production scoring = NO
+base weight          = 0.38   # research/audit reference only
+conflict penalty     = 0.20   # research counterfactual only
+production weight    = 0.00
+rejection            = NO
+production path      = YES
+scanner visibility   = YES
+scoring evidence     = NO
+production scoring   = NO
 ```
 
 ## Canonical detector
@@ -28,6 +30,10 @@ The production detector is:
 All five conditions are mandatory. The detector is point-in-time and emits one `EvidenceCode.ABSORPTION` observation on the current bar when the definition passes.
 
 `ABSORPTION` is represented under the dedicated `EvidenceCategory.ABSORPTION` category. Its runtime evidence weight is `0.00`.
+
+## Production scanner boundary
+
+`ABSORPTION` is exposed as a read-only scanner observation through the dedicated scanner evidence accessors. It must not become scoring VSA evidence, VSA confirmation, ranking input, actionable evidence, alert evidence, or order evidence unless a later production-scoring PR explicitly promotes it after validation.
 
 ## Candidate outcome audit
 
@@ -155,6 +161,9 @@ collection path         = EvidenceEngine -> collect_demand -> collect_absorption
 registry                = YES
 category                = ABSORPTION
 runtime scoring weight  = 0.00
+read-only accessor      = YES
+scoring evidence        = NO
+directional VSA confirm = NO
 conflict penalty        = 0.20 research-only / not applied
 scanner ranking         = UNCHANGED
 ```
@@ -187,10 +196,10 @@ Weight   Mean dStrength   Mean dConfidence   Actionable 0   Actionable 1   Gaine
 
 Interpretation:
 
-- The production scorer responds to ABSORPTION counterfactual weights, confirming that the scoring path is real rather than a dead configuration entry.
-- The response is deterministic and monotonic across the tested weights.
-- No ABSORPTION event changed scanner actionability in this population. The event is not part of the scanner's directional VSA confirmation sets, so changing its professional score alone does not make a structural candidate actionable.
-- Therefore the tested nonzero weights currently affect professional score fields but do **not** produce a validated scanner decision/ranking benefit.
+- Historical counterfactual scoring responded to ABSORPTION weights, confirming that the scoring path was measurable rather than a dead configuration entry.
+- The response was deterministic and monotonic across the tested weights.
+- No ABSORPTION event changed scanner actionability in this population. The event is not part of the scanner's directional VSA confirmation sets, so changing its professional score alone did not make a structural candidate actionable.
+- Therefore the tested nonzero weights did **not** produce a validated scanner decision/ranking benefit.
 
 Decision from this audit:
 
@@ -203,14 +212,14 @@ production weight                    = KEEP 0.00
 
 ## Regression status
 
-The full repository regression suite has now passed with the production-policy regression guards present:
+The full repository regression suite passed with the production-policy regression guards present:
 
 ```text
 python -m pytest -q
 210 passed
 ```
 
-This validates the frozen non-scoring production boundary.
+This validates the frozen non-scoring production boundary recorded at the time of the audit.
 
 ## Final decision
 
@@ -218,13 +227,15 @@ This validates the frozen non-scoring production boundary.
 ABSORPTION
     detector          = PRODUCTION-CONNECTED
     registry          = YES
+    scanner visibility = YES
+    scoring evidence  = NO
     base weight       = 0.38   # research/audit reference only
     runtime weight    = 0.00
     conflict penalty  = 0.20   # research counterfactual only
     rejection         = NO
     scoring mutation  = NO
     ranking mutation  = NO
-    status             = FROZEN PRODUCTION-CONNECTED / NON-SCORING
+    status            = FROZEN PRODUCTION-CONNECTED / READ-ONLY / NON-SCORING
 ```
 
 Future promotion to production scoring requires a new validated downstream decision or ranking benefit from the canonical detector, followed by regression validation. No research-only weight or penalty should be interpreted as an active production scoring rule.

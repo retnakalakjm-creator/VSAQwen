@@ -24,6 +24,10 @@ EFFORT_RESULT_READ_ONLY_CODES = frozenset({
     EvidenceCode.RESULT_GT_EFFORT,
 })
 
+ABSORPTION_READ_ONLY_CODES = frozenset({
+    EvidenceCode.ABSORPTION,
+})
+
 
 @dataclass(slots=True, frozen=True)
 class ScannerCandidate:
@@ -163,6 +167,25 @@ class ScannerCandidate:
     def effort_result_evidence_codes(self) -> tuple[str, ...]:
         return tuple(str(item.code) for item in self.effort_result_evidence)
 
+    @property
+    def absorption_evidence(self) -> tuple[Evidence, ...]:
+        """Production-visible Absorption observations.
+
+        ABSORPTION is detector-connected and visible for scanner/API/CLI review,
+        but it remains read-only: it must not become scoring VSA confirmation,
+        ranking, qualification, actionability, alerts, or orders without a later
+        validated production-scoring PR.
+        """
+        return tuple(
+            item
+            for item in self.evidence.evidence
+            if item.code in ABSORPTION_READ_ONLY_CODES
+        )
+
+    @property
+    def absorption_evidence_codes(self) -> tuple[str, ...]:
+        return tuple(str(item.code) for item in self.absorption_evidence)
+
 
 def rank_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:
     return sorted(candidates, key=lambda candidate: (candidate.actionable, candidate.ranking_score), reverse=True)
@@ -185,6 +208,7 @@ class ScannerEngine:
     })
 
     _EFFORT_RESULT_READ_ONLY_CODES = EFFORT_RESULT_READ_ONLY_CODES
+    _ABSORPTION_READ_ONLY_CODES = ABSORPTION_READ_ONLY_CODES
 
     _BULLISH_VSA_CODES = frozenset({
         EvidenceCode.STOPPING_VOLUME, EvidenceCode.DEMAND_COMING_IN, EvidenceCode.INCREASING_DEMAND,
@@ -203,7 +227,11 @@ class ScannerEngine:
 
     @classmethod
     def _meaningful_vsa_evidence(cls, result: EvidenceResult, bar_index: int, *, earliest_bar_index: int | None = None) -> tuple[Evidence, ...]:
-        readonly_codes = cls._STRUCTURAL_CODES | cls._EFFORT_RESULT_READ_ONLY_CODES
+        readonly_codes = (
+            cls._STRUCTURAL_CODES
+            | cls._EFFORT_RESULT_READ_ONLY_CODES
+            | cls._ABSORPTION_READ_ONLY_CODES
+        )
         return tuple(
             item
             for item in result.evidence
