@@ -136,11 +136,19 @@ def test_default_vsa_audit_transition_runner_matches_scanner_engine_across_windo
 def test_vsa_audit_default_uses_historical_transition_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     weekly = _weekly_frame()
     scan_lengths: list[int] = []
+    batch_lengths: list[int] = []
+    batch_targets: list[tuple[int, ...]] = []
 
     class RecordingHistoricalRunner(HistoricalScannerRunner):
         def scan(self, metrics: pd.DataFrame):
             scan_lengths.append(len(metrics))
             return super().scan(metrics)
+
+        def scan_to_indices(self, metrics: pd.DataFrame, target_indices):
+            targets = tuple(target_indices)
+            batch_lengths.append(len(metrics))
+            batch_targets.append(targets)
+            return super().scan_to_indices(metrics, targets)
 
     monkeypatch.setattr(vsa_event_audit, "HistoricalScannerRunner", RecordingHistoricalRunner)
 
@@ -151,7 +159,9 @@ def test_vsa_audit_default_uses_historical_transition_runner(monkeypatch: pytest
         horizon_weeks=4,
     )
 
-    assert scan_lengths == [30]
+    assert scan_lengths == []
+    assert batch_lengths == [30]
+    assert batch_targets == [(26, 27, 28, 29)]
     assert [row.replay_bar_index for row in audit.rows] == [26, 27, 28, 29]
 
 

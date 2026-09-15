@@ -255,7 +255,13 @@ def build_vsa_event_audit(
         )
 
     scanner_engine = scanner if scanner is not None else HistoricalScannerRunner()
-    candidates = scanner_engine.scan(metrics.iloc[: end_index + 1].copy())
+    bounded_metrics = metrics.iloc[: end_index + 1].copy()
+    target_indices = tuple(range(start_index, end_index + 1))
+    scan_to_indices = getattr(scanner_engine, "scan_to_indices", None)
+    if callable(scan_to_indices):
+        candidates = list(scan_to_indices(bounded_metrics, target_indices).values())
+    else:
+        candidates = scanner_engine.scan(bounded_metrics)
 
     rows = tuple(
         _candidate_to_row(symbol, candidate, metrics=metrics)

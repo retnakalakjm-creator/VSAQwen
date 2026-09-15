@@ -50,6 +50,14 @@ The method delegates to `ScannerTransitionEngine.scan_to_indices(...)`, so targe
 
 This keeps future audit or historical callers on the named historical runner boundary instead of importing the transition engine directly just to use suffix reuse.
 
+## First VSA event audit consumer
+
+`build_vsa_event_audit(...)` now uses the selected-target `scan_to_indices(...)` boundary when the configured scanner exposes it.
+
+The audit still bounds metrics at the resolved `end_index`, but it asks only for candidates in the resolved replay window instead of materializing the full candidate list and filtering it later. Scanner doubles that only implement `scan(...)` remain supported for focused tests.
+
+This remains an audit-only optimization seam. It does not change production scanner call sites, checkpoint policy, detector rules, VSA semantics, scoring, ranking, qualification, actionability, API response shape, frontend runtime, replay/manual-review behavior, HVR policy, trade plans, alerts, or orders.
+
 ## Existing safe reuse seam
 
 `ScannerTransitionEngine.run_to_index(metrics, target_index, state=existing_state)` continues to support continuing from a prior `ScanState`.

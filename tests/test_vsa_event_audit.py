@@ -124,6 +124,39 @@ class FakeScanner:
         return candidates
 
 
+class BatchScanner:
+    def __init__(self) -> None:
+        self.scan_called = False
+        self.scan_to_indices_calls: list[tuple[int, tuple[int, ...]]] = []
+
+    def scan(self, metrics: pd.DataFrame):
+        self.scan_called = True
+        raise AssertionError("VSA event audit should use scan_to_indices when available")
+
+    def scan_to_indices(self, metrics: pd.DataFrame, target_indices):
+        targets = tuple(target_indices)
+        self.scan_to_indices_calls.append((len(metrics), targets))
+        candidates = {}
+        for index in targets:
+            week = str(metrics.iloc[index]["week_beginning"])
+            if index == 22:
+                candidates[index] = _candidate(
+                    index,
+                    week,
+                    (_event("stopping_volume"),),
+                    actionable=True,
+                )
+            elif index == 23:
+                candidates[index] = _candidate(
+                    index,
+                    week,
+                    (_event("structural_progression_weakening"),),
+                )
+            else:
+                candidates[index] = _candidate(index, week, ())
+        return candidates
+
+
 class FlagScanner:
     def scan(self, metrics: pd.DataFrame):
         candidates = []
@@ -249,9 +282,9 @@ def test_build_vsa_event_audit_runs_one_bounded_scan_and_returns_compact_rows() 
 
 def test_build_vsa_event_audit_defaults_to_historical_scanner_runner(monkeypatch) -> None:
     weekly = _weekly_frame()
-    created: list[FakeScanner] = []
+    created: list[BatchScanner] = []
 
-    class DefaultAuditScanner(FakeScanner):
+    class DefaultAuditScanner(BatchScanner):
         def __init__(self) -> None:
             super().__init__()
             created.append(self)
@@ -266,7 +299,8 @@ def test_build_vsa_event_audit_defaults_to_historical_scanner_runner(monkeypatch
     )
 
     assert len(created) == 1
-    assert created[0].scan_lengths == [24]
+    assert created[0].scan_called is False
+    assert created[0].scan_to_indices_calls == [(24, (22, 23))]
     assert [row.replay_bar_index for row in audit.rows] == [22, 23]
 
 
