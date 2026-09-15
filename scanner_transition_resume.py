@@ -24,12 +24,12 @@ class TransitionResumeResult:
 
 
 class ScannerTransitionResumeAdapter:
-    """Resume adapter from durable ``ScannerState`` into the transition runner.
+    """Resume durable ``ScannerState`` checkpoints through the transition runner.
 
-    This adapter is a Phase 4 guardrail surface only. It lets tests compare a
-    saved production checkpoint plus new bars against the existing
-    ``IncrementalScannerEngine.resume_latest`` output before the production
-    resume path is routed through the transition engine.
+    This adapter is the production resume boundary for validated checkpoints.
+    Earlier guardrails established parity with
+    ``IncrementalScannerEngine.resume_latest(...)`` before production resume was
+    routed here.
     """
 
     def __init__(self, transition: ScannerTransitionEngine | None = None) -> None:

@@ -7,12 +7,12 @@ from scanner_transition import ScannerTransitionEngine
 
 
 class HistoricalScannerRunner:
-    """Non-production historical scanner runner backed by the transition engine.
+    """Historical and production full-replay runner backed by the transition engine.
 
-    This adapter gives historical/audit/replay callers a named migration target
-    without wiring the production scanner to the transition contract. It delegates
-    to ``ScannerTransitionEngine`` and preserves the current scanner semantics
-    proven by the transition-runner parity tests.
+    This adapter gives historical, audit, replay, bootstrap, and production
+    fallback callers a named transition boundary. It delegates to
+    ``ScannerTransitionEngine`` and preserves the scanner semantics proven by
+    the transition-runner parity tests.
     """
 
     def __init__(self, transition: ScannerTransitionEngine | None = None) -> None:
