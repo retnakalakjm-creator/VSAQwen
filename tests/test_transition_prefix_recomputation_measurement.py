@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from engine.columns import (
     COL_CLOSE,
@@ -173,3 +174,43 @@ def test_stateful_run_to_index_extends_only_the_new_suffix() -> None:
     assert _candidate_signature(evaluation.candidate) == _candidate_signature(
         baseline.scan_to_index(metrics, target_index)
     )
+
+
+def test_scan_to_indices_reuses_one_transition_state_for_increasing_targets() -> None:
+    metrics = _metrics()
+    transition = MeasuringTransitionEngine()
+    baseline = ScannerEngine()
+    start = baseline.MIN_REPLAY_BARS
+    targets = (start + 3, start + 5, start + 7)
+
+    candidates = transition.scan_to_indices(metrics, targets)
+
+    assert list(candidates) == list(targets)
+    for target_index in targets:
+        assert _candidate_signature(candidates[target_index]) == _candidate_signature(
+            baseline.scan_to_index(metrics, target_index)
+        )
+
+    expected_indices = _expected_indices(start, targets[-1])
+    assert transition.feature_indices == expected_indices
+    assert transition.prefix_lengths == [index + 1 for index in expected_indices]
+
+
+def test_scan_to_indices_rejects_empty_and_invalid_target_sequences() -> None:
+    metrics = _metrics()
+    transition = ScannerTransitionEngine()
+    start = ScannerEngine.MIN_REPLAY_BARS
+
+    assert transition.scan_to_indices(metrics, ()) == {}
+
+    with pytest.raises(ValueError, match="strictly increasing"):
+        transition.scan_to_indices(metrics, (start + 2, start + 2))
+
+    with pytest.raises(ValueError, match="strictly increasing"):
+        transition.scan_to_indices(metrics, (start + 3, start + 1))
+
+    with pytest.raises(ValueError, match="target_index must be"):
+        transition.scan_to_indices(metrics, (start - 1,))
+
+    with pytest.raises(IndexError, match="outside metrics"):
+        transition.scan_to_indices(metrics, (len(metrics),))

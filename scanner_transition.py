@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import pandas as pd
@@ -71,9 +72,10 @@ class BarEvaluation:
 class ScannerTransitionEngine:
     """Small deterministic step adapter over the existing scanner pipeline.
 
-    This is a contract/scaffold only. Production scanning is not routed through
-    this class yet. The goal is to make the future `step(state, bar, features)`
-    shape executable and testable before replacing current scanner internals.
+    The transition runner is now the shared scanner boundary behind production
+    full replay/fallback, production resume, snapshot refresh, historical, and
+    audit paths. It preserves current scanner semantics while exposing explicit
+    sequential state seams for safe optimization.
     """
 
     def __init__(self, scanner: ScannerEngine | None = None) -> None:
@@ -195,6 +197,45 @@ class ScannerTransitionEngine:
 
         _, evaluation = self.run_to_index(metrics, target_index)
         return evaluation.candidate
+
+    def scan_to_indices(
+        self,
+        metrics: pd.DataFrame,
+        target_indices: Sequence[int],
+    ) -> dict[int, ScannerCandidate]:
+        """Return candidates for increasing targets using one transition state.
+
+        This is the first suffix-reuse API over the transition runner. It keeps
+        every step sequential and point-in-time while avoiding repeated replay
+        from ``ScannerEngine.MIN_REPLAY_BARS`` for each independent target.
+        """
+
+        targets = tuple(target_indices)
+        if not targets:
+            return {}
+
+        previous: int | None = None
+        for target_index in targets:
+            if previous is not None and target_index <= previous:
+                raise ValueError("target_indices must be strictly increasing")
+            if target_index < self._scanner.MIN_REPLAY_BARS:
+                raise ValueError(
+                    f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}"
+                )
+            if target_index >= len(metrics):
+                raise IndexError("target_index is outside metrics")
+            previous = target_index
+
+        state = ScanState()
+        candidates: dict[int, ScannerCandidate] = {}
+        for target_index in targets:
+            state, evaluation = self.run_to_index(
+                metrics,
+                target_index,
+                state=state,
+            )
+            candidates[target_index] = evaluation.candidate
+        return candidates
 
     def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
         """Return all transition-runner candidates without production wiring.
