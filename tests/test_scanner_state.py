@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-from scanner_state import CandidateState, ConfirmedSwingState, ScannerState
+from scanner_state import (
+    SCANNER_STATE_ENGINE_FINGERPRINT,
+    SCANNER_STATE_SCHEMA_VERSION,
+    CandidateState,
+    ConfirmedSwingState,
+    ScannerState,
+)
 from models import SwingSearchState, SwingType
 
 
 def _state() -> ScannerState:
     return ScannerState(
-        schema_version=2,
+        schema_version=SCANNER_STATE_SCHEMA_VERSION,
         symbol="TEST.NS",
         timeframe="1w",
         last_closed_bar="2026-08-28",
@@ -30,6 +36,9 @@ def _state() -> ScannerState:
                 price=101.5,
             ),
         ),
+        engine_fingerprint=SCANNER_STATE_ENGINE_FINGERPRINT,
+        config_fingerprint="config-fingerprint",
+        data_fingerprint="data-fingerprint",
     )
 
 
@@ -45,6 +54,14 @@ def test_scanner_state_uses_stable_bar_identities() -> None:
     assert "bar_index" not in payload["candidate"]
     assert "bar_index" not in payload["confirmed_swings"][0]
     assert "confirmation_bar_key" in payload["confirmed_swings"][0]
+
+
+def test_scanner_state_records_runtime_config_and_data_fingerprints() -> None:
+    payload = _state().to_dict()
+    assert payload["schema_version"] == SCANNER_STATE_SCHEMA_VERSION
+    assert payload["engine_fingerprint"] == SCANNER_STATE_ENGINE_FINGERPRINT
+    assert payload["config_fingerprint"] == "config-fingerprint"
+    assert payload["data_fingerprint"] == "data-fingerprint"
 
 
 def test_scanner_state_is_causal_not_output_state() -> None:

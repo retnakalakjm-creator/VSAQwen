@@ -6,7 +6,7 @@ import pandas as pd
 
 from incremental_scanner import IncrementalScannerEngine
 from scanner import ScannerCandidate, ScannerEngine
-from scanner_state import ScannerStateStore
+from scanner_state import ScannerStateStore, validate_scanner_state_fingerprints
 
 DEFAULT_TIMEFRAME = "1wk"
 
@@ -51,7 +51,9 @@ def scan_latest_candidate_production(
 
     The first run for a symbol/timeframe bootstraps a durable scanner state with
     one full point-in-time scan. Later runs resume from the saved causal state and
-    refresh that state at the latest completed bar.
+    refresh that state at the latest completed bar. Persisted state is only used
+    when its engine/config/data fingerprints match the current runtime and data
+    prefix; stale state falls back to a full replay when fallback is allowed.
     """
     target_index = _target_index(metrics)
     if target_index is None:
@@ -63,6 +65,7 @@ def scan_latest_candidate_production(
 
     try:
         state = store.load(symbol, timeframe)
+        validate_scanner_state_fingerprints(state, metrics)
     except FileNotFoundError:
         state = None
     except ValueError:

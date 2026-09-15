@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
 from typing import Any
+
+import pandas as pd
 
 from models import (
     Evidence,
@@ -17,7 +21,155 @@ from models import (
     SwingType,
 )
 
-SCANNER_STATE_SCHEMA_VERSION = 3
+SCANNER_STATE_SCHEMA_VERSION = 4
+SCANNER_STATE_ENGINE_FINGERPRINT = "scanner-state-v4.incremental-production-v1"
+SCANNER_STATE_DATA_FINGERPRINT_COLUMNS = (
+    "week_beginning",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+)
+
+
+class ScannerStateFingerprintMismatch(ValueError):
+    """Saved scanner state does not match the current runtime or data prefix."""
+
+
+def _stable_value(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.value
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except (TypeError, ValueError):
+            pass
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {
+            str(_stable_value(key)): _stable_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_stable_value(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted((_stable_value(item) for item in value), key=str)
+    return repr(value)
+
+
+def _metric_value(value: Any) -> Any:
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return _stable_value(value)
+
+
+def _sha256_json(payload: Any) -> str:
+    encoded = json.dumps(
+        _stable_value(payload),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def scanner_state_config_fingerprint() -> str:
+    """Stable fingerprint of public scanner/trend/evidence configuration."""
+
+    import config
+
+    payload = {
+        name: _stable_value(getattr(config, name))
+        for name in dir(config)
+        if name.isupper()
+    }
+    return _sha256_json(payload)
+
+
+def scanner_state_data_fingerprint(
+    metrics: pd.DataFrame,
+    last_closed_bar: str,
+) -> str:
+    """Stable fingerprint of source OHLCV data up to the state checkpoint."""
+
+    if "week_beginning" not in metrics.columns:
+        raise ValueError("metrics must include week_beginning for state fingerprinting")
+
+    weeks = [str(value) for value in metrics["week_beginning"]]
+    matches = [index for index, week in enumerate(weeks) if week == str(last_closed_bar)]
+    if not matches:
+        raise ValueError(
+            f"ScannerState checkpoint bar is not present in current metrics: {last_closed_bar}"
+        )
+    if len(matches) > 1:
+        raise ValueError(f"Metrics contain duplicate bar identity: {last_closed_bar!r}.")
+
+    checkpoint_index = matches[0]
+    columns = [
+        column
+        for column in SCANNER_STATE_DATA_FINGERPRINT_COLUMNS
+        if column in metrics.columns
+    ]
+    if not columns:
+        raise ValueError("metrics do not contain state fingerprint columns")
+
+    prefix = metrics.iloc[: checkpoint_index + 1][columns]
+    rows = [
+        [_metric_value(value) for value in row]
+        for row in prefix.itertuples(index=False, name=None)
+    ]
+    return _sha256_json(
+        {
+            "checkpoint": str(last_closed_bar),
+            "columns": columns,
+            "rows": rows,
+        }
+    )
+
+
+def scanner_state_fingerprints(
+    metrics: pd.DataFrame,
+    last_closed_bar: str,
+) -> dict[str, str]:
+    return {
+        "engine_fingerprint": SCANNER_STATE_ENGINE_FINGERPRINT,
+        "config_fingerprint": scanner_state_config_fingerprint(),
+        "data_fingerprint": scanner_state_data_fingerprint(metrics, last_closed_bar),
+    }
+
+
+def stamp_scanner_state(
+    state: "ScannerState",
+    metrics: pd.DataFrame,
+) -> "ScannerState":
+    """Attach runtime/config/data fingerprints before persisting scanner state."""
+
+    return replace(state, **scanner_state_fingerprints(metrics, state.last_closed_bar))
+
+
+def validate_scanner_state_fingerprints(
+    state: "ScannerState",
+    metrics: pd.DataFrame,
+) -> None:
+    """Reject stale state instead of silently resuming an incompatible snapshot."""
+
+    expected = scanner_state_fingerprints(metrics, state.last_closed_bar)
+    mismatches = [
+        name.removesuffix("_fingerprint")
+        for name, expected_value in expected.items()
+        if getattr(state, name) != expected_value
+    ]
+    if mismatches:
+        raise ScannerStateFingerprintMismatch(
+            "ScannerState fingerprint mismatch: " + ", ".join(sorted(mismatches))
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +305,9 @@ class ScannerState:
     candidate: CandidateState | None
     confirmed_swings: tuple[ConfirmedSwingState, ...]
     structural_events: tuple[StructuralEventState, ...] = ()
+    engine_fingerprint: str = SCANNER_STATE_ENGINE_FINGERPRINT
+    config_fingerprint: str | None = None
+    data_fingerprint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -160,6 +315,9 @@ class ScannerState:
             "symbol": self.symbol,
             "timeframe": self.timeframe,
             "last_closed_bar": self.last_closed_bar,
+            "engine_fingerprint": self.engine_fingerprint,
+            "config_fingerprint": self.config_fingerprint,
+            "data_fingerprint": self.data_fingerprint,
             "search_state": self.search_state.value,
             "candidate": None if self.candidate is None else self.candidate.to_dict(),
             "confirmed_swings": [
@@ -191,6 +349,19 @@ class ScannerState:
             structural_events=tuple(
                 StructuralEventState.from_dict(item)
                 for item in data.get("structural_events", ())
+            ),
+            engine_fingerprint=str(
+                data.get("engine_fingerprint", SCANNER_STATE_ENGINE_FINGERPRINT)
+            ),
+            config_fingerprint=(
+                None
+                if data.get("config_fingerprint") is None
+                else str(data["config_fingerprint"])
+            ),
+            data_fingerprint=(
+                None
+                if data.get("data_fingerprint") is None
+                else str(data["data_fingerprint"])
             ),
         )
 
@@ -271,3 +442,21 @@ class ScannerStateStore:
 
     def delete(self, symbol: str, timeframe: str) -> None:
         self.path_for(symbol, timeframe).unlink(missing_ok=True)
+
+
+__all__ = [
+    "CandidateState",
+    "ConfirmedSwingState",
+    "SCANNER_STATE_DATA_FINGERPRINT_COLUMNS",
+    "SCANNER_STATE_ENGINE_FINGERPRINT",
+    "SCANNER_STATE_SCHEMA_VERSION",
+    "ScannerState",
+    "ScannerStateFingerprintMismatch",
+    "ScannerStateStore",
+    "StructuralEventState",
+    "scanner_state_config_fingerprint",
+    "scanner_state_data_fingerprint",
+    "scanner_state_fingerprints",
+    "stamp_scanner_state",
+    "validate_scanner_state_fingerprints",
+]

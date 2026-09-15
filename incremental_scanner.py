@@ -12,7 +12,12 @@ from market_structure.progression import calculate_professional_progression
 from market_structure.swing_engine import SwingEngine
 from models import Evidence, EvidenceCode, EvidenceCategory, EvidenceDirection
 from scanner import ScannerCandidate, ScannerEngine
-from scanner_state import ScannerState, StructuralEventState, SCANNER_STATE_SCHEMA_VERSION
+from scanner_state import (
+    SCANNER_STATE_SCHEMA_VERSION,
+    ScannerState,
+    StructuralEventState,
+    stamp_scanner_state,
+)
 from model.evidence_result_model import EvidenceResult
 from trend import TrendAnalyzer
 
@@ -99,11 +104,12 @@ class IncrementalScannerEngine:
             symbol=symbol,
             timeframe=timeframe,
         )
-        return replace(
+        state = replace(
             swing_state,
             schema_version=SCANNER_STATE_SCHEMA_VERSION,
             structural_events=self._capture_events(trend.structure.structural_swings, prefix),
         )
+        return stamp_scanner_state(state, prefix)
 
     def resume_latest(self, metrics: pd.DataFrame, state: ScannerState) -> ScannerCandidate:
         weeks = [str(value) for value in metrics["week_beginning"]]
