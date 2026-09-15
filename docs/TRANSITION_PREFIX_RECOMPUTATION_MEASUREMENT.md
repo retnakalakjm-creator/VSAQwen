@@ -34,6 +34,14 @@ For example, independent calls for targets `[53, 55, 57]` replay from `MIN_REPLA
 
 The API deliberately rejects duplicate or descending target sequences so no caller can accidentally treat it as a random-access cache.
 
+## First historical consumer
+
+`HistoricalScannerRunner.scan(...)` now consumes `ScannerTransitionEngine.scan_to_indices(...)` for the complete historical target range.
+
+The historical runner still returns the same ordered candidate sequence, preserves strict point-in-time transition stepping, and keeps `scan_to_index(...)` and `scan_actionable(...)` on their existing boundaries.
+
+Production scanner call sites and checkpoint policy are unchanged.
+
 ## Existing safe reuse seam
 
 `ScannerTransitionEngine.run_to_index(metrics, target_index, state=existing_state)` continues to support continuing from a prior `ScanState`.
@@ -50,9 +58,9 @@ A later optimization may reuse transition state or cached per-prefix work only i
 - engine/config/data fingerprint behavior at production state boundaries;
 - fallback diagnostics and checkpoint validation behavior.
 
-## Non-goals for this PR
+## Non-goals for this consumer work
 
-This PR does not change:
+This work does not change:
 
 - detector rules or VSA evidence semantics;
 - scoring, ranking, qualification, or actionability;

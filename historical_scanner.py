@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from scanner import ScannerCandidate
+from scanner import ScannerCandidate, ScannerEngine
 from scanner_transition import ScannerTransitionEngine
 
 
@@ -24,9 +24,15 @@ class HistoricalScannerRunner:
         return self._transition.scan_to_index(metrics, target_index)
 
     def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
-        """Return the full historical candidate sequence through the transition path."""
+        """Return historical candidates through the suffix-reuse transition path."""
 
-        return self._transition.scan(metrics)
+        if len(metrics) <= ScannerEngine.MIN_REPLAY_BARS:
+            return []
+        candidates = self._transition.scan_to_indices(
+            metrics,
+            range(ScannerEngine.MIN_REPLAY_BARS, len(metrics)),
+        )
+        return list(candidates.values())
 
     def scan_actionable(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
         """Return the latest actionable historical candidate through the transition path."""

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -12,6 +14,7 @@ from engine.columns import (
     COL_VOLUME,
     COL_WEEK,
 )
+from historical_scanner import HistoricalScannerRunner
 from metrics_engine import MetricsEngine
 from scanner import ScannerCandidate, ScannerEngine
 from scanner_transition import BarFeatures, ScannerTransitionEngine
@@ -121,6 +124,28 @@ class MeasuringTransitionEngine(ScannerTransitionEngine):
         return features
 
 
+class RecordingBatchTransition(MeasuringTransitionEngine):
+    """Measuring transition double that records batch suffix-reuse calls."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.scan_called = False
+        self.scan_to_indices_targets: list[tuple[int, ...]] = []
+
+    def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
+        self.scan_called = True
+        raise AssertionError("HistoricalScannerRunner.scan should use scan_to_indices")
+
+    def scan_to_indices(
+        self,
+        metrics: pd.DataFrame,
+        target_indices: Sequence[int],
+    ) -> dict[int, ScannerCandidate]:
+        targets = tuple(target_indices)
+        self.scan_to_indices_targets.append(targets)
+        return super().scan_to_indices(metrics, targets)
+
+
 def _expected_indices(start: int, target: int) -> list[int]:
     return list(range(start, target + 1))
 
@@ -214,3 +239,32 @@ def test_scan_to_indices_rejects_empty_and_invalid_target_sequences() -> None:
 
     with pytest.raises(IndexError, match="outside metrics"):
         transition.scan_to_indices(metrics, (len(metrics),))
+
+
+def test_historical_runner_scan_consumes_suffix_reuse_api() -> None:
+    metrics = _metrics()
+    transition = RecordingBatchTransition()
+    baseline = ScannerEngine()
+    runner = HistoricalScannerRunner(transition=transition)
+    start = baseline.MIN_REPLAY_BARS
+
+    candidates = runner.scan(metrics)
+
+    expected_targets = tuple(range(start, len(metrics)))
+    assert transition.scan_called is False
+    assert transition.scan_to_indices_targets == [expected_targets]
+    assert transition.feature_indices == list(expected_targets)
+    assert [_candidate_signature(candidate) for candidate in candidates] == [
+        _candidate_signature(candidate) for candidate in baseline.scan(metrics)
+    ]
+
+
+def test_historical_runner_scan_short_metrics_skips_suffix_reuse_call() -> None:
+    metrics = _metrics(ScannerEngine.MIN_REPLAY_BARS)
+    transition = RecordingBatchTransition()
+    runner = HistoricalScannerRunner(transition=transition)
+
+    assert runner.scan(metrics) == []
+    assert transition.scan_called is False
+    assert transition.scan_to_indices_targets == []
+    assert transition.feature_indices == []
