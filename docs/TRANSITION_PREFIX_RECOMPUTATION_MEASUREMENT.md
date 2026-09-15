@@ -42,6 +42,14 @@ The historical runner still returns the same ordered candidate sequence, preserv
 
 Production scanner call sites and checkpoint policy are unchanged.
 
+## Historical selected-target adapter
+
+`HistoricalScannerRunner.scan_to_indices(...)` exposes the same suffix-reuse contract at the historical adapter boundary for callers that already know sparse target indices.
+
+The method delegates to `ScannerTransitionEngine.scan_to_indices(...)`, so target validation, sequential stepping, and point-in-time behavior stay centralized in the transition engine.
+
+This keeps future audit or historical callers on the named historical runner boundary instead of importing the transition engine directly just to use suffix reuse.
+
 ## Existing safe reuse seam
 
 `ScannerTransitionEngine.run_to_index(metrics, target_index, state=existing_state)` continues to support continuing from a prior `ScanState`.

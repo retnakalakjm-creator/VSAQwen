@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pandas as pd
 
 from scanner import ScannerCandidate, ScannerEngine
@@ -22,6 +24,15 @@ class HistoricalScannerRunner:
         """Return the candidate at ``target_index`` through the transition path."""
 
         return self._transition.scan_to_index(metrics, target_index)
+
+    def scan_to_indices(
+        self,
+        metrics: pd.DataFrame,
+        target_indices: Sequence[int],
+    ) -> dict[int, ScannerCandidate]:
+        """Return requested candidates through one suffix-reuse transition path."""
+
+        return self._transition.scan_to_indices(metrics, target_indices)
 
     def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
         """Return historical candidates through the suffix-reuse transition path."""
