@@ -28,7 +28,7 @@ from production_scanner import (
     scan_latest_candidate_production,
 )
 from scanner import ScannerEngine
-from scanner_state import CandidateState, ScannerStateStore
+from scanner_state import ScannerStateStore
 
 
 def _raw_bars(size: int = 120) -> pd.DataFrame:
@@ -194,22 +194,23 @@ def test_corrupt_checkpoint_records_fallback_diagnostic(tmp_path) -> None:
     _assert_matches_full_replay(candidate, metrics)
 
 
-def test_resume_failure_records_engine_divergence_diagnostic(tmp_path) -> None:
+def test_resume_failure_records_engine_divergence_diagnostic(
+    tmp_path,
+    monkeypatch,
+) -> None:
     metrics = _metrics()
     store = ScannerStateStore(tmp_path)
-    state = _snapshot_at(metrics)
-    assert state.candidate is not None
-    store.save(
-        replace(
-            state,
-            candidate=CandidateState(
-                bar_key="missing-candidate-bar",
-                type=state.candidate.type,
-                price=state.candidate.price,
-            ),
-        )
-    )
+    store.save(_snapshot_at(metrics))
     diagnostics: list[str] = []
+
+    class FailingTransitionResumeAdapter:
+        def resume_latest(self, _metrics, _state):
+            raise RuntimeError("forced transition resume divergence")
+
+    monkeypatch.setattr(
+        "production_scanner.ScannerTransitionResumeAdapter",
+        FailingTransitionResumeAdapter,
+    )
 
     candidate = scan_latest_candidate_production(
         metrics,

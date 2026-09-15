@@ -187,8 +187,8 @@ def test_transition_history_keeps_only_structural_evidence() -> None:
         )
 
 
-def test_transition_contract_is_not_wired_into_production_scanner_yet() -> None:
+def test_transition_contract_is_not_directly_wired_into_production_scanner() -> None:
     production_source = Path("production_scanner.py").read_text(encoding="utf-8")
 
-    assert "scanner_transition" not in production_source
-    assert "ScannerTransitionEngine" not in production_source
+    assert "from scanner_transition import" not in production_source
+    assert "ScannerTransitionEngine(" not in production_source

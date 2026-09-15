@@ -14,6 +14,7 @@ from scanner_state import (
     ScannerStateStore,
     validate_scanner_state_fingerprints,
 )
+from scanner_transition_resume import ScannerTransitionResumeAdapter
 
 DEFAULT_TIMEFRAME = "1wk"
 
@@ -110,10 +111,11 @@ def scan_latest_candidate_production(
 
     The first run for a symbol/timeframe bootstraps a durable scanner state with
     one full point-in-time scan through the transition runner. Later runs resume
-    from the saved causal state and refresh that state at the latest completed
-    bar. Persisted state is only used when its engine/config/data fingerprints
-    match the current runtime and data prefix; stale state falls back to a full
-    transition-runner replay when fallback is allowed.
+    from the saved causal state through the transition resume adapter and refresh
+    that state at the latest completed bar. Persisted state is only used when its
+    engine/config/data fingerprints match the current runtime and data prefix;
+    stale state falls back to a full transition-runner replay when fallback is
+    allowed.
 
     ``fallback_diagnostics`` receives explicit diagnostic messages when a saved
     checkpoint is corrupt, stale, or unable to resume. Normal first-run bootstrap
@@ -125,6 +127,7 @@ def scan_latest_candidate_production(
 
     store = state_store if state_store is not None else ScannerStateStore(state_root)
     incremental = IncrementalScannerEngine()
+    transition_resume = ScannerTransitionResumeAdapter()
 
     try:
         state = store.load(symbol, timeframe)
@@ -157,7 +160,7 @@ def scan_latest_candidate_production(
 
     if state is not None:
         try:
-            candidate = incremental.resume_latest(metrics, state)
+            candidate = transition_resume.resume_latest(metrics, state)
         except (ValueError, IndexError, RuntimeError):
             if not allow_full_replay_fallback:
                 raise

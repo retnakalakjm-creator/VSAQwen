@@ -124,5 +124,5 @@ def test_historical_runner_is_only_wired_to_production_full_replay_boundary() ->
     assert "from historical_scanner import HistoricalScannerRunner" in production_source
     assert "def _full_replay_candidate" in production_source
     assert "HistoricalScannerRunner().scan_to_index(metrics, target_index)" in production_source
-    assert "scanner_transition" not in production_source
-    assert "ScannerTransitionEngine" not in production_source
+    assert "from scanner_transition import" not in production_source
+    assert "ScannerTransitionEngine(" not in production_source

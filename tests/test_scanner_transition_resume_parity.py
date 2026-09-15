@@ -187,8 +187,11 @@ def test_transition_resume_rejects_missing_checkpoint_identity() -> None:
         )
 
 
-def test_transition_resume_adapter_is_not_wired_into_production_scanner() -> None:
+def test_transition_resume_adapter_is_wired_only_to_valid_production_resume_boundary() -> None:
     production_source = Path("production_scanner.py").read_text(encoding="utf-8")
 
-    assert "scanner_transition_resume" not in production_source
-    assert "ScannerTransitionResumeAdapter" not in production_source
+    assert "from scanner_transition_resume import ScannerTransitionResumeAdapter" in production_source
+    assert "transition_resume = ScannerTransitionResumeAdapter()" in production_source
+    assert "candidate = transition_resume.resume_latest(metrics, state)" in production_source
+    assert "from scanner_transition import" not in production_source
+    assert "ScannerTransitionEngine(" not in production_source
