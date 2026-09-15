@@ -79,6 +79,10 @@ def _candidate_signature(candidate: ScannerCandidate) -> tuple[object, ...]:
     )
 
 
+def _candidate_list_signature(candidates: list[ScannerCandidate]) -> tuple[tuple[object, ...], ...]:
+    return tuple(_candidate_signature(candidate) for candidate in candidates)
+
+
 def test_transition_run_to_index_matches_full_scanner_candidate() -> None:
     metrics = _metrics()
     target_index = len(metrics) - 1
@@ -89,6 +93,42 @@ def test_transition_run_to_index_matches_full_scanner_candidate() -> None:
     assert _candidate_signature(evaluation.candidate) == _candidate_signature(expected)
     assert evaluation.bar.index == target_index
     assert evaluation.bar.week == expected.week
+
+
+def test_transition_scan_to_index_matches_full_scanner_candidate() -> None:
+    metrics = _metrics()
+    target_index = len(metrics) - 1
+
+    candidate = ScannerTransitionEngine().scan_to_index(metrics, target_index)
+    expected = ScannerEngine().scan_to_index(metrics, target_index)
+
+    assert _candidate_signature(candidate) == _candidate_signature(expected)
+
+
+def test_transition_scan_matches_full_scanner_candidate_sequence() -> None:
+    metrics = _metrics()
+
+    candidates = ScannerTransitionEngine().scan(metrics)
+    expected = ScannerEngine().scan(metrics)
+
+    assert _candidate_list_signature(candidates) == _candidate_list_signature(expected)
+    assert len(candidates) == len(metrics) - ScannerEngine.MIN_REPLAY_BARS
+
+
+def test_transition_scan_actionable_matches_full_scanner_latest_actionable() -> None:
+    metrics = _metrics()
+
+    candidates = ScannerTransitionEngine().scan_actionable(metrics)
+    expected = ScannerEngine().scan_actionable(metrics)
+
+    assert _candidate_list_signature(candidates) == _candidate_list_signature(expected)
+
+
+def test_transition_scan_returns_empty_before_minimum_replay_bars() -> None:
+    metrics = _metrics().iloc[: ScannerEngine.MIN_REPLAY_BARS].copy()
+
+    assert ScannerTransitionEngine().scan(metrics) == []
+    assert ScannerTransitionEngine().scan_actionable(metrics) == []
 
 
 def test_transition_sequence_matches_full_scanner_at_checkpoints() -> None:

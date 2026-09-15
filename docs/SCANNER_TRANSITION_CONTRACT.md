@@ -27,7 +27,7 @@ The first implementation is intentionally conservative. It wraps the current poi
 
 ## Current behavior
 
-The transition engine currently recomputes the same point-in-time prefix that the existing scanner uses. That is deliberate for the first slice. The goal is correctness equivalence first, not performance.
+The transition engine currently recomputes the same point-in-time prefix that the existing scanner uses. That is deliberate for the first slices. The goal is correctness equivalence first, not performance.
 
 The transition contract is tested against the existing scanner output for candidate semantics, including:
 
@@ -43,6 +43,25 @@ The transition contract is tested against the existing scanner output for candid
 - target-bar evidence
 - qualifying evidence
 - read-only detector evidence visibility
+
+## Runner parity
+
+The transition engine now exposes runner-style methods that mirror the current scanner API:
+
+```python
+ScannerTransitionEngine().scan_to_index(metrics, target_index)
+ScannerTransitionEngine().scan(metrics)
+ScannerTransitionEngine().scan_actionable(metrics)
+```
+
+These methods still run outside production. Their purpose is to prove that the transition contract can produce the same candidate sequence and latest-actionable behavior as `ScannerEngine` before any production route is switched over.
+
+Parity tests compare:
+
+- target candidate from `scan_to_index`
+- full candidate sequence from `scan`
+- latest actionable output from `scan_actionable`
+- empty behavior before minimum replay bars
 
 ## Production boundary
 

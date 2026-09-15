@@ -190,6 +190,42 @@ class ScannerTransitionEngine:
         assert evaluation is not None
         return current_state, evaluation
 
+    def scan_to_index(self, metrics: pd.DataFrame, target_index: int) -> ScannerCandidate:
+        """Return the target candidate through the transition-runner path."""
+
+        _, evaluation = self.run_to_index(metrics, target_index)
+        return evaluation.candidate
+
+    def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
+        """Return all transition-runner candidates without production wiring.
+
+        This mirrors `ScannerEngine.scan()` so later PRs can switch one caller at
+        a time after parity is proven by tests.
+        """
+
+        if len(metrics) <= self._scanner.MIN_REPLAY_BARS:
+            return []
+
+        state = ScanState()
+        candidates: list[ScannerCandidate] = []
+        for index in range(self._scanner.MIN_REPLAY_BARS, len(metrics)):
+            state, evaluation = self.step(
+                state,
+                self.bar_for(metrics, index),
+                self.features_for(metrics, index),
+                metrics=metrics,
+            )
+            candidates.append(evaluation.candidate)
+        return candidates
+
+    def scan_actionable(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
+        """Return latest actionable candidate through the transition runner."""
+
+        if len(metrics) <= self._scanner.MIN_REPLAY_BARS:
+            return []
+        candidate = self.scan_to_index(metrics, len(metrics) - 1)
+        return [candidate] if candidate.actionable else []
+
 
 __all__ = [
     "BarEvaluation",
