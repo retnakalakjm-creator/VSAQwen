@@ -18,10 +18,8 @@ from scanner_transition import ScanState, ScannerTransitionEngine
 class ScannerTransitionSnapshotAdapter:
     """Build durable scanner snapshots through the transition path.
 
-    This adapter is a Phase 4 guardrail surface only. It proves the transition
-    runner can produce the same durable ``ScannerState`` contract as
-    ``IncrementalScannerEngine.snapshot(...)`` before production snapshot refresh
-    is routed through this path.
+    Snapshot parity with ``IncrementalScannerEngine.snapshot(...)`` was established
+    before this adapter became the production snapshot-refresh boundary.
     """
 
     def __init__(self, transition: ScannerTransitionEngine | None = None) -> None:

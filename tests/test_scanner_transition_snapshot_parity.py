@@ -175,8 +175,9 @@ def test_transition_snapshot_rejects_invalid_target_index() -> None:
         )
 
 
-def test_transition_snapshot_adapter_is_not_wired_into_production_scanner() -> None:
+def test_transition_snapshot_adapter_is_wired_into_production_scanner() -> None:
     production_source = Path("production_scanner.py").read_text(encoding="utf-8")
 
-    assert "scanner_transition_snapshot" not in production_source
-    assert "ScannerTransitionSnapshotAdapter" not in production_source
+    assert "scanner_transition_snapshot" in production_source
+    assert "ScannerTransitionSnapshotAdapter" in production_source
+    assert "IncrementalScannerEngine" not in production_source

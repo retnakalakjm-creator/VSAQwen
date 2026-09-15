@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 
@@ -16,6 +18,7 @@ from incremental_scanner import IncrementalScannerEngine
 from metrics_engine import MetricsEngine
 from scanner import ScannerCandidate, ScannerEngine
 from scanner_state import ScannerStateStore
+from scanner_transition_snapshot import ScannerTransitionSnapshotAdapter
 
 
 def _metrics(size: int = 112) -> pd.DataFrame:
@@ -108,7 +111,102 @@ def _candidate_signature(candidate: ScannerCandidate) -> tuple[object, ...]:
     )
 
 
-def test_valid_production_checkpoint_resume_uses_transition_adapter(
+def _counting_snapshot_adapter(calls: dict[str, int]):
+    class CountingTransitionSnapshotAdapter:
+        def snapshot(self, received_metrics, *, target_index, symbol, timeframe):
+            calls["snapshot"] += 1
+            return ScannerTransitionSnapshotAdapter().snapshot(
+                received_metrics,
+                target_index=target_index,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+
+    return CountingTransitionSnapshotAdapter
+
+
+def test_missing_checkpoint_refreshes_through_transition_snapshot_adapter(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    metrics = _metrics()
+    symbol = "CONTRACT"
+    timeframe = "1wk"
+    target_index = len(metrics) - 1
+    store = ScannerStateStore(tmp_path)
+    calls = {"snapshot": 0}
+
+    monkeypatch.setattr(
+        production_scanner,
+        "ScannerTransitionSnapshotAdapter",
+        _counting_snapshot_adapter(calls),
+    )
+
+    diagnostics: list[str] = []
+    candidate = production_scanner.scan_latest_candidate_production(
+        metrics,
+        symbol=symbol,
+        timeframe=timeframe,
+        state_store=store,
+        fallback_diagnostics=diagnostics,
+    )
+    full = ScannerEngine().scan_to_index(metrics, target_index)
+
+    assert candidate is not None
+    assert _candidate_signature(candidate) == _candidate_signature(full)
+    assert calls["snapshot"] == 1
+    assert diagnostics == []
+    assert store.load(symbol, timeframe).last_closed_bar == str(
+        metrics.iloc[target_index][COL_WEEK]
+    )
+
+
+def test_stale_checkpoint_refreshes_through_transition_snapshot_adapter(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    metrics = _metrics()
+    symbol = "CONTRACT"
+    timeframe = "1wk"
+    target_index = len(metrics) - 1
+    store = ScannerStateStore(tmp_path)
+    checkpoint_state = IncrementalScannerEngine().snapshot(
+        metrics,
+        target_index=target_index,
+        symbol=symbol,
+        timeframe=timeframe,
+    )
+    store.save(replace(checkpoint_state, data_fingerprint="stale-data-fingerprint"))
+    calls = {"snapshot": 0}
+
+    monkeypatch.setattr(
+        production_scanner,
+        "ScannerTransitionSnapshotAdapter",
+        _counting_snapshot_adapter(calls),
+    )
+
+    diagnostics: list[str] = []
+    candidate = production_scanner.scan_latest_candidate_production(
+        metrics,
+        symbol=symbol,
+        timeframe=timeframe,
+        state_store=store,
+        allow_full_replay_fallback=True,
+        fallback_diagnostics=diagnostics,
+    )
+    full = ScannerEngine().scan_to_index(metrics, target_index)
+
+    assert candidate is not None
+    assert _candidate_signature(candidate) == _candidate_signature(full)
+    assert calls["snapshot"] == 1
+    assert len(diagnostics) == 1
+    assert production_scanner.CHECKPOINT_DATA_MISMATCH in diagnostics[0]
+    assert store.load(symbol, timeframe).last_closed_bar == str(
+        metrics.iloc[target_index][COL_WEEK]
+    )
+
+
+def test_valid_production_checkpoint_resume_uses_transition_adapters(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -136,19 +234,6 @@ def test_valid_production_checkpoint_resume_uses_transition_adapter(
             assert state.last_closed_bar == checkpoint_state.last_closed_bar
             return expected
 
-    class FakeIncrementalScannerEngine:
-        def resume_latest(self, *_args, **_kwargs):
-            raise AssertionError("production resume must use ScannerTransitionResumeAdapter")
-
-        def snapshot(self, received_metrics, *, target_index, symbol, timeframe):
-            calls["snapshot"] += 1
-            return IncrementalScannerEngine().snapshot(
-                received_metrics,
-                target_index=target_index,
-                symbol=symbol,
-                timeframe=timeframe,
-            )
-
     monkeypatch.setattr(
         production_scanner,
         "ScannerTransitionResumeAdapter",
@@ -156,8 +241,8 @@ def test_valid_production_checkpoint_resume_uses_transition_adapter(
     )
     monkeypatch.setattr(
         production_scanner,
-        "IncrementalScannerEngine",
-        FakeIncrementalScannerEngine,
+        "ScannerTransitionSnapshotAdapter",
+        _counting_snapshot_adapter(calls),
     )
 
     diagnostics: list[str] = []
@@ -204,7 +289,7 @@ def test_latest_valid_checkpoint_skips_redundant_snapshot_refresh(
             assert state.last_closed_bar == latest_state.last_closed_bar
             return expected
 
-    class FakeIncrementalScannerEngine:
+    class FailingTransitionSnapshotAdapter:
         def snapshot(self, *_args, **_kwargs):
             calls["snapshot"] += 1
             raise AssertionError("latest valid checkpoint should not be rebuilt")
@@ -216,8 +301,8 @@ def test_latest_valid_checkpoint_skips_redundant_snapshot_refresh(
     )
     monkeypatch.setattr(
         production_scanner,
-        "IncrementalScannerEngine",
-        FakeIncrementalScannerEngine,
+        "ScannerTransitionSnapshotAdapter",
+        FailingTransitionSnapshotAdapter,
     )
 
     diagnostics: list[str] = []
@@ -236,7 +321,7 @@ def test_latest_valid_checkpoint_skips_redundant_snapshot_refresh(
     assert store.load(symbol, timeframe).last_closed_bar == latest_state.last_closed_bar
 
 
-def test_transition_resume_failure_still_uses_full_replay_fallback(
+def test_transition_resume_failure_refreshes_transition_snapshot_after_fallback(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -254,6 +339,7 @@ def test_transition_resume_failure_still_uses_full_replay_fallback(
             timeframe=timeframe,
         )
     )
+    calls = {"snapshot": 0}
 
     class RaisingTransitionResumeAdapter:
         def resume_latest(self, *_args, **_kwargs):
@@ -263,6 +349,11 @@ def test_transition_resume_failure_still_uses_full_replay_fallback(
         production_scanner,
         "ScannerTransitionResumeAdapter",
         RaisingTransitionResumeAdapter,
+    )
+    monkeypatch.setattr(
+        production_scanner,
+        "ScannerTransitionSnapshotAdapter",
+        _counting_snapshot_adapter(calls),
     )
 
     diagnostics: list[str] = []
@@ -278,6 +369,10 @@ def test_transition_resume_failure_still_uses_full_replay_fallback(
 
     assert candidate is not None
     assert _candidate_signature(candidate) == _candidate_signature(full)
+    assert calls["snapshot"] == 1
     assert len(diagnostics) == 1
     assert production_scanner.ENGINE_DIVERGENCE in diagnostics[0]
     assert "full replay fallback used" in diagnostics[0]
+    assert store.load(symbol, timeframe).last_closed_bar == str(
+        metrics.iloc[target_index][COL_WEEK]
+    )

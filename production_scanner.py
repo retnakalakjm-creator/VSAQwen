@@ -7,7 +7,6 @@ import pandas as pd
 
 from engine.columns import COL_WEEK
 from historical_scanner import HistoricalScannerRunner
-from incremental_scanner import IncrementalScannerEngine
 from logger import Log
 from scanner import ScannerCandidate, ScannerEngine
 from scanner_state import (
@@ -17,6 +16,7 @@ from scanner_state import (
     validate_scanner_state_fingerprints,
 )
 from scanner_transition_resume import ScannerTransitionResumeAdapter
+from scanner_transition_snapshot import ScannerTransitionSnapshotAdapter
 
 DEFAULT_TIMEFRAME = "1wk"
 
@@ -64,13 +64,13 @@ def _snapshot_latest(
     symbol: str,
     timeframe: str,
     store: ScannerStateStore,
-    engine: IncrementalScannerEngine,
+    snapshot: ScannerTransitionSnapshotAdapter,
 ) -> None:
     target_index = _target_index(metrics)
     if target_index is None:
         return
 
-    state = engine.snapshot(
+    state = snapshot.snapshot(
         metrics,
         target_index=target_index,
         symbol=symbol,
@@ -127,15 +127,15 @@ def scan_latest_candidate_production(
     allow_full_replay_fallback: bool = True,
     fallback_diagnostics: MutableSequence[str] | None = None,
 ) -> ScannerCandidate | None:
-    """Scan the latest bar using the incremental production path.
+    """Scan the latest bar using the production scanner path.
 
     The first run for a symbol/timeframe bootstraps a durable scanner state with
     one full point-in-time scan through the transition runner. Later runs resume
     from the saved causal state through the transition resume adapter and refresh
-    that state at the latest completed bar. Persisted state is only used when its
-    engine/config/data fingerprints match the current runtime and data prefix;
-    stale state falls back to a full transition-runner replay when fallback is
-    allowed.
+    that state at the latest completed bar through the transition snapshot
+    adapter. Persisted state is only used when its engine/config/data fingerprints
+    match the current runtime and data prefix; stale state falls back to a full
+    transition-runner replay when fallback is allowed.
 
     ``fallback_diagnostics`` receives explicit diagnostic messages when a saved
     checkpoint is corrupt, stale, or unable to resume. Normal first-run bootstrap
@@ -146,8 +146,8 @@ def scan_latest_candidate_production(
         return None
 
     store = state_store if state_store is not None else ScannerStateStore(state_root)
-    incremental = IncrementalScannerEngine()
     transition_resume = ScannerTransitionResumeAdapter()
+    transition_snapshot = ScannerTransitionSnapshotAdapter()
     needs_snapshot_refresh = True
 
     try:
@@ -208,7 +208,7 @@ def scan_latest_candidate_production(
             symbol=symbol,
             timeframe=timeframe,
             store=store,
-            engine=incremental,
+            snapshot=transition_snapshot,
         )
     return candidate
 
@@ -223,7 +223,7 @@ def scan_actionable_production(
     allow_full_replay_fallback: bool = True,
     fallback_diagnostics: MutableSequence[str] | None = None,
 ) -> list[ScannerCandidate]:
-    """Return the latest actionable candidate via the incremental production path."""
+    """Return the latest actionable candidate via the production scanner path."""
     candidate = scan_latest_candidate_production(
         metrics,
         symbol=symbol,
