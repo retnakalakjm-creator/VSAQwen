@@ -1,0 +1,175 @@
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from engine.columns import (
+    COL_CLOSE,
+    COL_HIGH,
+    COL_LOW,
+    COL_OPEN,
+    COL_VOLUME,
+    COL_WEEK,
+)
+from metrics_engine import MetricsEngine
+from scanner import ScannerCandidate, ScannerEngine
+from scanner_transition import BarFeatures, ScannerTransitionEngine
+
+
+def _metrics(size: int = 96) -> pd.DataFrame:
+    """Generic synthetic OHLCV fixture for transition-runner measurement tests."""
+
+    anchors = [
+        100.0,
+        112.0,
+        105.0,
+        118.0,
+        109.0,
+        126.0,
+        114.0,
+        132.0,
+        121.0,
+        138.0,
+    ]
+    bars_per_segment = max(6, size // (len(anchors) - 1))
+    points: list[float] = []
+    for start, end in zip(anchors[:-1], anchors[1:]):
+        points.extend(np.linspace(start, end, bars_per_segment, endpoint=False))
+    if len(points) < size:
+        points.extend(np.linspace(anchors[-1], anchors[-1] + 4.0, size - len(points)))
+
+    close = np.asarray(points[:size], dtype=float)
+    delta = np.diff(close, prepend=close[0])
+    open_ = close - np.where(delta >= 0.0, 0.35, -0.35)
+    spread = 1.1 + (np.arange(size, dtype=float) % 5.0) * 0.12
+    high = np.maximum(open_, close) + spread / 2.0
+    low = np.minimum(open_, close) - spread / 2.0
+    volume = (
+        1_000.0
+        + (np.arange(size, dtype=float) % 9.0) * 60.0
+        + np.where((np.arange(size) % 13) == 0, 275.0, 0.0)
+    )
+
+    raw = pd.DataFrame(
+        {
+            COL_WEEK: [
+                value.strftime("%Y-%m-%d")
+                for value in pd.date_range("2024-01-01", periods=size, freq="W-MON")
+            ],
+            COL_OPEN: open_,
+            COL_HIGH: high,
+            COL_LOW: low,
+            COL_CLOSE: close,
+            COL_VOLUME: volume,
+        }
+    )
+    return MetricsEngine().calculate(raw)
+
+
+def _value(item: object) -> object:
+    return getattr(item, "value", item)
+
+
+def _rounded(item: float | None) -> float | None:
+    if item is None:
+        return None
+    return round(float(item), 10)
+
+
+def _candidate_signature(candidate: ScannerCandidate) -> tuple[object, ...]:
+    qualification = candidate.qualification_result
+    return (
+        _value(candidate.qualification),
+        candidate.actionable,
+        candidate.reason,
+        candidate.scoring_bar_index,
+        candidate.scoring_evidence_age,
+        candidate.used_fallback_evidence,
+        candidate.signal_bar_index,
+        candidate.signal_week,
+        candidate.execution_bar_index,
+        candidate.execution_week,
+        candidate.execution_available,
+        _rounded(candidate.ranking_score),
+        _rounded(candidate.net_strength),
+        _rounded(candidate.net_pressure),
+        _rounded(candidate.confidence),
+        _value(qualification.qualification),
+        qualification.is_actionable_evidence,
+        qualification.reason,
+        tuple(_value(code) for code in qualification.evidence_codes),
+        tuple(qualification.evidence_bar_indices),
+        candidate.effort_result_evidence_codes,
+        candidate.absorption_evidence_codes,
+        candidate.high_volume_reversal_evidence_codes,
+    )
+
+
+class MeasuringTransitionEngine(ScannerTransitionEngine):
+    """Transition engine test double that records prefix construction."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.feature_indices: list[int] = []
+        self.prefix_lengths: list[int] = []
+
+    def features_for(self, metrics: pd.DataFrame, index: int) -> BarFeatures:
+        features = ScannerTransitionEngine.features_for(metrics, index)
+        self.feature_indices.append(index)
+        self.prefix_lengths.append(len(features.metrics_prefix))
+        return features
+
+
+def _expected_indices(start: int, target: int) -> list[int]:
+    return list(range(start, target + 1))
+
+
+def test_repeated_scan_to_index_rebuilds_prefixes_from_replay_start() -> None:
+    metrics = _metrics()
+    transition = MeasuringTransitionEngine()
+    baseline = ScannerEngine()
+    start = baseline.MIN_REPLAY_BARS
+    targets = (start + 3, start + 5, start + 7)
+
+    for target_index in targets:
+        candidate = transition.scan_to_index(metrics, target_index)
+        expected = baseline.scan_to_index(metrics, target_index)
+        assert _candidate_signature(candidate) == _candidate_signature(expected)
+
+    expected_indices = [
+        index
+        for target_index in targets
+        for index in _expected_indices(start, target_index)
+    ]
+    assert transition.feature_indices == expected_indices
+    assert transition.prefix_lengths == [index + 1 for index in expected_indices]
+    assert len(transition.feature_indices) > len(_expected_indices(start, targets[-1]))
+
+
+def test_stateful_run_to_index_extends_only_the_new_suffix() -> None:
+    metrics = _metrics()
+    transition = MeasuringTransitionEngine()
+    baseline = ScannerEngine()
+    start = baseline.MIN_REPLAY_BARS
+    checkpoint_index = start + 4
+    target_index = checkpoint_index + 5
+
+    state, _ = transition.run_to_index(metrics, checkpoint_index)
+    assert state.last_bar_index == checkpoint_index
+    assert transition.feature_indices == _expected_indices(start, checkpoint_index)
+
+    transition.feature_indices.clear()
+    transition.prefix_lengths.clear()
+    state, evaluation = transition.run_to_index(
+        metrics,
+        target_index,
+        state=state,
+    )
+
+    expected_suffix = _expected_indices(checkpoint_index + 1, target_index)
+    assert state.last_bar_index == target_index
+    assert transition.feature_indices == expected_suffix
+    assert transition.prefix_lengths == [index + 1 for index in expected_suffix]
+    assert _candidate_signature(evaluation.candidate) == _candidate_signature(
+        baseline.scan_to_index(metrics, target_index)
+    )
