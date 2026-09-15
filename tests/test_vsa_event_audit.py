@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
+import vsa_event_audit as audit_module
 from vsa_event_audit import (
     AUDIT_FLAG_BULLISH_VSA_AGAINST_BEARISH_QUALIFICATION,
     AUDIT_FLAG_FALLBACK_SCORING_EVIDENCE,
@@ -244,6 +245,29 @@ def test_build_vsa_event_audit_runs_one_bounded_scan_and_returns_compact_rows() 
     assert second.structural_event_codes == ("structural_progression_weakening",)
     assert second.vsa_event_codes == ()
     assert AUDIT_FLAG_STRUCTURAL_EVENT_WITHOUT_VSA_CONFIRMATION in second.audit_flags
+
+
+def test_build_vsa_event_audit_defaults_to_historical_scanner_runner(monkeypatch) -> None:
+    weekly = _weekly_frame()
+    created: list[FakeScanner] = []
+
+    class DefaultAuditScanner(FakeScanner):
+        def __init__(self) -> None:
+            super().__init__()
+            created.append(self)
+
+    monkeypatch.setattr(audit_module, "HistoricalScannerRunner", DefaultAuditScanner)
+
+    audit = build_vsa_event_audit(
+        symbol="LT.NS",
+        weekly=weekly,
+        start_week=str(weekly.iloc[22]["week_beginning"]),
+        horizon_weeks=2,
+    )
+
+    assert len(created) == 1
+    assert created[0].scan_lengths == [24]
+    assert [row.replay_bar_index for row in audit.rows] == [22, 23]
 
 
 def test_audit_flags_surface_review_cases_without_changing_scanner_behavior() -> None:

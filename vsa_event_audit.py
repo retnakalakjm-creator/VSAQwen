@@ -21,6 +21,7 @@ from engine.columns import (
     COL_VOLUME_RATIO,
     COL_WEEK,
 )
+from historical_scanner import HistoricalScannerRunner
 from metrics_engine import MetricsEngine
 from scanner import ScannerEngine
 
@@ -220,7 +221,8 @@ def build_vsa_event_audit(
     the existing cached and incremental-refresh data path once per symbol. This
     function then performs one bounded scanner pass over the requested completed
     weekly window and returns compact audit rows instead of a historical
-    warehouse.
+    warehouse. The default scanner path is the non-production historical
+    transition runner; tests can still inject an explicit scanner double.
     """
 
     if weekly.empty:
@@ -252,7 +254,7 @@ def build_vsa_event_audit(
             f"limit is {max_replay_weeks}"
         )
 
-    scanner_engine = scanner if scanner is not None else ScannerEngine()
+    scanner_engine = scanner if scanner is not None else HistoricalScannerRunner()
     candidates = scanner_engine.scan(metrics.iloc[: end_index + 1].copy())
 
     rows = tuple(
