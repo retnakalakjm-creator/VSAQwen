@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from engine.columns import COL_WEEK
 from historical_scanner import HistoricalScannerRunner
 from incremental_scanner import IncrementalScannerEngine
 from logger import Log
 from scanner import ScannerCandidate, ScannerEngine
 from scanner_state import (
+    ScannerState,
     ScannerStateFingerprintMismatch,
     ScannerStateStore,
     validate_scanner_state_fingerprints,
@@ -30,6 +32,24 @@ def _target_index(metrics: pd.DataFrame) -> int | None:
     if len(metrics) <= ScannerEngine.MIN_REPLAY_BARS:
         return None
     return len(metrics) - 1
+
+
+def _target_bar_key(metrics: pd.DataFrame, target_index: int) -> str | None:
+    if COL_WEEK not in metrics.columns:
+        return None
+    value = metrics.iloc[target_index].get(COL_WEEK)
+    if value is None or pd.isna(value):
+        return None
+    return str(value)
+
+
+def _state_matches_target(
+    state: ScannerState,
+    metrics: pd.DataFrame,
+    target_index: int,
+) -> bool:
+    target_key = _target_bar_key(metrics, target_index)
+    return target_key is not None and state.last_closed_bar == target_key
 
 
 def _full_replay_candidate(metrics: pd.DataFrame, target_index: int) -> ScannerCandidate:
@@ -128,10 +148,16 @@ def scan_latest_candidate_production(
     store = state_store if state_store is not None else ScannerStateStore(state_root)
     incremental = IncrementalScannerEngine()
     transition_resume = ScannerTransitionResumeAdapter()
+    needs_snapshot_refresh = True
 
     try:
         state = store.load(symbol, timeframe)
         validate_scanner_state_fingerprints(state, metrics)
+        needs_snapshot_refresh = not _state_matches_target(
+            state,
+            metrics,
+            target_index,
+        )
     except FileNotFoundError:
         state = None
     except ScannerStateFingerprintMismatch as exc:
@@ -172,16 +198,18 @@ def scan_latest_candidate_production(
                 reason="persisted scanner state could not resume current metrics",
             )
             candidate = _full_replay_candidate(metrics, target_index)
+            needs_snapshot_refresh = True
     else:
         candidate = _full_replay_candidate(metrics, target_index)
 
-    _snapshot_latest(
-        metrics=metrics,
-        symbol=symbol,
-        timeframe=timeframe,
-        store=store,
-        engine=incremental,
-    )
+    if needs_snapshot_refresh:
+        _snapshot_latest(
+            metrics=metrics,
+            symbol=symbol,
+            timeframe=timeframe,
+            store=store,
+            engine=incremental,
+        )
     return candidate
 
 

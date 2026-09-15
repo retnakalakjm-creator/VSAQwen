@@ -177,6 +177,65 @@ def test_valid_production_checkpoint_resume_uses_transition_adapter(
     assert refreshed.last_closed_bar == str(metrics.iloc[target_index][COL_WEEK])
 
 
+def test_latest_valid_checkpoint_skips_redundant_snapshot_refresh(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    metrics = _metrics()
+    symbol = "CONTRACT"
+    timeframe = "1wk"
+    target_index = len(metrics) - 1
+    store = ScannerStateStore(tmp_path)
+    latest_state = IncrementalScannerEngine().snapshot(
+        metrics,
+        target_index=target_index,
+        symbol=symbol,
+        timeframe=timeframe,
+    )
+    store.save(latest_state)
+
+    expected = ScannerEngine().scan_to_index(metrics, target_index)
+    calls = {"transition_resume": 0, "snapshot": 0}
+
+    class FakeTransitionResumeAdapter:
+        def resume_latest(self, received_metrics, state):
+            calls["transition_resume"] += 1
+            assert received_metrics is metrics
+            assert state.last_closed_bar == latest_state.last_closed_bar
+            return expected
+
+    class FakeIncrementalScannerEngine:
+        def snapshot(self, *_args, **_kwargs):
+            calls["snapshot"] += 1
+            raise AssertionError("latest valid checkpoint should not be rebuilt")
+
+    monkeypatch.setattr(
+        production_scanner,
+        "ScannerTransitionResumeAdapter",
+        FakeTransitionResumeAdapter,
+    )
+    monkeypatch.setattr(
+        production_scanner,
+        "IncrementalScannerEngine",
+        FakeIncrementalScannerEngine,
+    )
+
+    diagnostics: list[str] = []
+    candidate = production_scanner.scan_latest_candidate_production(
+        metrics,
+        symbol=symbol,
+        timeframe=timeframe,
+        state_store=store,
+        allow_full_replay_fallback=False,
+        fallback_diagnostics=diagnostics,
+    )
+
+    assert candidate is expected
+    assert calls == {"transition_resume": 1, "snapshot": 0}
+    assert diagnostics == []
+    assert store.load(symbol, timeframe).last_closed_bar == latest_state.last_closed_bar
+
+
 def test_transition_resume_failure_still_uses_full_replay_fallback(
     monkeypatch,
     tmp_path,
