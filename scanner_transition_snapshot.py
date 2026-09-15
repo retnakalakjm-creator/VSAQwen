@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from dataclasses import replace
+
+import pandas as pd
+
+from market_structure.swing_engine import SwingEngine
+from scanner import ScannerEngine
+from scanner_state import (
+    SCANNER_STATE_SCHEMA_VERSION,
+    ScannerState,
+    StructuralEventState,
+    stamp_scanner_state,
+)
+from scanner_transition import ScanState, ScannerTransitionEngine
+
+
+class ScannerTransitionSnapshotAdapter:
+    """Build durable scanner snapshots through the transition path.
+
+    This adapter is a Phase 4 guardrail surface only. It proves the transition
+    runner can produce the same durable ``ScannerState`` contract as
+    ``IncrementalScannerEngine.snapshot(...)`` before production snapshot refresh
+    is routed through this path.
+    """
+
+    def __init__(self, transition: ScannerTransitionEngine | None = None) -> None:
+        self._transition = transition or ScannerTransitionEngine()
+        self._scanner = ScannerEngine()
+
+    @staticmethod
+    def _snapshot_swing_state(
+        metrics_prefix: pd.DataFrame,
+        *,
+        symbol: str,
+        timeframe: str,
+    ) -> ScannerState:
+        swing_engine = SwingEngine()
+        swing_engine.calculate(metrics_prefix)
+        return swing_engine.snapshot_state(symbol=symbol, timeframe=timeframe)
+
+    @staticmethod
+    def _structural_events_from_transition(
+        transition_state: ScanState,
+    ) -> tuple[StructuralEventState, ...]:
+        captured: dict[tuple[str, object], StructuralEventState] = {}
+        for result in transition_state.history:
+            for item in result.evidence:
+                captured[(str(item.week_beginning), item.code)] = (
+                    StructuralEventState.from_evidence(item)
+                )
+
+        return tuple(
+            captured[key]
+            for key in sorted(captured, key=lambda value: (value[0], str(value[1])))
+        )
+
+    def snapshot(
+        self,
+        metrics: pd.DataFrame,
+        *,
+        target_index: int,
+        symbol: str,
+        timeframe: str,
+    ) -> ScannerState:
+        """Return a durable scanner snapshot for ``target_index``.
+
+        The transition path is replayed only through ``target_index``. Future bars
+        are deliberately excluded from the metrics prefix so the snapshot remains
+        point-in-time and compatible with the existing production state contract.
+        """
+
+        if target_index < self._scanner.MIN_REPLAY_BARS:
+            raise ValueError(
+                f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}"
+            )
+        if target_index >= len(metrics):
+            raise IndexError("target_index is outside metrics")
+
+        prefix = metrics.iloc[: target_index + 1].copy()
+        transition_state, _ = self._transition.run_to_index(
+            prefix,
+            target_index,
+        )
+        swing_state = self._snapshot_swing_state(
+            prefix,
+            symbol=symbol,
+            timeframe=timeframe,
+        )
+        state = replace(
+            swing_state,
+            schema_version=SCANNER_STATE_SCHEMA_VERSION,
+            structural_events=self._structural_events_from_transition(
+                transition_state,
+            ),
+        )
+        return stamp_scanner_state(state, prefix)
+
+
+__all__ = ["ScannerTransitionSnapshotAdapter"]
