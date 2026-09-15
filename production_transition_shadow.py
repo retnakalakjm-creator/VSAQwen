@@ -25,8 +25,9 @@ class ProductionTransitionShadowComparison:
     """Non-production comparison result for production-vs-transition parity.
 
     The comparison runs the current production path and the transition runner side
-    by side in tests or diagnostics. It does not route production traffic through
-    the transition runner and it does not change candidate semantics.
+    by side in tests or diagnostics. It does not choose or replace production
+    output; it only reports whether the current production result matches an
+    independently computed transition-runner result.
     """
 
     matched: bool

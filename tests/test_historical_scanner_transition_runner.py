@@ -118,10 +118,11 @@ def test_historical_runner_returns_empty_before_minimum_replay_bars() -> None:
     assert HistoricalScannerRunner().scan_actionable(metrics) == []
 
 
-def test_historical_runner_is_not_wired_into_production_scanner() -> None:
+def test_historical_runner_is_only_wired_to_production_full_replay_boundary() -> None:
     production_source = Path("production_scanner.py").read_text(encoding="utf-8")
 
-    assert "historical_scanner" not in production_source
-    assert "HistoricalScannerRunner" not in production_source
+    assert "from historical_scanner import HistoricalScannerRunner" in production_source
+    assert "def _full_replay_candidate" in production_source
+    assert "HistoricalScannerRunner().scan_to_index(metrics, target_index)" in production_source
     assert "scanner_transition" not in production_source
     assert "ScannerTransitionEngine" not in production_source

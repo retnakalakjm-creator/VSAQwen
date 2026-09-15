@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from historical_scanner import HistoricalScannerRunner
 from incremental_scanner import IncrementalScannerEngine
 from logger import Log
 from scanner import ScannerCandidate, ScannerEngine
@@ -28,6 +29,12 @@ def _target_index(metrics: pd.DataFrame) -> int | None:
     if len(metrics) <= ScannerEngine.MIN_REPLAY_BARS:
         return None
     return len(metrics) - 1
+
+
+def _full_replay_candidate(metrics: pd.DataFrame, target_index: int) -> ScannerCandidate:
+    """Return a full point-in-time candidate through the transition runner."""
+
+    return HistoricalScannerRunner().scan_to_index(metrics, target_index)
 
 
 def _snapshot_latest(
@@ -102,10 +109,11 @@ def scan_latest_candidate_production(
     """Scan the latest bar using the incremental production path.
 
     The first run for a symbol/timeframe bootstraps a durable scanner state with
-    one full point-in-time scan. Later runs resume from the saved causal state and
-    refresh that state at the latest completed bar. Persisted state is only used
-    when its engine/config/data fingerprints match the current runtime and data
-    prefix; stale state falls back to a full replay when fallback is allowed.
+    one full point-in-time scan through the transition runner. Later runs resume
+    from the saved causal state and refresh that state at the latest completed
+    bar. Persisted state is only used when its engine/config/data fingerprints
+    match the current runtime and data prefix; stale state falls back to a full
+    transition-runner replay when fallback is allowed.
 
     ``fallback_diagnostics`` receives explicit diagnostic messages when a saved
     checkpoint is corrupt, stale, or unable to resume. Normal first-run bootstrap
@@ -117,7 +125,6 @@ def scan_latest_candidate_production(
 
     store = state_store if state_store is not None else ScannerStateStore(state_root)
     incremental = IncrementalScannerEngine()
-    full_scanner = ScannerEngine()
 
     try:
         state = store.load(symbol, timeframe)
@@ -161,9 +168,9 @@ def scan_latest_candidate_production(
                 code=ENGINE_DIVERGENCE,
                 reason="persisted scanner state could not resume current metrics",
             )
-            candidate = full_scanner.scan_to_index(metrics, target_index)
+            candidate = _full_replay_candidate(metrics, target_index)
     else:
-        candidate = full_scanner.scan_to_index(metrics, target_index)
+        candidate = _full_replay_candidate(metrics, target_index)
 
     _snapshot_latest(
         metrics=metrics,

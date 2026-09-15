@@ -200,9 +200,9 @@ def test_shadow_matches_empty_production_before_minimum_window(tmp_path) -> None
     assert actionable.transition_candidates == ()
 
 
-def test_shadow_helper_does_not_wire_transition_runner_into_production() -> None:
+def test_shadow_helper_is_not_called_by_production_scanner() -> None:
     production_source = Path("production_scanner.py").read_text(encoding="utf-8")
 
     assert "production_transition_shadow" not in production_source
-    assert "HistoricalScannerRunner" not in production_source
-    assert "ScannerTransitionEngine" not in production_source
+    assert "compare_latest_candidate_with_transition" not in production_source
+    assert "compare_actionable_with_transition" not in production_source
