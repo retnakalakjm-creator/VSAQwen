@@ -53,9 +53,46 @@ def _state_matches_target(
 
 
 def _full_replay_candidate(metrics: pd.DataFrame, target_index: int) -> ScannerCandidate:
-    """Return a full point-in-time candidate through the transition runner."""
+    """Return a full point-in-time candidate through the historical runner."""
 
     return HistoricalScannerRunner().scan_to_index(metrics, target_index)
+
+
+def _full_replay_candidate_and_snapshot(
+    metrics: pd.DataFrame,
+    *,
+    target_index: int,
+    symbol: str,
+    timeframe: str,
+    snapshot: ScannerTransitionSnapshotAdapter,
+) -> tuple[ScannerCandidate, ScannerState]:
+    """Return latest candidate and snapshot from one full-replay boundary."""
+
+    runner = HistoricalScannerRunner()
+    scan_to_index_with_state = getattr(runner, "scan_to_index_with_state", None)
+    if callable(scan_to_index_with_state):
+        candidate, transition_state = scan_to_index_with_state(metrics, target_index)
+        snapshot_from_transition_state = getattr(
+            snapshot,
+            "snapshot_from_transition_state",
+            None,
+        )
+        if callable(snapshot_from_transition_state):
+            return candidate, snapshot_from_transition_state(
+                metrics,
+                target_index=target_index,
+                symbol=symbol,
+                timeframe=timeframe,
+                transition_state=transition_state,
+            )
+
+    candidate = _full_replay_candidate(metrics, target_index)
+    return candidate, snapshot.snapshot(
+        metrics,
+        target_index=target_index,
+        symbol=symbol,
+        timeframe=timeframe,
+    )
 
 
 def _snapshot_latest(
@@ -149,6 +186,7 @@ def scan_latest_candidate_production(
     transition_resume = ScannerTransitionResumeAdapter()
     transition_snapshot = ScannerTransitionSnapshotAdapter()
     needs_snapshot_refresh = True
+    replay_snapshot: ScannerState | None = None
 
     try:
         state = store.load(symbol, timeframe)
@@ -197,19 +235,34 @@ def scan_latest_candidate_production(
                 code=ENGINE_DIVERGENCE,
                 reason="persisted scanner state could not resume current metrics",
             )
-            candidate = _full_replay_candidate(metrics, target_index)
+            candidate, replay_snapshot = _full_replay_candidate_and_snapshot(
+                metrics,
+                target_index=target_index,
+                symbol=symbol,
+                timeframe=timeframe,
+                snapshot=transition_snapshot,
+            )
             needs_snapshot_refresh = True
     else:
-        candidate = _full_replay_candidate(metrics, target_index)
-
-    if needs_snapshot_refresh:
-        _snapshot_latest(
-            metrics=metrics,
+        candidate, replay_snapshot = _full_replay_candidate_and_snapshot(
+            metrics,
+            target_index=target_index,
             symbol=symbol,
             timeframe=timeframe,
-            store=store,
             snapshot=transition_snapshot,
         )
+
+    if needs_snapshot_refresh:
+        if replay_snapshot is not None:
+            store.save(replay_snapshot)
+        else:
+            _snapshot_latest(
+                metrics=metrics,
+                symbol=symbol,
+                timeframe=timeframe,
+                store=store,
+                snapshot=transition_snapshot,
+            )
     return candidate
 
 

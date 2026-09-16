@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import pandas as pd
 
 from scanner import ScannerCandidate, ScannerEngine
-from scanner_transition import ScannerTransitionEngine
+from scanner_transition import ScanState, ScannerTransitionEngine
 
 
 class HistoricalScannerRunner:
@@ -24,6 +24,16 @@ class HistoricalScannerRunner:
         """Return the candidate at ``target_index`` through the transition path."""
 
         return self._transition.scan_to_index(metrics, target_index)
+
+    def scan_to_index_with_state(
+        self,
+        metrics: pd.DataFrame,
+        target_index: int,
+    ) -> tuple[ScannerCandidate, ScanState]:
+        """Return the target candidate and transition state from one replay."""
+
+        state, evaluation = self._transition.run_to_index(metrics, target_index)
+        return evaluation.candidate, state
 
     def scan_to_indices(
         self,

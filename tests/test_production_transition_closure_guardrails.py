@@ -36,9 +36,12 @@ def test_production_scanner_uses_all_transition_boundaries() -> None:
     imports = _import_modules(source)
 
     assert "historical_scanner" in imports
+    assert "scanner_transition" not in imports
     assert "scanner_transition_resume" in imports
     assert "scanner_transition_snapshot" in imports
     assert "HistoricalScannerRunner().scan_to_index(metrics, target_index)" in source
+    assert "scan_to_index_with_state" in source
+    assert "snapshot_from_transition_state(" in source
     assert "transition_resume = ScannerTransitionResumeAdapter()" in source
     assert "transition_snapshot = ScannerTransitionSnapshotAdapter()" in source
     assert "snapshot.snapshot(" in source
@@ -64,13 +67,14 @@ def test_closure_doc_lists_final_transition_boundaries_and_non_goals() -> None:
     doc = _source(CLOSURE_DOC)
 
     for phrase in (
-        "Full replay/bootstrap/fallback candidate evaluation",
+        "Full replay/bootstrap/fallback candidate and snapshot creation",
+        "HistoricalScannerRunner",
         "Validated checkpoint resume",
         "Snapshot creation and refresh",
-        "HistoricalScannerRunner",
         "ScannerTransitionResumeAdapter",
         "ScannerTransitionSnapshotAdapter",
-        "ScannerTransitionEngine",
+        "snapshot_from_transition_state",
+        "does not import `scanner_transition` directly",
         "IncrementalScannerEngine is no longer a production_scanner dependency",
         "No detector logic",
         "No scoring, ranking, qualification, or actionability changes",

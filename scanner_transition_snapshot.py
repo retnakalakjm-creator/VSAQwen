@@ -53,6 +53,53 @@ class ScannerTransitionSnapshotAdapter:
             for key in sorted(captured, key=lambda value: (value[0], str(value[1])))
         )
 
+    def _validate_target_index(
+        self,
+        metrics: pd.DataFrame,
+        target_index: int,
+    ) -> None:
+        if target_index < self._scanner.MIN_REPLAY_BARS:
+            raise ValueError(
+                f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}"
+            )
+        if target_index >= len(metrics):
+            raise IndexError("target_index is outside metrics")
+
+    def snapshot_from_transition_state(
+        self,
+        metrics: pd.DataFrame,
+        *,
+        target_index: int,
+        symbol: str,
+        timeframe: str,
+        transition_state: ScanState,
+    ) -> ScannerState:
+        """Return a durable snapshot from an already-replayed transition state.
+
+        This keeps snapshot creation point-in-time while letting production
+        bootstrap/fallback reuse the transition replay that produced the latest
+        candidate instead of replaying the same bars a second time.
+        """
+
+        self._validate_target_index(metrics, target_index)
+        if transition_state.last_bar_index != target_index:
+            raise ValueError("transition state must end at target_index")
+
+        prefix = metrics.iloc[: target_index + 1].copy()
+        swing_state = self._snapshot_swing_state(
+            prefix,
+            symbol=symbol,
+            timeframe=timeframe,
+        )
+        state = replace(
+            swing_state,
+            schema_version=SCANNER_STATE_SCHEMA_VERSION,
+            structural_events=self._structural_events_from_transition(
+                transition_state,
+            ),
+        )
+        return stamp_scanner_state(state, prefix)
+
     def snapshot(
         self,
         metrics: pd.DataFrame,
@@ -68,31 +115,19 @@ class ScannerTransitionSnapshotAdapter:
         point-in-time and compatible with the existing production state contract.
         """
 
-        if target_index < self._scanner.MIN_REPLAY_BARS:
-            raise ValueError(
-                f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}"
-            )
-        if target_index >= len(metrics):
-            raise IndexError("target_index is outside metrics")
-
+        self._validate_target_index(metrics, target_index)
         prefix = metrics.iloc[: target_index + 1].copy()
         transition_state, _ = self._transition.run_to_index(
             prefix,
             target_index,
         )
-        swing_state = self._snapshot_swing_state(
+        return self.snapshot_from_transition_state(
             prefix,
+            target_index=target_index,
             symbol=symbol,
             timeframe=timeframe,
+            transition_state=transition_state,
         )
-        state = replace(
-            swing_state,
-            schema_version=SCANNER_STATE_SCHEMA_VERSION,
-            structural_events=self._structural_events_from_transition(
-                transition_state,
-            ),
-        )
-        return stamp_scanner_state(state, prefix)
 
 
 __all__ = ["ScannerTransitionSnapshotAdapter"]
