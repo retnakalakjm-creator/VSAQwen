@@ -14,6 +14,7 @@ from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
 from models import Evidence
 from scanner import ScannerCandidate, ScannerEngine
+from scanner_state import StructuralEventState
 from trend import TrendAnalyzer, TrendResult
 
 
@@ -48,26 +49,28 @@ class ScanState:
     """Deterministic scanner state carried between step calls.
 
     ``history`` temporarily mirrors the existing scanner qualification history
-    so scanner semantics remain unchanged during migration. ``qualification`` is
-    now first-class causal state and is advanced independently from that legacy
-    history. Later M2 PRs can remove the synthetic history dependency after the
-    M1 equivalence contract proves parity.
+    so scanner semantics remain unchanged during migration. ``qualification`` and
+    ``structural_events`` are first-class causal state and are advanced without
+    reconstructing them from the legacy history representation.
     """
 
     last_bar_index: int | None = None
     history: tuple[EvidenceResult, ...] = ()
     qualification: PatternQualificationState = PatternQualificationState()
+    structural_events: tuple[StructuralEventState, ...] = ()
 
     def with_step(
         self,
         bar_index: int,
         structural_evidence: EvidenceResult,
         qualification: PatternQualificationState,
+        structural_events: tuple[StructuralEventState, ...],
     ) -> "ScanState":
         return ScanState(
             last_bar_index=bar_index,
             history=(*self.history, structural_evidence),
             qualification=qualification,
+            structural_events=structural_events,
         )
 
 
@@ -117,6 +120,24 @@ class ScannerTransitionEngine:
             if item.code in ScannerEngine._STRUCTURAL_CODES
         )
 
+    @staticmethod
+    def _advance_structural_events(
+        current: tuple[StructuralEventState, ...],
+        evidence: tuple[Evidence, ...],
+    ) -> tuple[StructuralEventState, ...]:
+        """Advance durable structural-event state without replay-history coupling."""
+
+        captured: dict[tuple[str, object], StructuralEventState] = {
+            (item.bar_key, item.code): item for item in current
+        }
+        for item in evidence:
+            event = StructuralEventState.from_evidence(item)
+            captured[(event.bar_key, event.code)] = event
+        return tuple(
+            captured[key]
+            for key in sorted(captured, key=lambda value: (value[0], str(value[1])))
+        )
+
     def step(
         self,
         state: ScanState,
@@ -158,15 +179,20 @@ class ScannerTransitionEngine:
             state.qualification,
             structural.evidence,
         )
+        structural_events = self._advance_structural_events(
+            state.structural_events,
+            structural.evidence,
+        )
         next_state = state.with_step(
             bar.index,
             structural,
             qualification,
+            structural_events,
         )
 
-        # Candidate evaluation still uses the legacy history path in this PR.
-        # M2/PR-B2 establishes first-class qualification state without changing
-        # scanner decisions; a later guarded PR will remove the legacy dependency.
+        # Candidate evaluation still uses the legacy history path while M2 moves
+        # each causal dependency into explicit rolling state one guarded slice at
+        # a time. The M1 equivalence contract protects scanner semantics.
         candidate = self._scanner.evaluate(
             trend=trend,
             evidence=evidence,

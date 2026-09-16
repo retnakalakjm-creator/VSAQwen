@@ -110,10 +110,17 @@ class ScannerTransitionResumeAdapter:
             state,
             checkpoint_index=checkpoint_index,
         )
+        index_by_week = self._index_by_week(metrics)
+        structural_evidence = tuple(
+            event.to_evidence(index_by_week[event.bar_key])
+            for event in state.structural_events
+            if event.bar_key in index_by_week
+        )
         return ScanState(
             last_bar_index=checkpoint_index,
             history=history,
-            qualification=self._qualification.state_from_results(history),
+            qualification=self._qualification.state_from_events(structural_evidence),
+            structural_events=state.structural_events,
         )
 
     def resume_latest(self, metrics: pd.DataFrame, state: ScannerState) -> ScannerCandidate:
