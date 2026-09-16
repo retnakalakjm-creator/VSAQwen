@@ -15,6 +15,7 @@ from audit.runner import (
     run_symbol_candidate_audit,
 )
 from background.qualification import PatternQualification
+from historical_scanner import HistoricalScannerRunner
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,14 @@ def _weekly_transformer(daily: pd.DataFrame) -> pd.DataFrame:
 
 def _metrics_calculator(weekly: pd.DataFrame) -> pd.DataFrame:
     return weekly.copy()
+
+
+def test_candidate_audit_defaults_to_historical_suffix_reuse_boundary() -> None:
+    symbol_defaults = run_symbol_candidate_audit.__kwdefaults__ or {}
+    historical_defaults = run_historical_candidate_audit.__kwdefaults__ or {}
+
+    assert symbol_defaults["scanner_factory"] is HistoricalScannerRunner
+    assert historical_defaults["scanner_factory"] is HistoricalScannerRunner
 
 
 def test_run_symbol_candidate_audit_builds_outcome_frame() -> None:

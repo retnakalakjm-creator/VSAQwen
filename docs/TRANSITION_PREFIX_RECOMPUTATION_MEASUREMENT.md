@@ -58,9 +58,17 @@ The audit still bounds metrics at the resolved `end_index`, but it asks only for
 
 This remains an audit-only optimization seam. It does not change production scanner call sites, checkpoint policy, detector rules, VSA semantics, scoring, ranking, qualification, actionability, API response shape, frontend runtime, replay/manual-review behavior, HVR policy, trade plans, alerts, or orders.
 
+## Historical candidate audit consumer
+
+`run_symbol_candidate_audit(...)` and `run_historical_candidate_audit(...)` now default their `scanner_factory` to `HistoricalScannerRunner`.
+
+That routes the analysis-only candidate outcome dataset path through the historical suffix-reuse boundary instead of instantiating `ScannerEngine` directly. The existing `scanner_factory` injection seam remains unchanged, so tests and research callers can still provide a scanner double or alternate scanner implementation.
+
+This remains an audit-only consumer migration. It does not change production scanner call sites, checkpoint policy, detector rules, VSA semantics, scoring, ranking, qualification, actionability, API response shape, frontend runtime, replay/manual-review behavior, HVR policy, trade plans, alerts, or orders.
+
 ## Replay caller inventory
 
-Current active migration status after the selected-target VSA event audit consumer:
+Current active migration status after the candidate audit consumer migration:
 
 | Area | Current boundary | Migration status | Next action |
 | --- | --- | --- | --- |
@@ -68,18 +76,17 @@ Current active migration status after the selected-target VSA event audit consum
 | `HistoricalScannerRunner.scan(...)` | Calls `ScannerTransitionEngine.scan_to_indices(...)` for the complete historical target range. | Migrated consumer. | Keep parity and measurement coverage active. |
 | `HistoricalScannerRunner.scan_to_indices(...)` | Exposes the selected-target batch boundary for historical and audit callers. | Migrated adapter. | Prefer this boundary over direct transition-engine imports in callers. |
 | `build_vsa_event_audit(...)` | Resolves the replay window once, bounds metrics at `end_index`, and calls `scan_to_indices(...)` when available. | Migrated audit consumer. | Keep transition parity tests active. |
-| `audit.runner.run_symbol_candidate_audit(...)` and `run_historical_candidate_audit(...)` | Default to `ScannerEngine` through `scanner_factory` and call `scanner_factory().scan(metrics)`. | Remaining high-value audit candidate. | Add candidate-audit parity first, then consider defaulting the analysis-only path to `HistoricalScannerRunner`. |
+| `audit.runner.run_symbol_candidate_audit(...)` and `run_historical_candidate_audit(...)` | Default to `HistoricalScannerRunner` through `scanner_factory` and call `scanner_factory().scan(metrics)`. | Migrated audit consumer. | Keep candidate-audit default-boundary and injected-scanner tests active. |
 | `production_scanner.scan_latest_candidate_production(...)` | Latest target only; validated checkpoints resume through `ScannerTransitionResumeAdapter`, fallback uses `HistoricalScannerRunner().scan_to_index(...)`, and snapshots refresh through `ScannerTransitionSnapshotAdapter`. | Production path migrated but intentionally not optimized further here. | Defer until a production-specific guard proves checkpoint, resume, snapshot, and fallback behavior unchanged. |
 | `live_scanner.py` | Default live path uses `scan_actionable_production(...)`; the `--full-replay` option still calls the original scanner actionable path. | Not a repeated historical replay migration target by default. | Leave unchanged unless full-replay live mode becomes a current optimization target. |
 | `tools/historical_validation.py` | Manually loops over target bars and builds `metrics.iloc[: target_index + 1].copy()` for validation evidence collection. | Remaining low-priority tooling candidate. | Migrate only after audit-runner work, or keep as an explicit research script. |
 
 ## Follow-up PR queue
 
-1. Add candidate-audit parity coverage proving `audit.runner` outputs match when driven by `ScannerEngine` and `HistoricalScannerRunner`.
-2. Move the analysis-only candidate audit default to `HistoricalScannerRunner` after parity is locked.
-3. Keep production latest-candidate optimization deferred until checkpoint, resume, snapshot, and fallback guardrails are specific enough for that path.
-4. Consider a tooling-only migration for `tools/historical_validation.py` after the audit-runner path is finished.
-5. Add a final measurement follow-up that records reduced replay work for migrated consumers without changing scanner logic.
+1. Keep candidate-audit default-boundary and injected-scanner coverage active while measuring larger audit runs.
+2. Keep production latest-candidate optimization deferred until checkpoint, resume, snapshot, and fallback guardrails are specific enough for that path.
+3. Consider a tooling-only migration for `tools/historical_validation.py` after the audit-runner path is finished.
+4. Add a final measurement follow-up that records reduced replay work for migrated consumers without changing scanner logic.
 
 ## Existing safe reuse seam
 

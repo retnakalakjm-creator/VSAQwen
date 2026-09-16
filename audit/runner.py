@@ -26,8 +26,8 @@ from audit.vsa_event_diagnostics import (
     write_vsa_event_diagnostic_bundle,
 )
 from data import completed_weekly_only, daily_to_weekly, download_data
+from historical_scanner import HistoricalScannerRunner
 from metrics_engine import MetricsEngine
-from scanner import ScannerEngine
 
 
 DEFAULT_AUDIT_HORIZONS = (1, 2, 4, 8)
@@ -100,17 +100,19 @@ def run_symbol_candidate_audit(
     daily_loader: DailyLoader = download_data,
     weekly_transformer: WeeklyTransformer | None = None,
     metrics_calculator: MetricsCalculator | None = None,
-    scanner_factory: ScannerFactory = ScannerEngine,
+    scanner_factory: ScannerFactory = HistoricalScannerRunner,
     include_unscored: bool = True,
 ) -> SymbolAuditResult:
     """Run a full historical candidate audit for one symbol.
 
-    The default pipeline mirrors the full-replay scanner path:
+    The default pipeline mirrors the historical transition-runner scanner path:
 
-    ``download_data -> daily_to_weekly -> completed_weekly_only -> MetricsEngine -> ScannerEngine.scan``
+    ``download_data -> daily_to_weekly -> completed_weekly_only -> MetricsEngine -> HistoricalScannerRunner.scan``
 
-    Dependency injection keeps tests deterministic and lets future research use
-    already-loaded bars without changing production modules.
+    The default scanner factory routes analysis-only candidate audits through
+    the historical suffix-reuse boundary. Dependency injection keeps tests
+    deterministic and lets future research use already-loaded bars without
+    changing production modules.
     """
     normalized_symbol = _normalize_symbol(symbol)
     normalized_horizons = _normalize_horizons(horizons)
@@ -161,7 +163,7 @@ def run_historical_candidate_audit(
     daily_loader: DailyLoader = download_data,
     weekly_transformer: WeeklyTransformer | None = None,
     metrics_calculator: MetricsCalculator | None = None,
-    scanner_factory: ScannerFactory = ScannerEngine,
+    scanner_factory: ScannerFactory = HistoricalScannerRunner,
     include_unscored: bool = True,
 ) -> HistoricalAuditResult:
     """Run historical candidate audits for a symbol universe."""
