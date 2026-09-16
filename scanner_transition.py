@@ -5,6 +5,10 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from background.qualification import (
+    PatternQualificationEngine,
+    PatternQualificationState,
+)
 from engine.columns import COL_WEEK
 from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
@@ -43,18 +47,27 @@ class BarFeatures:
 class ScanState:
     """Deterministic scanner state carried between step calls.
 
-    `history` intentionally mirrors the existing scanner qualification history.
-    It stores structural evidence only, not the full per-bar evidence payload, so
-    the contract is compatible with the current production scanner behavior.
+    ``history`` temporarily mirrors the existing scanner qualification history
+    so scanner semantics remain unchanged during migration. ``qualification`` is
+    now first-class causal state and is advanced independently from that legacy
+    history. Later M2 PRs can remove the synthetic history dependency after the
+    M1 equivalence contract proves parity.
     """
 
     last_bar_index: int | None = None
     history: tuple[EvidenceResult, ...] = ()
+    qualification: PatternQualificationState = PatternQualificationState()
 
-    def with_step(self, bar_index: int, structural_evidence: EvidenceResult) -> "ScanState":
+    def with_step(
+        self,
+        bar_index: int,
+        structural_evidence: EvidenceResult,
+        qualification: PatternQualificationState,
+    ) -> "ScanState":
         return ScanState(
             last_bar_index=bar_index,
             history=(*self.history, structural_evidence),
+            qualification=qualification,
         )
 
 
@@ -80,6 +93,7 @@ class ScannerTransitionEngine:
 
     def __init__(self, scanner: ScannerEngine | None = None) -> None:
         self._scanner = scanner or ScannerEngine()
+        self._qualification = PatternQualificationEngine()
 
     @staticmethod
     def bar_for(metrics: pd.DataFrame, index: int) -> MarketBar:
@@ -140,7 +154,19 @@ class ScannerTransitionEngine:
             context=evidence.context,
             evidence=self._structural_evidence(evidence),
         )
-        next_state = state.with_step(bar.index, structural)
+        qualification = self._qualification.advance(
+            state.qualification,
+            structural.evidence,
+        )
+        next_state = state.with_step(
+            bar.index,
+            structural,
+            qualification,
+        )
+
+        # Candidate evaluation still uses the legacy history path in this PR.
+        # M2/PR-B2 establishes first-class qualification state without changing
+        # scanner decisions; a later guarded PR will remove the legacy dependency.
         candidate = self._scanner.evaluate(
             trend=trend,
             evidence=evidence,

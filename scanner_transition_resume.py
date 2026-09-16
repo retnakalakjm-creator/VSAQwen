@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from background.qualification import PatternQualificationEngine
 from engine.columns import COL_WEEK
 from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
@@ -46,6 +47,7 @@ class ScannerTransitionResumeAdapter:
     def __init__(self, transition: ScannerTransitionEngine | None = None) -> None:
         self._transition = transition or ScannerTransitionEngine()
         self._scanner = ScannerEngine()
+        self._qualification = PatternQualificationEngine()
 
     @staticmethod
     def _index_by_week(metrics: pd.DataFrame) -> dict[str, int]:
@@ -103,13 +105,15 @@ class ScannerTransitionResumeAdapter:
         """Convert durable production scanner state into transition ``ScanState``."""
 
         checkpoint_index = self._checkpoint_index(metrics, state)
+        history = self._checkpoint_structural_history(
+            metrics,
+            state,
+            checkpoint_index=checkpoint_index,
+        )
         return ScanState(
             last_bar_index=checkpoint_index,
-            history=self._checkpoint_structural_history(
-                metrics,
-                state,
-                checkpoint_index=checkpoint_index,
-            ),
+            history=history,
+            qualification=self._qualification.state_from_results(history),
         )
 
     def resume_latest(self, metrics: pd.DataFrame, state: ScannerState) -> ScannerCandidate:
