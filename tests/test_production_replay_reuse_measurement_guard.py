@@ -191,6 +191,39 @@ def test_stale_checkpoint_fallback_candidate_and_snapshot_share_one_replay(
     )
 
 
+def test_valid_behind_checkpoint_resume_and_snapshot_share_one_replay(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    metrics = _metrics()
+    target_index = len(metrics) - 1
+    checkpoint_index = target_index - 8
+    store = ScannerStateStore(tmp_path)
+    state = IncrementalScannerEngine().snapshot(
+        metrics,
+        target_index=checkpoint_index,
+        symbol="MEASURE-BEHIND",
+        timeframe="1wk",
+    )
+    store.save(state)
+    calls = _count_transition_replays(monkeypatch)
+
+    candidate = scan_latest_candidate_production(
+        metrics,
+        symbol="MEASURE-BEHIND",
+        timeframe="1wk",
+        state_store=store,
+        allow_full_replay_fallback=False,
+    )
+
+    assert candidate is not None
+    assert candidate.bar_index == target_index
+    assert calls == [(len(metrics), target_index, True)]
+    assert store.load("MEASURE-BEHIND", "1wk").last_closed_bar == str(
+        metrics.iloc[target_index][COL_WEEK]
+    )
+
+
 def test_valid_latest_checkpoint_runs_one_candidate_replay_without_snapshot_refresh(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
