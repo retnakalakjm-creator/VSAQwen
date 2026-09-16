@@ -1,29 +1,65 @@
 # ProVSA Architecture Remediation Roadmap
 
 **Status:** Active / Living Document  
-**Purpose:** Master implementation roadmap for the architectural and code-quality remediation of ProVSA.  
-**Primary product direction:** Weekly-timeframe VSA analysis and stock qualification, followed by daily-timeframe VSA entry timing.  
-**Update policy:** Update this document as each PR is started, merged, validated, or superseded.
+**Primary product direction:** Weekly-timeframe VSA background/qualification followed by daily-timeframe entry timing.  
+**Update policy:** Update this document whenever a roadmap PR is started, merged, validated, superseded, or materially redesigned.  
+**Last updated:** 2026-09-16
 
 ---
 
-## 1. Roadmap Principles
+## 1. Architectural Principles
 
-The remediation should improve ProVSA without rewriting the validated VSA domain logic.
+The remediation must improve ProVSA without replacing validated domain logic with simplified textbook rules.
 
-The following principles are architectural invariants:
+Core invariants:
 
 - Preserve point-in-time / no-look-ahead behavior.
-- Preserve the distinction between the signal bar and the execution bar.
-- Preserve the existing weekly trend and market-structure machinery.
+- Preserve the distinction between signal bar and execution bar.
+- Preserve existing weekly trend and market-structure machinery.
 - Preserve structural progression as event-based evidence.
 - Preserve immutable/slotted domain and state models where practical.
-- Preserve audit-first promotion of experimental VSA evidence.
 - Keep provisional evidence read-only until historical validation supports promotion.
-- Historical replay, production scanning, audit, and visual replay should converge on one causal transition engine.
-- Weekly analysis determines background/direction; daily analysis determines entry timing.
+- Historical replay, production scanning, audit, and visual replay should converge on one causal transition path.
+- Weekly analysis determines background, qualification, campaign direction, and structural context.
+- Daily analysis determines entry timing only.
 - Do not introduce duplicate trend/structure engines where existing ProVSA logic can be reused.
 - Optimize algorithms before changing dataframe libraries or adding low-level acceleration.
+
+### Real-Market Evidence Principle
+
+**Real markets will not reliably create textbook scenarios.**
+
+Therefore ProVSA must evaluate the behavior expressed by evidence rather than require one named VSA pattern to appear exactly.
+
+Named events such as:
+
+```text
+NO SUPPLY
+TEST
+STOPPING VOLUME
+SHAKEOUT
+SPRING
+DEMAND COMING IN
+ABSORPTION
+UPTHRUST
+NO DEMAND
+```
+
+are evidence contributors, not mandatory entry gates.
+
+The daily engine should ask behavioral questions such as:
+
+```text
+Is opposing pressure receding?
+Is aligned pressure emerging?
+Is the opposing move being rejected?
+Is effort producing result in the weekly direction?
+Is absorption present?
+Is structure improving/aligned?
+Is continuation behavior present?
+```
+
+A stock may rally without a textbook NO SUPPLY or TEST. That is not, by itself, a model failure. The system should recognize alternative real-market evidence when it exists, and should still be allowed to return NO ENTRY when price moves without a sufficiently defined low-risk entry condition.
 
 ---
 
@@ -31,688 +67,353 @@ The following principles are architectural invariants:
 
 | Priority | Meaning |
 |---|---|
-| **P0** | Correctness / causal-integrity issue. Complete before expanding production behavior. |
-| **P1** | High-value architectural or performance work required for the weekly→daily system. |
-| **P2** | Maintainability, observability, robustness, or modernization improvement. |
+| **P0** | Correctness / causal integrity. Complete before expanding production behavior. |
+| **P1** | High-value architecture required for the weekly→daily product. |
+| **P2** | Maintainability, robustness, observability, modernization. |
 | **P3** | Optional/later optimization or infrastructure evolution. |
 
-Status values used in this roadmap:
+Status values:
 
-- `PLANNED`
-- `IN PROGRESS`
-- `MERGED`
-- `VALIDATED`
-- `DEFERRED`
-- `SUPERSEDED`
+```text
+PLANNED
+IN PROGRESS
+MERGED
+VALIDATED
+DEFERRED
+SUPERSEDED
+```
 
 ---
 
-# Milestone M1 — Scanner Equivalence Safety Contract
+# M1 — Scanner Equivalence Safety Contract
 
 **Priority:** P0  
-**Status:** PLANNED  
-**Production behavior change:** None  
-**Dependency:** None
+**Status:** VALIDATED
 
-## Objective
-
-Establish a formal invariant that a full historical scan and a checkpoint/resume scan produce semantically identical results.
-
-The fundamental contract is:
+Fundamental invariant:
 
 ```text
 FULL(0 ... N)
-
-must equal
-
-FULL(0 ... K)
-→ SNAPSHOT(K)
-→ RESUME(K+1 ... N)
+==
+FULL(0 ... K) → SNAPSHOT(K) → RESUME(K+1 ... N)
 ```
 
-for every valid checkpoint `K`.
-
-## Work
+Compare trend, swings, candidate state, structural events, qualification, evidence, actionability, ranking, signal identity, execution availability, and persisted transition state.
 
 ### PR-A — Full-vs-Resume Equivalence Contract
 
-Add deterministic equivalence tests covering:
-
-- trend state
-- confirmed swings
-- candidate swing
-- structural events
-- structural progression
-- qualification
-- scoring evidence
-- VSA direction/evidence
-- actionability
-- ranking score
-- signal-bar identity
-- execution availability / execution-bar identity
-- persisted state required for the next transition
-
-Test multiple checkpoint locations including:
-
-- earliest valid checkpoint
-- middle of history
-- immediately before a structural transition
-- immediately after a structural transition
-- immediately before the final bar
-- final resumable checkpoint
-
-### Property-Based Coverage
-
-Introduce Hypothesis, preferably initially as a test-only dependency.
-
-Generate histories containing:
-
-- flat markets
-- repeated highs/lows
-- gaps
-- large-spread bars
-- zero-volume bars where valid
-- rapid candidate reversals
-- minimal warm-up histories
-- alternating trends
-- NaNs / invalid input where validation should reject them
-- duplicate timestamps
-- revised historical candles
-- configuration/state incompatibility scenarios
-
-## Definition of Done
-
-- Full and resumed scans are semantically equivalent across deterministic fixtures.
-- Property-based tests exercise arbitrary checkpoint positions.
-- A divergence produces a precise test failure identifying the mismatching state/evaluation field.
-- CI blocks merge if the equivalence contract fails.
-- No production scanner behavior is intentionally changed.
-
-## Merge Gate
-
-**Do not begin deep transition-state refactoring until M1 is merged and green.**
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #246
 
 ---
 
-# Milestone M2 — True Rolling Scanner State
+# M2 — True Rolling Scanner State
 
 **Priority:** P0  
-**Status:** PLANNED  
-**Dependency:** M1
+**Status:** VALIDATED
 
-## Objective
+Objective: move scanner behavior toward bounded causal state and one transition path.
 
-Finish the transition from historical reconstruction to a genuinely causal incremental state machine.
+### PR-B1 — Rolling-State Inventory
 
-Target primitive:
-
-```python
-step(previous_state, new_bar_features) -> (new_state, evaluation)
-```
-
-The cost of processing a new bar should not grow materially with the entire historical length.
-
-## Current Architectural Risk
-
-The transition abstraction exists, but parts of snapshot/resume still reconstruct historical context. This creates:
-
-- unnecessary historical recomputation
-- hidden coupling between resume logic and qualification internals
-- risk that future qualification/evidence changes make FULL and RESUME disagree
-
-## Work
-
-### PR-B1 — Explicit Rolling State Inventory
-
-Document exactly what the next bar requires.
-
-Candidate state categories:
-
-```text
-TrendState
-SwingState
-CandidateSwingState
-StructuralProgressionState
-QualificationState
-EvidenceSequenceState
-RecentStructuralEventState
-RollingMetricState
-```
-
-Do not persist arbitrary history merely because existing APIs expect it.
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #247
 
 ### PR-B2 — First-Class Qualification State
 
-Remove dependence on synthesizing historical `EvidenceResult` objects solely to satisfy qualification.
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #250
 
-Persist bounded information explicitly required by qualification.
+### PR-B3 — First-Class Structural/Progression Event State
 
-### PR-B3 — First-Class Progression / Event State
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #251
 
-Structural events should be emitted as transitions occur rather than repeatedly reconstructed from historical prefixes where possible.
+### PR-B4 — Canonical State-Driven Transition Path
 
-### PR-B4 — Canonical `step()` Path
-
-Historical replay:
-
-```text
-initial state
-→ step(bar 1)
-→ step(bar 2)
-→ ...
-→ step(bar N)
-```
-
-Production:
-
-```text
-load state
-→ step(new completed bar)
-→ save state
-```
-
-Replay UI:
-
-```text
-current replay state
-→ step(next bar)
-```
-
-All three must use the same domain transition behavior.
-
-## Definition of Done
-
-- Incremental decisions no longer depend on synthetic historical reconstruction.
-- New-bar processing consumes bounded causal state.
-- Historical and resumed paths remain equivalent under M1.
-- Snapshot cost is no longer dominated by recomputing the full historical prefix.
-- Existing weekly production behavior remains semantically unchanged.
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #252
 
 ---
 
-# Milestone M3 — Daily-Bar Completion & Trading Calendar
+# M3 — Daily-Bar Completion & Trading Calendar
 
 **Priority:** P0  
-**Status:** PLANNED  
-**Dependency:** M1; can overlap with later parts of M2 if isolated safely
+**Status:** VALIDATED
 
-## Objective
+Objective: prevent incomplete daily candles from entering daily VSA logic and establish deterministic exchange-session semantics.
 
-Prevent unfinished daily candles from entering daily VSA analysis and establish correct exchange-session semantics before daily entries become actionable.
+### PR-C1 — NSE Trading Calendar Abstraction
 
-## Risk
-
-A current-session daily candle can contain valid OHLCV values while its final:
-
-- close
-- volume
-- spread
-- close position
-
-are still unknown.
-
-NaN checking alone is therefore insufficient.
-
-## Work
-
-### PR-C1 — Trading Calendar Abstraction
-
-Introduce an exchange-session abstraction responsible for:
-
-- NSE trading days
-- weekends
-- holidays
-- session close
-- next tradable session
-- completed-session determination
-
-Avoid scattering hard-coded weekday/time checks across domain code.
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #253
 
 ### PR-C2 — `completed_daily_only()`
 
-Add the daily equivalent of the existing weekly completion guard.
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #255
 
-Requirements:
+### PR-C3 — Next-Session Execution Semantics
 
-- forming daily candle excluded
-- completed session accepted
-- holidays/weekends handled
-- deterministic tests with injected clock/calendar
-- no dependence on workstation wall-clock inside domain logic
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #256
 
-### PR-C3 — Next-Session Semantics
-
-Provide a canonical function for:
+Invariant:
 
 ```text
-daily signal date
-→ next eligible execution session
+daily signal session
+→ TradingCalendar.next_session(signal)
+→ execution is available only on that exact expected session
 ```
-
-This will later be used by the Daily Entry Engine.
-
-## Definition of Done
-
-- An unfinished NSE daily bar can never become a completed VSA signal.
-- Holiday/weekend cases are tested.
-- Time is injectable/testable.
-- Daily signal→execution-session behavior is deterministic.
-
-## Release Gate
-
-**Daily actionability must not be enabled before M3 is validated.**
 
 ---
 
-# Milestone M4 — Weekly→Daily Causal Coordinator
+# M4 — Weekly→Daily Causal Coordinator
 
 **Priority:** P0  
-**Status:** PLANNED  
-**Dependency:** M1 + M3; preferably M2 substantially complete
+**Status:** VALIDATED
 
-## Objective
-
-Create the explicit multi-timeframe causal boundary for ProVSA's primary product goal:
+Target relationship:
 
 ```text
 WEEKLY = background / qualification / direction
-DAILY  = entry timing
+DAILY  = timing / confirmation / execution opportunity
 ```
-
-## Target Flow
-
-```text
-                    DAILY OHLCV
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-              ▼                     ▼
-     completed weekly bars   completed daily bars
-              │                     │
-              ▼                     │
-       existing ProVSA              │
- trend / structure / VSA            │
-              │                     │
-              ▼                     │
-         WeeklySetup                │
-              │                     │
-              └──────────┬──────────┘
-                         ▼
-               MTF Causal Coordinator
-                         │
-                         ▼
-                  DailyEntryEngine
-```
-
-## Causality Rule
 
 For any daily bar `D`:
 
 ```text
 weekly_context(D)
 =
-latest weekly setup that was fully knowable
-before D became actionable
+latest weekly setup fully knowable before D became actionable
 ```
 
-A weekly signal derived from a Friday close must not influence Monday–Thursday bars from that same week during replay/backtesting.
-
-## Work
+No Monday–Thursday daily bar may consume information created from the Friday close of the same week.
 
 ### PR-D1 — `WeeklySetup` Domain Model
 
-Suggested fields:
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #257
 
-```text
-setup_id
-symbol
-direction
-signal_week
-trend_state
-structural_progression
-qualification
-weekly_vsa_direction
-weekly_confidence / strength context
-qualifying_evidence
-support_zone
-resistance_zone
-invalidation_level
-created_at
-status
-```
-
-Suggested lifecycle:
+Lifecycle:
 
 ```text
 ARMED
-TRIGGERED
-INVALIDATED
-EXPIRED
+├── TRIGGERED
+├── INVALIDATED
+└── EXPIRED
 ```
 
-Do not hard-code arbitrary expiry behavior until historical evidence supports it.
+### PR-D2 — Point-in-Time Weekly→Daily Coordinator
 
-### PR-D2 — Point-in-Time MTF Coordinator
-
-Map each completed daily session to only the weekly state legally available at that time.
-
-Test:
-
-- ordinary weeks
-- holidays
-- shortened trading weeks
-- week boundaries
-- replay start in the middle of a week
-- missing data
-- revised weekly history
-
-## Definition of Done
-
-- No weekly look-ahead is possible in daily replay.
-- Weekly context is reproducible at every historical daily bar.
-- Existing weekly trend states remain authoritative; no duplicate trend classifier is introduced.
-- MTF coordination is independently testable.
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #258
 
 ---
 
-# Milestone M5 — Weekly Support / Demand & Resistance / Supply Zones
+# M5 — Weekly Support / Resistance Zones
 
 **Priority:** P1  
-**Status:** PLANNED  
-**Dependency:** M4
+**Status:** VALIDATED
+
+Objective: provide objective weekly location context without changing production qualification or actionability.
+
+### PR-E1 — Read-Only Weekly Structural Zones
+
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #259
+
+Current first implementation derives support/resistance from confirmed non-failed structural swings using point-in-time confirmation rules.
+
+Future expansion may include:
+
+```text
+support/resistance flips
+stopping-volume zones
+selling/buying climax zones
+spring/shakeout/upthrust zones
+range edges
+volatility-normalized proximity
+zone quality/provenance
+```
+
+---
+
+# M6 — Daily Entry Shadow Engine
+
+**Priority:** P1  
+**Status:** IN PROGRESS
 
 ## Objective
 
-Add objective entry location to the strong weekly VSA background.
+Create a separate daily-entry domain layer. Do not run the weekly scanner unchanged on daily data.
 
-ProVSA should identify zones, not arbitrary exact lines.
+Weekly owns the thesis. Daily observes whether real-market behavior is supporting, opposing, delaying, or confirming that thesis.
 
-Potential inputs:
+### PR-F1 — Daily Entry Engine, Shadow Mode
 
-### Support / Demand
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #260
 
-- confirmed weekly swing lows
-- previous resistance turned support
-- stopping-volume areas
-- selling-climax areas
-- spring/shakeout areas
-- high-volume demand areas
-- validated range lows
-
-### Resistance / Supply
-
-- confirmed weekly swing highs
-- previous support turned resistance
-- buying-climax areas
-- upthrust areas
-- validated range highs
-
-## Read-Only Outputs
+Current shadow output:
 
 ```text
-nearest_support_zone
-nearest_resistance_zone
-distance_to_support_pct
-distance_to_support_atr
-distance_to_resistance_pct
-upside_room_pct
-range_position
-support_quality
-resistance_quality
+NO_WEEKLY_SETUP
+WEEKLY_SETUP_NOT_ARMED
+OBSERVING
 ```
 
-## Rules
+Daily evidence is grouped as aligned, opposing, or neutral. Shadow results are explicitly non-actionable.
 
-- Start read-only/shadow.
-- Do not immediately alter weekly qualification.
-- Normalize proximity using volatility/ATR where appropriate.
-- Preserve source evidence for every zone so the UI/audit can explain why it exists.
+## PR-F2 — Behavior-Based Daily VSA Entry Evidence
 
-## Definition of Done
+**Status:** IN PROGRESS
 
-- Zone calculation is deterministic and point-in-time safe.
-- No future swing is used to create a historical support zone prematurely.
-- Every zone has provenance.
-- Replay can display the zone that existed at that historical point.
+### Design Principle
+
+PR-F2 supersedes the earlier narrow plan of requiring a NO SUPPLY / TEST sequence.
+
+**Superseded idea:**
+
+```text
+weekly bullish
++ NO SUPPLY / TEST
+= entry candidate
+```
+
+**Current design:**
+
+```text
+armed weekly thesis
+        ↓
+recent point-in-time daily evidence
+        ↓
+behavior dimensions
+        ↓
+shadow observation only
+```
+
+Initial direction-relative behavior dimensions:
+
+```text
+OPPOSING_PRESSURE_RECEDING
+ALIGNED_PRESSURE_EMERGING
+REJECTION_OF_OPPOSING_MOVE
+EFFORT_RESULT_ALIGNMENT
+ABSORPTION
+STRUCTURAL_ALIGNMENT
+CONTINUATION_ALIGNMENT
+```
+
+Examples for a bullish weekly setup:
+
+```text
+NO SUPPLY / TEST / SUPPLY DRYING UP
+→ opposing supply pressure receding
+
+DEMAND COMING IN / INCREASING DEMAND / HIDDEN DEMAND
+→ aligned demand emerging
+
+STOPPING VOLUME / SELLING CLIMAX / SHAKEOUT / SPRING
+→ downside rejection
+
+RESULT > EFFORT or aligned EFFORT/RESULT evidence
+→ effort-result alignment
+
+ABSORPTION / SUPPLY ABSORPTION
+→ absorption
+
+STRUCTURAL PROGRESSION IMPROVING
+→ structural alignment
+
+STRONG UPTREND / REACCUMULATION / MARKUP evidence
+→ continuation alignment
+```
+
+Bearish setups use symmetric supply/demand behavior where supported by existing evidence codes.
+
+### Causal Requirements
+
+- Use a bounded recent daily evidence window.
+- Admit no evidence after the current daily bar.
+- Do not turn opposing daily evidence into a weekly reversal.
+- Do not require any one named textbook pattern.
+- Do not create scores, ranking, triggers, orders, or actionability in PR-F2.
+- Preserve evidence provenance for replay/audit.
+
+### Definition of Done
+
+- Daily behavior can be recognized without NO SUPPLY or TEST firing.
+- Textbook events still contribute evidence when present.
+- Future evidence cannot leak into a historical daily snapshot.
+- Bearish and bullish weekly directions are handled direction-relatively.
+- Shadow behavior output remains non-actionable.
+- Full backend suite remains unchanged semantically outside this new shadow layer.
+
+## PR-F3 — Next-Session Daily Trigger / Replay Output
+
+**Status:** PLANNED
+
+PR-F3 must consume validated behavior evidence; it must not revert to a single-pattern mandatory trigger.
+
+Before trigger promotion, audit should measure for each armed weekly setup:
+
+```text
+which behavior dimensions appeared
+which appeared first
+bars from weekly setup to behavior confirmation
+5/10/15-session forward outcome
+maximum favorable excursion
+maximum adverse excursion
+how often price rallied/fell without a recognized behavior trigger
+how often behavior appeared but failed
+```
+
+Trigger logic remains read-only/shadow until evidence supports promotion.
+
+Execution invariant remains:
+
+```text
+signal bar != execution bar
+```
 
 ---
 
-# Milestone M6 — Daily Entry Shadow Engine
+# M7 — Performance Consolidation
 
 **Priority:** P1  
-**Status:** PLANNED  
-**Dependency:** M3 + M4 + preferably M5
+**Status:** PLANNED
 
-## Objective
+Work:
 
-Create a separate daily-entry engine rather than running the weekly scanner unchanged on daily bars.
+- precompute vectorizable features once
+- reduce hot-loop DataFrame prefix copies
+- emit events incrementally
+- benchmark full replay and one-new-bar update
+- optimize algorithms before Polars/Numba
 
-Weekly decides:
+### PR-G1 — Feature Precomputation / Hot-Loop Reduction
 
-```text
-LONG / SHORT / NEUTRAL / NO SETUP
-```
+**Status:** PLANNED
 
-Daily decides:
+### PR-G2 — Incremental Benchmark & Cleanup
 
-```text
-WAIT / SETUP / CONFIRMED / TRIGGERED
-```
-
-## Initial Bullish Entry Model
-
-Start with one narrow model:
-
-```text
-weekly bullish setup
-+
-price at/near valid weekly support
-+
-daily reaction
-+
-NO SUPPLY and/or TEST
-+
-next-session trigger
-```
-
-Do not add every VSA pattern at once.
-
-## Suggested `DailyEntryCandidate`
-
-```text
-symbol
-weekly_setup_id
-weekly_direction
-weekly_signal_week
-
-daily_signal_date
-trigger_type
-trigger_evidence
-confirmation_evidence
-
-entry_status
-
-signal_high
-signal_low
-trigger_price
-invalidation_price
-
-execution_session
-```
-
-## Entry State Machine
-
-```text
-WAIT
-  ↓
-SETUP
-  ↓
-CONFIRMED
-  ↓
-TRIGGERED
-```
-
-with exits to:
-
-```text
-INVALIDATED
-EXPIRED
-```
-
-where justified.
-
-## Execution Rule
-
-Preserve:
-
-```text
-signal bar ≠ execution bar
-```
-
-Example:
-
-```text
-Wednesday:
-daily TEST known after close
-
-Thursday or next eligible session:
-trigger may execute
-```
-
-## Definition of Done
-
-- Daily entry remains read-only/shadow initially.
-- Weekly direction cannot be reversed merely by a single daily opposing indicator.
-- No same-bar execution leakage.
-- Replay demonstrates exact signal and next-session trigger behavior.
-- Historical outcome collection is possible.
+**Status:** PLANNED
 
 ---
 
-# Milestone M7 — Performance Consolidation
-
-**Priority:** P1  
-**Status:** PLANNED  
-**Dependency:** M2
-
-## Objective
-
-Reduce algorithmic cost before considering alternative dataframe engines or JIT acceleration.
-
-## Work
-
-### Precompute Vectorizable Features Once
-
-Examples:
-
-```text
-average volume
-average spread
-ATR
-relative volume
-relative spread
-close location
-bar direction
-rolling percentiles
-```
-
-Historical replay should consume prepared features instead of repeatedly copying/recalculating growing DataFrame prefixes.
-
-### Remove Hot-Loop DataFrame Copies
-
-Audit repeated:
-
-```python
-df.iloc[:end].copy()
-```
-
-and retain copies only where ownership/isolation actually requires them.
-
-### Emit Events Incrementally
-
-Where practical:
-
-```text
-transition occurs
-→ emit structural event
-→ persist bounded event state
-```
-
-instead of:
-
-```text
-reconstruct prefixes
-→ rediscover historical events
-```
-
-### Benchmark Before/After
-
-Measure at minimum:
-
-- one symbol / typical weekly history
-- one symbol / long history
-- representative multi-symbol universe
-- full historical replay
-- incremental one-new-bar update
-- snapshot/save cost
-
-## Definition of Done
-
-- Benchmarks are reproducible.
-- Full replay approaches linear scaling in bar count for the transition path.
-- Normal incremental update cost is bounded by new data + rolling state.
-- No correctness regression under M1.
-
-## Explicit Non-Goals
-
-Do **not** make these the first optimization:
-
-- pandas→Polars rewrite
-- Numba everywhere
-- multiprocessing before state concurrency semantics are ready
-
----
-
-# Milestone M8 — Module Boundary & Python Quality Cleanup
+# M8 — Module Boundary & Python Quality Cleanup
 
 **Priority:** P2  
-**Status:** PLANNED  
-**Dependency:** Can proceed incrementally after M1
+**Status:** PLANNED
 
-## Objective
+### PR-H1 — Public Professional-Scoring Batch API
 
-Improve maintainability without changing trading semantics.
+Remove cross-module reliance on private scorer members.
 
-## Work
+### PR-H2 — Domain Exceptions / Policy Boundaries
 
-### Public Professional-Scoring Batch API
-
-Remove architectural dependence on private members such as conceptual:
-
-```python
-scorer._metric_arrays(...)
-scorer._structure
-scorer._smart_money
-scorer._professional_*_weight
-```
-
-Expose a stable public prepared-scoring interface.
-
-Possible design:
-
-```text
-PreparedProfessionalScoringContext
-```
-
-or:
-
-```python
-ProfessionalScorer.prepare_batch(...)
-```
-
-### Explicit Policy Boundaries
-
-Gradually separate scanner policies:
+Separate concepts such as:
 
 ```text
 QualificationPolicy
@@ -722,221 +423,75 @@ RankingPolicy
 ExecutionPolicy
 ```
 
-Avoid merely splitting large classes into arbitrary smaller files.
-
-### Domain Exceptions
-
-Introduce semantic exception types such as:
-
-```text
-ScannerStateError
-CheckpointMissing
-CheckpointStale
-CheckpointConfigMismatch
-CheckpointDataMismatch
-CheckpointCorrupt
-TransitionDivergence
-```
-
-### Profiling Boundary
-
-Avoid making development profiling instrumentation a hard domain dependency.
-
-## Definition of Done
-
-- No cross-module reliance on private scorer internals.
-- Domain failures have meaningful types.
-- Scanner orchestration responsibilities are clearer.
-- No intended trading-behavior change.
+and introduce semantic recovery/transition exceptions.
 
 ---
 
-# Milestone M9 — State, Cache & Operational Robustness
+# M9 — State, Cache & Operational Robustness
 
 **Priority:** P2  
-**Status:** PLANNED  
-**Dependency:** M2 recommended
+**Status:** PLANNED
 
-## Objective
-
-Make recovery observable and persistence safe as ProVSA scales.
-
-## Work
-
-### Recovery Telemetry
-
-Classify and count fallback reasons:
+Planned work:
 
 ```text
-checkpoint missing
-checkpoint stale
-config mismatch
-history/data mismatch
-corrupt checkpoint
-transition divergence
+recovery telemetry
+checkpoint failure classification
+state concurrency policy
+cache/metadata generation consistency
+corporate-action/history-revision policy
 ```
 
-A successful full-replay fallback must not silently hide repeated incremental failures.
+### PR-I1 — Recovery Telemetry + Persistence Hardening
 
-### State Concurrency Policy
-
-Document the current invariant:
-
-```text
-one writer per symbol/timeframe
-```
-
-If/when concurrent workers are introduced, add:
-
-- per-key locking, or
-- generation/CAS semantics, or
-- transactional persistence
-
-Do not add distributed locking before concurrency exists.
-
-### Cache/Metadata Generation Consistency
-
-Consider a generation/manifest mechanism so market-data cache and metadata sidecar cannot describe different committed generations after a crash.
-
-### Corporate-Action Policy
-
-Document and test how ProVSA handles:
-
-- splits
-- dividends
-- provider historical revisions
-- adjusted vs raw historical prices
-
-Historical revisions affecting scanner semantics must invalidate incompatible checkpoints.
-
-## Definition of Done
-
-- Recovery reason is visible/diagnosable.
-- Persistence assumptions are documented.
-- Historical data revisions have a defined state-invalidation policy.
-- Cache generation mismatch is either prevented or safely detected.
+**Status:** PLANNED
 
 ---
 
-# Milestone M10 — Modernization & CI Quality Gates
+# M10 — Modernization & CI Quality Gates
 
 **Priority:** P2  
-**Status:** PLANNED  
-**Dependency:** Can be introduced gradually
+**Status:** PLANNED
 
-## Objective
-
-Modernize where it improves correctness and maintainability rather than for novelty.
-
-## Recommended Tooling
-
-### Ruff
-
-Use for:
-
-- formatting
-- linting
-- import cleanup
-- selected modernization rules
-
-Roll out incrementally.
-
-### Pyright or mypy
-
-Increase type safety around:
-
-- scanner state
-- transition interfaces
-- domain models
-- provider boundaries
-- MTF coordinator
-
-### pytest-cov
-
-Track coverage, with special attention to causal state-machine paths rather than chasing an arbitrary percentage.
-
-### Hypothesis
-
-Primary use:
-
-- transition equivalence
-- state-machine invariants
-- edge-case generation
-
-### `typing.Protocol`
-
-Good candidates:
+Candidate tooling:
 
 ```text
-MarketDataProvider
-ScannerStateStore
-TradingCalendar
-Clock
+Ruff
+Pyright or mypy
+pytest-cov
+Hypothesis
+typing.Protocol boundaries
 ```
 
-### Pydantic v2 or msgspec
+### PR-J1 — Ruff / Type / Coverage Gates
 
-Consider only at external boundaries:
-
-- configuration
-- API models
-- checkpoint validation
-- external payloads
-
-Keep lightweight frozen/slotted dataclasses inside hot domain paths.
-
-## Deferred Modernization
-
-### SQLite + WAL
-
-Consider only when requirements justify:
-
-- multiple writers
-- checkpoint history
-- transactional multi-object state
-- replay snapshot querying
-- richer audit persistence
-
-### Polars / Numba
-
-Evaluate only after M7 profiling proves a remaining bottleneck.
-
-## Definition of Done
-
-- New/changed code passes agreed lint/type gates.
-- CI includes transition property tests.
-- Modernization does not introduce unnecessary hot-loop overhead.
-- Legacy strictness is raised gradually rather than through a disruptive cleanup PR.
+**Status:** PLANNED
 
 ---
 
-# 3. Weekly→Daily Product Extension — Later Evidence Roadmap
+# 3. Later Evidence Roadmap
 
-These are **not architectural prerequisites** for the first daily-entry engine. They should be introduced one at a time as read-only evidence and promoted only after outcome validation.
+Introduce additional evidence one at a time, read-only first:
 
-Recommended order:
-
-1. Daily VSA multi-bar sequences
-2. Relative strength vs market and sector
+1. richer daily VSA multi-bar behavior
+2. relative strength vs market and sector
 3. ATR / volatility normalization
-4. Anchored VWAP
-5. Daily structure confirmation using existing ProVSA swing/structure concepts
-6. Volume Profile / auction-location context
-7. Market and sector context
+4. anchored VWAP
+5. daily structure confirmation using existing ProVSA structure machinery
+6. volume-profile / auction-location context
+7. market and sector context
 8. Hilega Milega as read-only momentum confirmation
-9. Daily Effort/Result and Absorption evidence
-10. Wyckoff campaign-phase inference only if it adds information beyond existing ProVSA trend/structure/VSA
-11. Meta-labeling only after sufficient validated historical setup data exists
+9. richer daily Effort/Result and Absorption evidence
+10. Wyckoff campaign-phase inference only if it adds information beyond current VSA/structure
+11. meta-labeling only after enough validated historical setup data exists
 
-## Avoid Duplicate Logic
+Avoid:
 
-Do not introduce:
-
-- another generic stock trend classifier
-- a second competing market-structure engine
-- an SMC BOS/CHOCH subsystem if existing ProVSA swings can express the required daily confirmation
+- duplicate generic trend engines
+- duplicate BOS/CHOCH systems
 - arbitrary indicator voting
-- confidence percentages without empirical calibration
+- arbitrary confidence percentages
+- hard-coded textbook-pattern gates
 
 ---
 
@@ -944,87 +499,57 @@ Do not introduce:
 
 | Sequence | PR | Priority | Purpose | Status |
 |---:|---|---|---|---|
-| 1 | **PR-A** | P0 | Full-vs-resume equivalence contract | PLANNED |
-| 2 | **PR-B1** | P0 | Rolling-state inventory | PLANNED |
-| 3 | **PR-B2** | P0 | First-class qualification state | PLANNED |
-| 4 | **PR-B3** | P0 | First-class progression/event state | PLANNED |
-| 5 | **PR-B4** | P0 | Canonical transition `step()` path | PLANNED |
-| 6 | **PR-C1** | P0 | NSE trading-calendar abstraction | PLANNED |
-| 7 | **PR-C2** | P0 | `completed_daily_only()` | PLANNED |
-| 8 | **PR-C3** | P0 | Next-session execution semantics | PLANNED |
-| 9 | **PR-D1** | P0 | `WeeklySetup` model/state | PLANNED |
-| 10 | **PR-D2** | P0 | Weekly→daily point-in-time coordinator | PLANNED |
-| 11 | **PR-E1** | P1 | Weekly support/resistance zones, read-only | PLANNED |
-| 12 | **PR-F1** | P1 | Daily Entry Engine, shadow mode | PLANNED |
-| 13 | **PR-F2** | P1 | NO SUPPLY / TEST entry sequence | PLANNED |
-| 14 | **PR-F3** | P1 | Next-session daily trigger/replay output | PLANNED |
-| 15 | **PR-G1** | P1 | Feature precomputation / hot-loop reduction | PLANNED |
-| 16 | **PR-G2** | P1 | Incremental performance benchmark & cleanup | PLANNED |
-| 17 | **PR-H1** | P2 | Public professional-scoring batch API | PLANNED |
-| 18 | **PR-H2** | P2 | Domain exceptions / policy boundaries | PLANNED |
-| 19 | **PR-I1** | P2 | Recovery telemetry + persistence hardening | PLANNED |
-| 20 | **PR-J1** | P2 | Ruff/type/coverage CI gates | PLANNED |
-
-The sequence can be adjusted when a PR exposes a dependency, but P0 causal-correctness gates should not be bypassed.
+| 1 | PR-A / #246 | P0 | Full-vs-resume equivalence contract | VALIDATED |
+| 2 | PR-B1 / #247 | P0 | Rolling-state inventory | VALIDATED |
+| 3 | PR-B2 / #250 | P0 | First-class qualification state | VALIDATED |
+| 4 | PR-B3 / #251 | P0 | First-class progression/event state | VALIDATED |
+| 5 | PR-B4 / #252 | P0 | Canonical transition path | VALIDATED |
+| 6 | PR-C1 / #253 | P0 | NSE trading calendar | VALIDATED |
+| 7 | PR-C2 / #255 | P0 | Completed daily bars | VALIDATED |
+| 8 | PR-C3 / #256 | P0 | Next-session execution semantics | VALIDATED |
+| 9 | PR-D1 / #257 | P0 | WeeklySetup model/state | VALIDATED |
+| 10 | PR-D2 / #258 | P0 | Weekly→daily causal coordinator | VALIDATED |
+| 11 | PR-E1 / #259 | P1 | Weekly structural zones, read-only | VALIDATED |
+| 12 | PR-F1 / #260 | P1 | Daily Entry Engine shadow | VALIDATED |
+| 13 | PR-F2 | P1 | Behavior-based daily VSA entry evidence | IN PROGRESS |
+| 14 | PR-F3 | P1 | Next-session daily trigger/replay output | PLANNED |
+| 15 | PR-G1 | P1 | Feature precompute/hot-loop reduction | PLANNED |
+| 16 | PR-G2 | P1 | Benchmark/cleanup | PLANNED |
+| 17 | PR-H1 | P2 | Public professional-scoring batch API | PLANNED |
+| 18 | PR-H2 | P2 | Domain exceptions/policy boundaries | PLANNED |
+| 19 | PR-I1 | P2 | Recovery telemetry/persistence hardening | PLANNED |
+| 20 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
 
 ---
 
-# 5. Finding-to-Fix Matrix
-
-| Audit Finding | Priority | Milestone |
-|---|---|---|
-| Full and resumed execution paths can theoretically diverge | P0 | M1 |
-| Transition still reconstructs historical context | P0 | M2 |
-| Resume behavior is coupled to current qualification-history needs | P0 | M2 |
-| Daily unfinished candle could become future VSA input | P0 | M3 |
-| Weekly→daily point-in-time coordinator absent | P0 | M4 |
-| Weekly setup is transient rather than persistent MTF context | P0 | M4 |
-| Daily entry requires location context | P1 | M5 |
-| Daily entry should be separate from weekly scanner semantics | P1 | M6 |
-| Repeated historical calculations/copies remain | P1 | M7 |
-| Structure filter depends on scorer private internals | P2 | M8 |
-| Scanner carries several policy responsibilities | P2 | M8 |
-| Generic exceptions lack domain meaning | P2 | M8 |
-| Full-replay fallback can hide incremental failure frequency | P2 | M9 |
-| Same-key concurrent state writes can last-write-win | P2/P3 | M9 |
-| Cache + metadata are not one atomic generation | P2 | M9 |
-| Corporate-action/history-revision policy needs formalization | P2 | M9 |
-| Lint/type/property-testing gates can be strengthened | P2 | M10 |
-| Polars/Numba/database changes are premature without evidence | P3 | M10 / Deferred |
-
----
-
-# 6. Release Gates
+# 5. Release Gates
 
 ## Gate A — Scanner Refactor Safety
 
-Before modifying core incremental semantics:
-
-- M1 equivalence tests green
-- deterministic fixtures green
-- no unexplained production-result changes
+Core scanner refactors must preserve full-vs-resume equivalence.
 
 ## Gate B — Daily Analysis Safety
 
-Before enabling daily VSA signals:
+Before enabling daily signals:
 
 - completed daily-bar gate validated
-- trading-calendar tests green
-- weekly→daily causality tests green
+- trading-calendar semantics validated
+- weekly→daily causality validated
 
-## Gate C — Daily Entry Shadow
+## Gate C — Daily Entry Promotion
 
-Before showing daily entries as production recommendations:
+Before production recommendations:
 
 - shadow/replay results collected
 - no same-bar execution leakage
+- behavior evidence audited historically
 - setup invalidation semantics defined
-- historical outcome methodology defined
-- evidence remains read-only until validated
+- outcome methodology defined
+- evidence remains read-only until promotion is justified
 
 ## Gate D — Performance Refactor
 
-Every performance optimization must pass:
+Every optimization must satisfy:
 
 ```text
 same semantics
@@ -1032,50 +557,48 @@ same semantics
 measurable benchmark improvement
 ```
 
-No optimization is accepted solely because it is theoretically faster.
-
 ---
 
-# 7. Progress Log
-
-Update this table after each meaningful merge.
+# 6. Progress Log
 
 | Date | PR | Milestone | Status | Result / Notes |
 |---|---|---|---|---|
-| 2026-09-16 | — | Roadmap | CREATED | Architecture remediation roadmap established from current `main` audit. |
+| 2026-09-16 | #246 | M1 | VALIDATED | Full-vs-resume equivalence contract merged; manual validation passed. |
+| 2026-09-16 | #247 | M2 | VALIDATED | Rolling-state inventory merged. |
+| 2026-09-16 | #250 | M2 | VALIDATED | First-class qualification state merged. |
+| 2026-09-16 | #251 | M2 | VALIDATED | Structural event/progression state merged. |
+| 2026-09-16 | #252 | M2 | VALIDATED | State-driven canonical transition path merged. |
+| 2026-09-16 | #253 | M3 | VALIDATED | NSE trading calendar merged. |
+| 2026-09-16 | #255 | M3 | VALIDATED | Completed-daily guard merged. |
+| 2026-09-16 | #256 | M3 | VALIDATED | Next-session semantics merged. |
+| 2026-09-16 | #257 | M4 | VALIDATED | WeeklySetup model/lifecycle merged. |
+| 2026-09-16 | #258 | M4 | VALIDATED | Weekly→daily causal coordinator merged. |
+| 2026-09-16 | #259 | M5 | VALIDATED | Read-only structural zones merged. |
+| 2026-09-16 | #260 | M6 | VALIDATED | Shadow DailyEntryEngine merged. |
+| 2026-09-16 | PR-F2 | M6 | IN PROGRESS | Reframed from NO SUPPLY/TEST sequence to behavior-based daily VSA evidence. |
 
 ---
 
-# 8. Current Next Action
+# 7. Current Next Action
 
-## NEXT: PR-A — Full-vs-Resume Equivalence Contract
+## NEXT: PR-F2 — Behavior-Based Daily VSA Entry Evidence
 
-**Priority:** P0  
-**Type:** Test-only  
-**Production behavior change:** None
+Checklist:
 
-### Goal
-
-Prove that the existing scanner's full-history path and checkpoint/resume path produce the same semantic result before changing the transition architecture.
-
-### Initial Checklist
-
-- [ ] Identify canonical comparison fields.
-- [ ] Build deterministic full-vs-resume test helper.
-- [ ] Test multiple checkpoint positions.
-- [ ] Include structural transition boundaries.
-- [ ] Include qualification/evidence/actionability comparisons.
-- [ ] Add state comparison diagnostics.
-- [ ] Add property-based coverage if dependency policy permits in the same PR.
-- [ ] Run backend test suite.
-- [ ] Confirm zero intended production behavior changes.
-- [ ] Merge only when CI passes.
-- [ ] Update this roadmap to `MERGED`.
-- [ ] After post-merge validation, update to `VALIDATED`.
+- [x] Keep weekly direction authoritative.
+- [x] Define direction-relative behavior dimensions.
+- [x] Treat NO SUPPLY / TEST as evidence, not mandatory gates.
+- [x] Use bounded recent evidence only.
+- [x] Exclude future evidence.
+- [x] Keep output read-only/non-actionable.
+- [ ] Run focused F2 tests.
+- [ ] Run full backend suite.
+- [ ] Merge after manual validation.
+- [ ] Update roadmap status to VALIDATED after merge.
 
 ---
 
-# 9. Long-Term Target Architecture
+# 8. Long-Term Target Architecture
 
 ```text
                          ONE CAUSAL CORE
@@ -1093,37 +616,38 @@ Prove that the existing scanner's full-history path and checkpoint/resume path p
                                     ▼
                             DailyEntryEngine
                                     │
+                         behavior evidence
+                                    │
                                     ▼
                          Next-Session Execution
 ```
 
-The transition engine should be the single source of truth for ProVSA's causal market-state evolution.
+The weekly scanner remains responsible for background, structure, qualification, and direction.
 
-The weekly scanner should remain responsible for background, structure, qualification and direction.
-
-The daily engine should remain responsible for location, VSA entry sequence, confirmation and execution timing.
+The daily engine remains responsible for real-market entry evidence, location, confirmation, and execution timing.
 
 ---
 
-# 10. Architectural Success Criteria
+# 9. Success Criteria
 
-The remediation is successful when ProVSA can demonstrate all of the following:
+ProVSA should ultimately demonstrate:
 
-1. Historical replay and production resume are semantically identical.
-2. New-bar processing uses bounded causal state rather than rebuilding full history.
-3. Weekly and daily timeframes are synchronized without look-ahead.
-4. Incomplete daily bars cannot influence VSA decisions.
-5. Existing weekly trend/structure logic remains the authoritative background model.
-6. Daily entry logic is a separate domain layer rather than a duplicate scanner.
-7. Every promoted evidence source has replay/audit evidence supporting its use.
-8. Performance improvements are benchmarked and do not alter semantics.
-9. Persistence/recovery failures are observable rather than silently hidden.
-10. CI protects causal invariants, typing and code quality.
-11. ProVSA can eventually replay the exact same logic used in production.
-12. Confidence is ultimately calibrated from historical outcomes rather than arbitrary indicator counts.
+1. Historical replay and production resume are semantically equivalent.
+2. New-bar processing uses bounded causal state.
+3. Weekly and daily timeframes synchronize without look-ahead.
+4. Incomplete daily bars cannot affect decisions.
+5. Weekly trend/structure remains authoritative background.
+6. Daily entry is a separate domain layer.
+7. Daily entry logic recognizes real-market behavior rather than demanding textbook pictures.
+8. Named VSA patterns remain explainable evidence contributors.
+9. Every promoted evidence source has replay/audit support.
+10. Performance improvements preserve semantics.
+11. Persistence/recovery failures are observable.
+12. Signal and execution remain causally separated.
+13. Confidence is calibrated from historical outcomes rather than arbitrary pattern counts.
 
 ---
 
 **Document owner:** ProVSA project  
-**Last updated:** 2026-09-16  
-**Next milestone:** M1 — Scanner Equivalence Safety Contract
+**Current milestone:** M6 — Daily Entry Shadow Engine  
+**Current PR:** PR-F2 — Behavior-Based Daily VSA Entry Evidence

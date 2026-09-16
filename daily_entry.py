@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum, auto
 
+from daily_behavior import DailyBehaviorSnapshot, evaluate_daily_behavior
 from models import Evidence, EvidenceDirection
 from weekly_daily_coordinator import WeeklyDailyContext
 from weekly_setup import WeeklySetupDirection
@@ -20,12 +21,7 @@ class DailyEntryShadowStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class DailyEntryShadowResult:
-    """Point-in-time daily-entry observation with no execution authority.
-
-    PR-F1 deliberately stops at observation. Pattern sequencing, trigger
-    generation, execution timing, scoring, ranking, alerts and orders remain
-    outside this object.
-    """
+    """Point-in-time daily-entry observation with no execution authority."""
 
     symbol: str
     daily_session: date
@@ -45,7 +41,7 @@ class DailyEntryShadowResult:
 
     @property
     def is_actionable(self) -> bool:
-        """Shadow output can never become production-actionable in PR-F1."""
+        """Shadow output can never become production-actionable."""
 
         return False
 
@@ -53,13 +49,9 @@ class DailyEntryShadowResult:
 class DailyEntryEngine:
     """Shadow-only daily entry evaluator.
 
-    Weekly context owns direction. Daily evidence is only observed and grouped
-    as aligned/opposing/neutral relative to that weekly thesis. Contrary daily
-    evidence does not reverse or invalidate the weekly setup here.
-
-    Only evidence from ``daily_bar_index`` is admitted. This prevents stale or
-    future bar evidence supplied by a replay/audit caller from leaking into the
-    current daily observation.
+    Weekly context owns direction. Daily evidence is observed relative to that
+    weekly thesis. Contrary daily evidence does not reverse or invalidate the
+    weekly setup here.
     """
 
     def evaluate_shadow(
@@ -128,6 +120,35 @@ class DailyEntryEngine:
             aligned_evidence=aligned,
             opposing_evidence=opposing,
             neutral_evidence=neutral,
+        )
+
+    def evaluate_behavior_shadow(
+        self,
+        *,
+        context: WeeklyDailyContext,
+        daily_bar_index: int,
+        evidence: Iterable[Evidence] = (),
+        lookback_bars: int = 5,
+    ) -> DailyBehaviorSnapshot | None:
+        """Return behavior-based VSA evidence for an armed weekly setup.
+
+        Named patterns such as NO SUPPLY or TEST are supporting evidence only;
+        they are not mandatory gates. If no weekly setup is armed, no positive
+        daily behavior snapshot is produced.
+        """
+
+        if daily_bar_index < 0:
+            raise ValueError("daily_bar_index cannot be negative")
+        if lookback_bars <= 0:
+            raise ValueError("lookback_bars must be positive")
+        if context.setup is None or not context.is_armed:
+            return None
+
+        return evaluate_daily_behavior(
+            weekly_direction=context.setup.direction,
+            daily_bar_index=daily_bar_index,
+            evidence=evidence,
+            lookback_bars=lookback_bars,
         )
 
 
