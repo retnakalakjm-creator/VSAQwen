@@ -116,6 +116,33 @@ def _snapshot_latest(
     store.save(state)
 
 
+def _snapshot_from_resume_result(
+    *,
+    metrics: pd.DataFrame,
+    symbol: str,
+    timeframe: str,
+    target_index: int,
+    snapshot: ScannerTransitionSnapshotAdapter,
+    resume_result: object,
+) -> ScannerState | None:
+    snapshot_from_transition_state = getattr(
+        snapshot,
+        "snapshot_from_transition_state",
+        None,
+    )
+    transition_state = getattr(resume_result, "transition_state", None)
+    if not callable(snapshot_from_transition_state) or transition_state is None:
+        return None
+
+    return snapshot_from_transition_state(
+        metrics,
+        target_index=target_index,
+        symbol=symbol,
+        timeframe=timeframe,
+        transition_state=transition_state,
+    )
+
+
 def _record_fallback(
     diagnostics: MutableSequence[str] | None,
     *,
@@ -224,7 +251,25 @@ def scan_latest_candidate_production(
 
     if state is not None:
         try:
-            candidate = transition_resume.resume_latest(metrics, state)
+            resume_latest_with_state = getattr(
+                transition_resume,
+                "resume_latest_with_state",
+                None,
+            )
+            if callable(resume_latest_with_state):
+                resume_result = resume_latest_with_state(metrics, state)
+                candidate = resume_result.candidate
+                if needs_snapshot_refresh:
+                    replay_snapshot = _snapshot_from_resume_result(
+                        metrics=metrics,
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        target_index=target_index,
+                        snapshot=transition_snapshot,
+                        resume_result=resume_result,
+                    )
+            else:
+                candidate = transition_resume.resume_latest(metrics, state)
         except (ValueError, IndexError, RuntimeError):
             if not allow_full_replay_fallback:
                 raise

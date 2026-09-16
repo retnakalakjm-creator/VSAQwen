@@ -23,6 +23,17 @@ class TransitionResumeResult:
     resumed_bar_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class TransitionResumeStateResult:
+    """Resume result carrying the transition state reached at the latest bar."""
+
+    candidate: ScannerCandidate
+    checkpoint_index: int
+    target_index: int
+    resumed_bar_count: int
+    transition_state: ScanState
+
+
 class ScannerTransitionResumeAdapter:
     """Resume durable ``ScannerState`` checkpoints through the transition runner.
 
@@ -113,6 +124,21 @@ class ScannerTransitionResumeAdapter:
     ) -> TransitionResumeResult:
         """Resume from ``state`` to the latest bar and return comparison metadata."""
 
+        result = self.resume_latest_with_state(metrics, state)
+        return TransitionResumeResult(
+            candidate=result.candidate,
+            checkpoint_index=result.checkpoint_index,
+            target_index=result.target_index,
+            resumed_bar_count=result.resumed_bar_count,
+        )
+
+    def resume_latest_with_state(
+        self,
+        metrics: pd.DataFrame,
+        state: ScannerState,
+    ) -> TransitionResumeStateResult:
+        """Resume from ``state`` and return the transition state at latest bar."""
+
         target_index = len(metrics) - 1
         if target_index < self._scanner.MIN_REPLAY_BARS:
             raise ValueError(
@@ -123,30 +149,33 @@ class ScannerTransitionResumeAdapter:
         if checkpoint_index > target_index:
             raise ValueError("ScannerState checkpoint is beyond current metrics")
 
+        transition_state = self.transition_state_from_scanner_state(metrics, state)
         if checkpoint_index == target_index:
             candidate = self._transition.scan_to_index(metrics, target_index)
-            return TransitionResumeResult(
+            return TransitionResumeStateResult(
                 candidate=candidate,
                 checkpoint_index=checkpoint_index,
                 target_index=target_index,
                 resumed_bar_count=0,
+                transition_state=transition_state,
             )
 
-        transition_state = self.transition_state_from_scanner_state(metrics, state)
-        _, evaluation = self._transition.run_to_index(
+        transition_state, evaluation = self._transition.run_to_index(
             metrics,
             target_index,
             state=transition_state,
         )
-        return TransitionResumeResult(
+        return TransitionResumeStateResult(
             candidate=evaluation.candidate,
             checkpoint_index=checkpoint_index,
             target_index=target_index,
             resumed_bar_count=target_index - checkpoint_index,
+            transition_state=transition_state,
         )
 
 
 __all__ = [
     "ScannerTransitionResumeAdapter",
     "TransitionResumeResult",
+    "TransitionResumeStateResult",
 ]
