@@ -109,16 +109,27 @@ def _trend_signature(evaluation: BarEvaluation) -> tuple[object, ...]:
     )
 
 
-def _transition_history_signature(state: ScanState) -> tuple[tuple[object, ...], ...]:
+def _structural_state_signature(state: ScanState) -> tuple[tuple[object, ...], ...]:
     return tuple(
-        signature
-        for result in state.history
-        for signature in _evidence_signature(result.evidence)
+        (
+            item.bar_key,
+            item.code,
+            item.category,
+            item.direction,
+            item.strength,
+            item.weight,
+            item.quality,
+        )
+        for item in state.structural_events
     )
 
 
-def _checkpoint_indices(full_state: ScanState, target_index: int) -> tuple[int, ...]:
-    """Cover early/middle/late checkpoints and one structural boundary when present."""
+def _checkpoint_indices(
+    full_state: ScanState,
+    metrics: pd.DataFrame,
+    target_index: int,
+) -> tuple[int, ...]:
+    """Cover early/middle/late checkpoints and a structural boundary when present."""
 
     minimum = ScannerEngine.MIN_REPLAY_BARS
     checkpoints = {
@@ -126,13 +137,15 @@ def _checkpoint_indices(full_state: ScanState, target_index: int) -> tuple[int, 
         minimum + (target_index - minimum) // 2,
         target_index - 1,
     }
-
+    index_by_week = {
+        str(value): index for index, value in enumerate(metrics[COL_WEEK])
+    }
     structural_indices = sorted(
         {
-            item.bar_index
-            for result in full_state.history
-            for item in result.evidence
-            if minimum + 1 < item.bar_index < target_index - 1
+            index_by_week[item.bar_key]
+            for item in full_state.structural_events
+            if item.bar_key in index_by_week
+            and minimum + 1 < index_by_week[item.bar_key] < target_index - 1
         }
     )
     if structural_indices:
@@ -158,7 +171,7 @@ def test_full_and_resumed_transition_paths_are_semantically_equivalent() -> None
         transition_state=full_state,
     )
 
-    for checkpoint_index in _checkpoint_indices(full_state, target_index):
+    for checkpoint_index in _checkpoint_indices(full_state, metrics, target_index):
         checkpoint_transition_state, _ = transition.run_to_index(
             metrics,
             checkpoint_index,
@@ -197,8 +210,9 @@ def test_full_and_resumed_transition_paths_are_semantically_equivalent() -> None
         assert _evidence_signature(resumed_evaluation.evidence.evidence) == _evidence_signature(
             full_evaluation.evidence.evidence
         ), message
-        assert _transition_history_signature(resumed_state) == _transition_history_signature(
+        assert _structural_state_signature(resumed_state) == _structural_state_signature(
             full_state
         ), message
+        assert resumed_state.qualification == full_state.qualification, message
         assert resumed_state.last_bar_index == full_state.last_bar_index, message
         assert resumed_snapshot.to_dict() == full_snapshot.to_dict(), message

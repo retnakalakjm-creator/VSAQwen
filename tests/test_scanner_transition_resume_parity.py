@@ -137,16 +137,26 @@ def test_transition_resume_can_translate_checkpoint_state_without_production_wir
     )
 
     assert transition_state.last_bar_index == checkpoint_index
-    assert tuple(
-        item.bar_index
-        for result in transition_state.history
-        for item in result.evidence
-    ) == tuple(
-        index
-        for event in checkpoint_state.structural_events
-        for index, week in enumerate(metrics[COL_WEEK])
-        if str(week) == event.bar_key
+    assert transition_state.structural_events == checkpoint_state.structural_events
+
+    index_by_week = {str(week): index for index, week in enumerate(metrics[COL_WEEK])}
+    restored_indices = tuple(
+        index_by_week[event.bar_key]
+        for event in transition_state.structural_events
     )
+    checkpoint_indices = tuple(
+        index_by_week[event.bar_key]
+        for event in checkpoint_state.structural_events
+    )
+    assert restored_indices == checkpoint_indices
+    assert tuple(
+        (item.bar_index, item.code)
+        for item in transition_state.qualification.active_events
+    ) == tuple(
+        (index_by_week[event.bar_key], event.code)
+        for event in checkpoint_state.structural_events
+        if event.bar_key in index_by_week
+    )[-len(transition_state.qualification.active_events):]
 
 
 def test_transition_resume_rejects_duplicate_bar_identities() -> None:

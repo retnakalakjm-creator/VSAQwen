@@ -153,7 +153,10 @@ def test_transition_sequence_matches_full_scanner_at_checkpoints() -> None:
             assert _candidate_signature(evaluation.candidate) == _candidate_signature(expected)
 
     assert state.last_bar_index == len(metrics) - 1
-    assert len(state.history) == len(metrics) - ScannerEngine.MIN_REPLAY_BARS
+    assert all(
+        event.code in ScannerEngine._STRUCTURAL_CODES
+        for event in state.structural_events
+    )
 
 
 def test_transition_rejects_non_sequential_steps() -> None:
@@ -176,15 +179,27 @@ def test_transition_rejects_non_sequential_steps() -> None:
         )
 
 
-def test_transition_history_keeps_only_structural_evidence() -> None:
+def test_transition_state_keeps_only_structural_events() -> None:
     metrics = _metrics()
     state, _ = ScannerTransitionEngine().run_to_index(metrics, len(metrics) - 1)
 
-    for historical_result in state.history:
-        assert all(
-            item.code in ScannerEngine._STRUCTURAL_CODES
-            for item in historical_result.evidence
-        )
+    assert all(
+        event.code in ScannerEngine._STRUCTURAL_CODES
+        for event in state.structural_events
+    )
+    assert all(
+        item.code in ScannerEngine._STRUCTURAL_CODES
+        for item in state.qualification.active_events
+    )
+
+    durable_event_keys = {
+        (event.bar_key, event.code)
+        for event in state.structural_events
+    }
+    assert all(
+        (str(item.week_beginning), item.code) in durable_event_keys
+        for item in state.qualification.active_events
+    )
 
 
 def test_transition_contract_is_not_directly_wired_into_production_scanner() -> None:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
-
 import numpy as np
 import pandas as pd
 
@@ -86,31 +84,13 @@ def test_transition_state_carries_same_structural_events_as_durable_snapshot() -
     )
 
 
-def test_snapshot_structural_events_do_not_depend_on_legacy_history() -> None:
+def test_transition_state_has_no_legacy_evidence_history() -> None:
     metrics = _metrics()
-    target = len(metrics) - 1
     transition = ScannerTransitionEngine()
-    snapshot = ScannerTransitionSnapshotAdapter(transition)
 
-    state, _ = transition.run_to_index(metrics, target)
-    expected = snapshot.snapshot_from_transition_state(
-        metrics,
-        target_index=target,
-        symbol=SYMBOL,
-        timeframe=TIMEFRAME,
-        transition_state=state,
-    )
-    without_history = snapshot.snapshot_from_transition_state(
-        metrics,
-        target_index=target,
-        symbol=SYMBOL,
-        timeframe=TIMEFRAME,
-        transition_state=replace(state, history=()),
-    )
+    state, _ = transition.run_to_index(metrics, len(metrics) - 1)
 
-    assert _event_signature(without_history.structural_events) == _event_signature(
-        expected.structural_events
-    )
+    assert not hasattr(state, "history")
 
 
 def test_resume_restores_first_class_structural_events_from_checkpoint() -> None:
