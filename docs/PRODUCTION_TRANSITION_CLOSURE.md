@@ -4,7 +4,9 @@
 
 PR #215 closed the production scanner transition migration after PR #214 routed snapshot creation and refresh through `ScannerTransitionSnapshotAdapter`.
 
-This document records the final production transition boundaries and the follow-up Step 6 optimizations that let production reuse already-replayed transition state for snapshot creation while keeping the production scanner behind adapter boundaries.
+This document records the final production transition boundaries and the Step 6 optimizations that let production reuse already-replayed transition state for snapshot creation while keeping the production scanner behind adapter boundaries.
+
+The full Step 6 closure and cleanup handoff now lives in `docs/STEP6_REPLAY_REUSE_CLOSURE.md`.
 
 ## Final production transition boundaries
 
@@ -28,13 +30,14 @@ This document records the final production transition boundaries and the follow-
 - transition adapter docstrings no longer describe the old pre-production guardrail phase;
 - this closure document records the production boundaries and non-goals.
 
-The existing behavioral tests remain responsible for proving output parity and checkpoint behavior:
+The existing behavioral tests remain responsible for proving output parity, checkpoint behavior, and replay-reuse measurement:
 
 - `tests/test_production_resume_transition_wiring.py` covers missing, stale, behind, current, and resume-failed checkpoint paths.
 - `tests/test_scanner_transition_snapshot_parity.py` keeps legacy incremental-vs-transition snapshot parity coverage.
 - `tests/test_production_suffix_reuse_parity_guard.py` freezes full production candidate signatures before and after production suffix-reuse work.
-- `tests/test_production_replay_reuse_measurement_guard.py` freezes bootstrap/fallback replay counts after snapshot reuse.
+- `tests/test_production_replay_reuse_measurement_guard.py` freezes bootstrap/fallback and behind-checkpoint resume replay counts after snapshot reuse.
 - `tests/test_production_resume_snapshot_reuse.py` freezes behind-checkpoint resume snapshot reuse.
+- `docs/STEP6_REPLAY_REUSE_CLOSURE.md` lists the final Step 6 inventory and cleanup handoff.
 
 ## Non-goals
 
@@ -46,4 +49,6 @@ The existing behavioral tests remain responsible for proving output parity and c
 
 ## Next safe work after closure
 
-With production full replay, resume, and snapshot refresh behind transition boundaries, the remaining safe roadmap area is measurement and cleanup work around repeated prefix recomputation. That work should still be staged behind parity tests and must preserve the same scanner candidates, evidence, checkpoint fingerprints, fallback diagnostics, and production behavior.
+With production full replay, resume, and snapshot refresh behind transition boundaries, Step 6 core/audit/production replay reuse is closed. The next safe roadmap area is cleanup: test inventory review, Step 6 doc consolidation, compatibility fallback review, and merged-branch cleanup.
+
+New trading logic, daily-entry triggers, SMC confirmation, and confidence modifiers should wait until that cleanup milestone is complete.

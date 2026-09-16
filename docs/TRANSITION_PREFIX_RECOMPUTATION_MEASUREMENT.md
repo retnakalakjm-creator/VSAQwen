@@ -1,117 +1,93 @@
-# Transition Prefix Recomputation Measurement
+# Transition Prefix Recomputation and Replay Reuse Closure
 
 ## Purpose
 
-This note captures the optimization target after the production transition migration was closed.
+This note records the Step 6 repeated-prefix replay/recomputation outcome.
 
-Production now reaches the transition path for:
+The original measurement target was repeated independent replay work: callers could ask for nearby target bars and rebuild the same earlier point-in-time prefixes multiple times. Step 6 introduced safe suffix-reuse boundaries, migrated historical/audit consumers first, then optimized the production bootstrap/fallback and behind-checkpoint resume snapshot paths behind parity and measurement guards.
 
-- full replay/bootstrap/fallback candidates;
-- valid checkpoint resume candidates;
-- scanner snapshot creation and refresh.
+The work is now closed for core transition, historical, audit, and production latest-candidate paths.
 
-Before changing production behavior, this guardrail documents and tests the current repeated-prefix recomputation shape so later optimization PRs can prove they only reduce duplicate work, not scanner semantics.
+## Final architecture
 
-## Current measured behavior
+`ScannerTransitionEngine.scan_to_indices(metrics, target_indices)` remains the central batch API. It accepts a strictly increasing target sequence, reuses one `ScanState`, evaluates bars sequentially, and records candidates only at requested targets.
 
-`ScannerTransitionEngine.scan_to_index(metrics, target_index)` starts from an empty `ScanState` and calls `run_to_index(...)` through every bar from `ScannerEngine.MIN_REPLAY_BARS` to `target_index`.
+`HistoricalScannerRunner` is the named historical boundary. It exposes:
 
-Each step calls `features_for(metrics, index)`, and `features_for(...)` currently builds a copied point-in-time metrics prefix with:
+- `scan(...)` for complete historical candidate sequences;
+- `scan_to_indices(...)` for sparse selected-target scans;
+- `scan_to_index_with_state(...)` for production bootstrap/fallback snapshot reuse while keeping `production_scanner.py` away from direct `scanner_transition` imports.
 
-```python
-metrics.iloc[: index + 1].copy()
+`ScannerTransitionResumeAdapter` is the named production resume boundary. It exposes `resume_latest_with_state(...)` so a valid checkpoint behind the latest bar can produce both the latest candidate and the resumed transition state.
+
+`ScannerTransitionSnapshotAdapter.snapshot_from_transition_state(...)` is the durable snapshot reuse boundary. It builds the persisted `ScannerState` from an already-replayed transition state instead of forcing another transition replay.
+
+## Closed migration inventory
+
+| Area | Final boundary | Status |
+| --- | --- | --- |
+| `ScannerTransitionEngine.scan_to_indices(...)` | Reuses one transition `ScanState` for strictly increasing target indices. | Complete. |
+| `HistoricalScannerRunner.scan(...)` | Calls `ScannerTransitionEngine.scan_to_indices(...)` for the complete historical target range. | Complete. |
+| `HistoricalScannerRunner.scan_to_indices(...)` | Exposes the selected-target batch boundary for historical and audit callers. | Complete. |
+| `build_vsa_event_audit(...)` | Resolves the replay window once, bounds metrics at `end_index`, and calls `scan_to_indices(...)` when available. | Complete. |
+| `audit.runner.run_symbol_candidate_audit(...)` and `run_historical_candidate_audit(...)` | Default to `HistoricalScannerRunner` through `scanner_factory`. | Complete. |
+| `production_scanner.scan_latest_candidate_production(...)` bootstrap/fallback | Uses `HistoricalScannerRunner.scan_to_index_with_state(...)` plus `ScannerTransitionSnapshotAdapter.snapshot_from_transition_state(...)`. | Complete. |
+| `production_scanner.scan_latest_candidate_production(...)` valid behind-checkpoint resume | Uses `ScannerTransitionResumeAdapter.resume_latest_with_state(...)` plus `ScannerTransitionSnapshotAdapter.snapshot_from_transition_state(...)`. | Complete. |
+| Production replay-reuse measurement guard | `tests/test_production_replay_reuse_measurement_guard.py` locks replay counts for bootstrap/fallback and behind-checkpoint resume. | Complete. |
+| Production candidate parity guard | `tests/test_production_suffix_reuse_parity_guard.py` freezes candidate signatures across production replay/reuse changes. | Complete. |
+
+## Final production replay shapes
+
+Bootstrap or corrupt/stale checkpoint fallback:
+
+```text
+one full transition replay
+-> latest candidate
+-> snapshot from the same transition state
 ```
 
-Therefore repeated independent `scan_to_index(...)` calls for increasing target bars rebuild earlier prefixes again. This behavior remains covered by `tests/test_transition_prefix_recomputation_measurement.py` so future optimization can be measured against a locked baseline.
+Valid checkpoint behind the latest bar:
 
-## First suffix-reuse API
+```text
+one stateful transition resume
+-> latest candidate
+-> snapshot from the same resumed transition state
+```
 
-`ScannerTransitionEngine.scan_to_indices(metrics, target_indices)` is the first safe suffix-reuse API.
+Valid checkpoint already at the latest bar:
 
-It accepts a strictly increasing target sequence and reuses one `ScanState` across those targets. The runner still evaluates every bar sequentially and still constructs point-in-time prefixes for each evaluated bar, but it does not replay earlier bars again for each later target.
+```text
+one latest-candidate evaluation
+-> no snapshot refresh
+```
 
-For example, independent calls for targets `[53, 55, 57]` replay from `MIN_REPLAY_BARS` three times. `scan_to_indices(...)` evaluates from `MIN_REPLAY_BARS` through `57` once and records candidates at each requested target.
+## Guardrails to keep
 
-The API deliberately rejects duplicate or descending target sequences so no caller can accidentally treat it as a random-access cache.
+The following tests are now core safety coverage and should not be archived during the cleanup milestone:
 
-## First historical consumer
+```powershell
+pytest tests/test_production_replay_reuse_measurement_guard.py -v
+pytest tests/test_production_resume_snapshot_reuse.py -v
+pytest tests/test_production_bootstrap_snapshot_reuse.py -v
+pytest tests/test_production_suffix_reuse_parity_guard.py -v
+pytest tests/test_scanner_transition*.py -v
+pytest tests/test_production*.py -v
+```
 
-`HistoricalScannerRunner.scan(...)` now consumes `ScannerTransitionEngine.scan_to_indices(...)` for the complete historical target range.
+The full safety validation remains:
 
-The historical runner still returns the same ordered candidate sequence, preserves strict point-in-time transition stepping, and keeps `scan_to_index(...)` and `scan_actionable(...)` on their existing boundaries.
+```powershell
+pytest
+cd frontend
+npm run build
+```
 
-Production scanner call sites and checkpoint policy are unchanged.
+## Deferred or low-priority areas
 
-## Historical selected-target adapter
+- `live_scanner.py` default mode already routes through `scan_actionable_production(...)`; the explicit `--full-replay` mode is not a Step 6 production optimization target.
+- `tools/historical_validation.py` still contains manual research-style replay loops and can remain a low-priority tooling cleanup item.
+- New trading logic, daily-entry triggers, SMC confirmation, and confidence modifiers should wait until the cleanup milestone is finished.
 
-`HistoricalScannerRunner.scan_to_indices(...)` exposes the same suffix-reuse contract at the historical adapter boundary for callers that already know sparse target indices.
+## Non-goals
 
-The method delegates to `ScannerTransitionEngine.scan_to_indices(...)`, so target validation, sequential stepping, and point-in-time behavior stay centralized in the transition engine.
-
-This keeps future audit or historical callers on the named historical runner boundary instead of importing the transition engine directly just to use suffix reuse.
-
-## First VSA event audit consumer
-
-`build_vsa_event_audit(...)` now uses the selected-target `scan_to_indices(...)` boundary when the configured scanner exposes it.
-
-The audit still bounds metrics at the resolved `end_index`, but it asks only for candidates in the resolved replay window instead of materializing the full candidate list and filtering it later. Scanner doubles that only implement `scan(...)` remain supported for focused tests.
-
-This remains an audit-only optimization seam. It does not change production scanner call sites, checkpoint policy, detector rules, VSA semantics, scoring, ranking, qualification, actionability, API response shape, frontend runtime, replay/manual-review behavior, HVR policy, trade plans, alerts, or orders.
-
-## Historical candidate audit consumer
-
-`run_symbol_candidate_audit(...)` and `run_historical_candidate_audit(...)` now default their `scanner_factory` to `HistoricalScannerRunner`.
-
-That routes the analysis-only candidate outcome dataset path through the historical suffix-reuse boundary instead of instantiating `ScannerEngine` directly. The existing `scanner_factory` injection seam remains unchanged, so tests and research callers can still provide a scanner double or alternate scanner implementation.
-
-This remains an audit-only consumer migration. It does not change production scanner call sites, checkpoint policy, detector rules, VSA semantics, scoring, ranking, qualification, actionability, API response shape, frontend runtime, replay/manual-review behavior, HVR policy, trade plans, alerts, or orders.
-
-## Replay caller inventory
-
-Current active migration status after the candidate audit consumer migration:
-
-| Area | Current boundary | Migration status | Next action |
-| --- | --- | --- | --- |
-| `ScannerTransitionEngine.scan_to_indices(...)` | Reuses one transition `ScanState` for strictly increasing target indices. | Migrated API. | Keep validation centralized here. |
-| `HistoricalScannerRunner.scan(...)` | Calls `ScannerTransitionEngine.scan_to_indices(...)` for the complete historical target range. | Migrated consumer. | Keep parity and measurement coverage active. |
-| `HistoricalScannerRunner.scan_to_indices(...)` | Exposes the selected-target batch boundary for historical and audit callers. | Migrated adapter. | Prefer this boundary over direct transition-engine imports in callers. |
-| `build_vsa_event_audit(...)` | Resolves the replay window once, bounds metrics at `end_index`, and calls `scan_to_indices(...)` when available. | Migrated audit consumer. | Keep transition parity tests active. |
-| `audit.runner.run_symbol_candidate_audit(...)` and `run_historical_candidate_audit(...)` | Default to `HistoricalScannerRunner` through `scanner_factory` and call `scanner_factory().scan(metrics)`. | Migrated audit consumer. | Keep candidate-audit default-boundary and injected-scanner tests active. |
-| `production_scanner.scan_latest_candidate_production(...)` | Latest target only; validated checkpoints resume through `ScannerTransitionResumeAdapter`, fallback uses `HistoricalScannerRunner().scan_to_index(...)`, and snapshots refresh through `ScannerTransitionSnapshotAdapter`. | Production path migrated but intentionally not optimized further here. | Defer until a production-specific guard proves checkpoint, resume, snapshot, and fallback behavior unchanged. |
-| `live_scanner.py` | Default live path uses `scan_actionable_production(...)`; the `--full-replay` option still calls the original scanner actionable path. | Not a repeated historical replay migration target by default. | Leave unchanged unless full-replay live mode becomes a current optimization target. |
-| `tools/historical_validation.py` | Manually loops over target bars and builds `metrics.iloc[: target_index + 1].copy()` for validation evidence collection. | Remaining low-priority tooling candidate. | Migrate only after audit-runner work, or keep as an explicit research script. |
-
-## Follow-up PR queue
-
-1. Keep candidate-audit default-boundary and injected-scanner coverage active while measuring larger audit runs.
-2. Keep production latest-candidate optimization deferred until checkpoint, resume, snapshot, and fallback guardrails are specific enough for that path.
-3. Consider a tooling-only migration for `tools/historical_validation.py` after the audit-runner path is finished.
-4. Add a final measurement follow-up that records reduced replay work for migrated consumers without changing scanner logic.
-
-## Existing safe reuse seam
-
-`ScannerTransitionEngine.run_to_index(metrics, target_index, state=existing_state)` continues to support continuing from a prior `ScanState`.
-
-When a caller supplies a state whose `last_bar_index` is behind the target, the runner starts at `last_bar_index + 1` and evaluates only the new suffix. The measurement tests lock this seam because it is the safest optimization boundary.
-
-## Optimization contract for later PRs
-
-A later optimization may reuse transition state or cached per-prefix work only if it preserves:
-
-- candidate output parity for every target bar;
-- strict sequential step ordering;
-- point-in-time metrics visibility;
-- engine/config/data fingerprint behavior at production state boundaries;
-- fallback diagnostics and checkpoint validation behavior.
-
-## Non-goals for this consumer work
-
-This work does not change:
-
-- detector rules or VSA evidence semantics;
-- scoring, ranking, qualification, or actionability;
-- production scanner call sites or checkpoint policy;
-- API or frontend behavior;
-- replay/manual-review behavior;
-- HVR, stopping-volume, or climactic-action logic;
-- trade plans, alerts, or orders.
+This Step 6 work does not change detector rules or VSA evidence semantics; scoring, ranking, qualification, or actionability; checkpoint validation policy; API or frontend behavior; replay/manual-review behavior; HVR, stopping-volume, or climactic-action logic; trade plans, alerts, or orders.
