@@ -3,7 +3,7 @@
 **Status:** Active / Current Priority  
 **Priority:** P0/P1 — strengthen weekly foundation before continuing later architecture/performance work  
 **Primary product direction:** Weekly timeframe establishes market campaign/background/direction; daily timeframe provides entry timing.  
-**Current milestone:** WF2 — WeeklyBehaviorState Shadow Model — IN PROGRESS  
+**Current milestone:** WF3 — Weekly Behavior Evolution and Contradiction Semantics — IN PROGRESS  
 **Created:** 2026-09-16
 
 ### Current progress
@@ -11,8 +11,9 @@
 ```text
 WF0 — Baseline Freeze and Safety Contract         VALIDATED / MERGED PR #264
 WF1 — Weekly Decision-Gate Audit                  VALIDATED / MERGED PR #265
-WF2 — WeeklyBehaviorState Shadow Model            IN PROGRESS
-WF3+                                                NOT STARTED / BLOCKED BY SEQUENCE
+WF2 — WeeklyBehaviorState Shadow Model            VALIDATED / MERGED PR #266
+WF3 — Weekly Behavior Evolution                   IN PROGRESS
+WF4+                                               NOT STARTED / BLOCKED BY SEQUENCE
 ```
 
 ---
@@ -449,7 +450,7 @@ Read-only audit/reporting only.
 # WF2 — WeeklyBehaviorState Shadow Model
 
 **Priority:** P0/P1  
-**Status:** IN PROGRESS
+**Status:** VALIDATED / MERGED PR #266
 
 ## Objective
 
@@ -509,7 +510,7 @@ without using future data.
 # WF3 — Weekly Behavior Evolution and Contradiction Semantics
 
 **Priority:** P1  
-**Status:** PLANNED
+**Status:** IN PROGRESS
 
 ## Objective
 
