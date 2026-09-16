@@ -267,7 +267,8 @@ Daily evidence is grouped as aligned, opposing, or neutral. Shadow results are e
 
 ## PR-F2 — Behavior-Based Daily VSA Entry Evidence
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #261
 
 ### Design Principle
 
@@ -352,11 +353,58 @@ Bearish setups use symmetric supply/demand behavior where supported by existing 
 
 ## PR-F3 — Next-Session Daily Trigger / Replay Output
 
-**Status:** PLANNED
+**Status:** IN PROGRESS
 
-PR-F3 must consume validated behavior evidence; it must not revert to a single-pattern mandatory trigger.
+PR-F3 consumes the validated behavior evidence from F2; it must not revert to a single-pattern mandatory trigger.
 
-Before trigger promotion, audit should measure for each armed weekly setup:
+### Shadow Signal Rule
+
+A bounded behavior snapshot can contain useful context from prior daily bars. F3 therefore distinguishes:
+
+```text
+recent behavior context
+!=
+fresh signal evidence
+```
+
+A replay signal is emitted only when at least one supported behavior dimension receives evidence on the current completed daily bar. Older lookback evidence remains explanatory context but cannot repeatedly re-fire the same signal on every later bar.
+
+This is deliberately behavior-based rather than pattern-count based:
+
+```text
+armed weekly thesis
++
+fresh aligned behavior evidence on current completed daily bar
+→ shadow signal observed
+→ exact TradingCalendar.next_session(signal)
+→ pending or next-session-available replay state
+```
+
+No minimum count of named VSA patterns is required. No confidence score or production actionability is introduced.
+
+### Replay States
+
+```text
+NO_ARMED_WEEKLY_SETUP
+NO_NEW_BEHAVIOR
+PENDING_NEXT_SESSION
+NEXT_SESSION_AVAILABLE
+```
+
+### Causal / Safety Requirements
+
+- Weekly setup must still be ARMED.
+- Behavior direction must match the visible weekly setup direction.
+- Behavior bar identity must match the daily session in the causal coordinator.
+- Prior lookback evidence cannot re-emit a fresh signal by itself.
+- Future evidence is already excluded by F2.
+- Execution session must come from the trading calendar.
+- Missing expected next-session data remains pending; never skip silently to a later bar.
+- Signal bar and execution bar remain different.
+- Replay output remains explicitly non-actionable.
+- No price, order, alert, ranking, or production scanner behavior is introduced.
+
+Before production trigger promotion, audit should measure for each armed weekly setup:
 
 ```text
 which behavior dimensions appeared
@@ -368,8 +416,6 @@ maximum adverse excursion
 how often price rallied/fell without a recognized behavior trigger
 how often behavior appeared but failed
 ```
-
-Trigger logic remains read-only/shadow until evidence supports promotion.
 
 Execution invariant remains:
 
@@ -511,8 +557,8 @@ Avoid:
 | 10 | PR-D2 / #258 | P0 | Weekly→daily causal coordinator | VALIDATED |
 | 11 | PR-E1 / #259 | P1 | Weekly structural zones, read-only | VALIDATED |
 | 12 | PR-F1 / #260 | P1 | Daily Entry Engine shadow | VALIDATED |
-| 13 | PR-F2 | P1 | Behavior-based daily VSA entry evidence | IN PROGRESS |
-| 14 | PR-F3 | P1 | Next-session daily trigger/replay output | PLANNED |
+| 13 | PR-F2 / #261 | P1 | Behavior-based daily VSA entry evidence | VALIDATED |
+| 14 | PR-F3 | P1 | Next-session daily trigger/replay output | IN PROGRESS |
 | 15 | PR-G1 | P1 | Feature precompute/hot-loop reduction | PLANNED |
 | 16 | PR-G2 | P1 | Benchmark/cleanup | PLANNED |
 | 17 | PR-H1 | P2 | Public professional-scoring batch API | PLANNED |
@@ -575,23 +621,26 @@ measurable benchmark improvement
 | 2026-09-16 | #258 | M4 | VALIDATED | Weekly→daily causal coordinator merged. |
 | 2026-09-16 | #259 | M5 | VALIDATED | Read-only structural zones merged. |
 | 2026-09-16 | #260 | M6 | VALIDATED | Shadow DailyEntryEngine merged. |
-| 2026-09-16 | PR-F2 | M6 | IN PROGRESS | Reframed from NO SUPPLY/TEST sequence to behavior-based daily VSA evidence. |
+| 2026-09-16 | #261 | M6 | VALIDATED | Behavior-based daily VSA evidence merged; textbook patterns remain contributors, not gates. |
+| 2026-09-16 | PR-F3 | M6 | IN PROGRESS | Add fresh-behavior signal identity and exact next-session replay output. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-F2 — Behavior-Based Daily VSA Entry Evidence
+## NEXT: PR-F3 — Next-Session Daily Trigger / Replay Output
 
 Checklist:
 
-- [x] Keep weekly direction authoritative.
-- [x] Define direction-relative behavior dimensions.
-- [x] Treat NO SUPPLY / TEST as evidence, not mandatory gates.
-- [x] Use bounded recent evidence only.
-- [x] Exclude future evidence.
+- [x] Consume F2 behavior snapshots rather than textbook-pattern gates.
+- [x] Require fresh supported behavior evidence on the current completed daily bar.
+- [x] Preserve older lookback evidence as context only.
+- [x] Keep weekly ARMED direction authoritative.
+- [x] Validate signal-bar identity against the causal daily session.
+- [x] Reuse canonical `next_session_execution()`.
+- [x] Keep missing exact next-session data pending rather than skipping forward.
 - [x] Keep output read-only/non-actionable.
-- [ ] Run focused F2 tests.
+- [ ] Run focused F3 tests.
 - [ ] Run full backend suite.
 - [ ] Merge after manual validation.
 - [ ] Update roadmap status to VALIDATED after merge.
@@ -617,6 +666,9 @@ Checklist:
                             DailyEntryEngine
                                     │
                          behavior evidence
+                                    │
+                                    ▼
+                      Shadow Trigger / Replay
                                     │
                                     ▼
                          Next-Session Execution
@@ -650,4 +702,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M6 — Daily Entry Shadow Engine  
-**Current PR:** PR-F2 — Behavior-Based Daily VSA Entry Evidence
+**Current PR:** PR-F3 — Next-Session Daily Trigger / Replay Output
