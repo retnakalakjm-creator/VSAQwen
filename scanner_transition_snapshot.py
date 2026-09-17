@@ -41,17 +41,9 @@ class ScannerTransitionSnapshotAdapter:
     def _structural_events_from_transition(
         transition_state: ScanState,
     ) -> tuple[StructuralEventState, ...]:
-        captured: dict[tuple[str, object], StructuralEventState] = {}
-        for result in transition_state.history:
-            for item in result.evidence:
-                captured[(str(item.week_beginning), item.code)] = (
-                    StructuralEventState.from_evidence(item)
-                )
+        """Return first-class structural-event state for durable persistence."""
 
-        return tuple(
-            captured[key]
-            for key in sorted(captured, key=lambda value: (value[0], str(value[1])))
-        )
+        return transition_state.structural_events
 
     def _validate_target_index(
         self,

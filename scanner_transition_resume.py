@@ -4,13 +4,11 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from background.qualification import PatternQualificationEngine
 from engine.columns import COL_WEEK
-from evidence.engine import EvidenceEngine
-from model.evidence_result_model import EvidenceResult
 from scanner import ScannerCandidate, ScannerEngine
 from scanner_state import ScannerState
 from scanner_transition import ScanState, ScannerTransitionEngine
-from trend import TrendAnalyzer
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,17 +33,12 @@ class TransitionResumeStateResult:
 
 
 class ScannerTransitionResumeAdapter:
-    """Resume durable ``ScannerState`` checkpoints through the transition runner.
-
-    This adapter is the production resume boundary for validated checkpoints.
-    Earlier guardrails established parity with
-    ``IncrementalScannerEngine.resume_latest(...)`` before production resume was
-    routed here.
-    """
+    """Resume durable ``ScannerState`` checkpoints through the transition runner."""
 
     def __init__(self, transition: ScannerTransitionEngine | None = None) -> None:
         self._transition = transition or ScannerTransitionEngine()
         self._scanner = ScannerEngine()
+        self._qualification = PatternQualificationEngine()
 
     @staticmethod
     def _index_by_week(metrics: pd.DataFrame) -> dict[str, int]:
@@ -67,49 +60,24 @@ class ScannerTransitionResumeAdapter:
             )
         return checkpoint_index
 
-    @classmethod
-    def _checkpoint_structural_history(
-        cls,
-        metrics: pd.DataFrame,
-        state: ScannerState,
-        *,
-        checkpoint_index: int,
-    ) -> tuple[EvidenceResult, ...]:
-        if not state.structural_events:
-            return ()
-
-        index_by_week = cls._index_by_week(metrics)
-        prefix = metrics.iloc[: checkpoint_index + 1].copy()
-        trend = TrendAnalyzer().analyze(prefix)
-        context = EvidenceEngine().collect(
-            metrics=prefix,
-            trend=trend,
-            structural_swings=list(trend.structure.structural_swings),
-        ).context
-        evidence = tuple(
-            event.to_evidence(index_by_week[event.bar_key])
-            for event in state.structural_events
-            if event.bar_key in index_by_week
-        )
-        if not evidence:
-            return ()
-        return (EvidenceResult(context=context, evidence=evidence),)
-
     def transition_state_from_scanner_state(
         self,
         metrics: pd.DataFrame,
         state: ScannerState,
     ) -> ScanState:
-        """Convert durable production scanner state into transition ``ScanState``."""
+        """Convert durable production scanner state into explicit transition state."""
 
         checkpoint_index = self._checkpoint_index(metrics, state)
+        index_by_week = self._index_by_week(metrics)
+        structural_evidence = tuple(
+            event.to_evidence(index_by_week[event.bar_key])
+            for event in state.structural_events
+            if event.bar_key in index_by_week
+        )
         return ScanState(
             last_bar_index=checkpoint_index,
-            history=self._checkpoint_structural_history(
-                metrics,
-                state,
-                checkpoint_index=checkpoint_index,
-            ),
+            qualification=self._qualification.state_from_events(structural_evidence),
+            structural_events=state.structural_events,
         )
 
     def resume_latest(self, metrics: pd.DataFrame, state: ScannerState) -> ScannerCandidate:

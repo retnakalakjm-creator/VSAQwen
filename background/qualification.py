@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import TYPE_CHECKING
 
-from models import EvidenceCode, EvidenceDirection
+from models import Evidence, EvidenceCode, EvidenceDirection
 
 if TYPE_CHECKING:
     from model.evidence_result_model import EvidenceResult
@@ -24,6 +24,23 @@ class PatternQualificationResult:
     reason: str
     evidence_codes: tuple[EvidenceCode, ...] = ()
     evidence_bar_indices: tuple[int, ...] = ()
+
+
+@dataclass(slots=True, frozen=True)
+class PatternQualificationState:
+    """Causal structural-event state required by qualification.
+
+    The legacy qualification API consumes a chronological sequence of
+    ``EvidenceResult`` snapshots even though it only needs structural progression
+    events. This state carries only the active directional structural campaign.
+
+    A structural event in the opposite direction invalidates the previous
+    campaign, so events before that boundary can never qualify again and are
+    discarded. The state therefore stays independent of arbitrary per-bar replay
+    history while preserving the existing qualification semantics.
+    """
+
+    active_events: tuple[Evidence, ...] = ()
 
 
 class PatternQualificationEngine:
@@ -51,12 +68,99 @@ class PatternQualificationEngine:
         EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING,
     })
 
+    _STRUCTURAL_CODES = _BULLISH_CODES | _BEARISH_CODES
+
     def evaluate(
         self,
         results: Sequence[EvidenceResult],
     ) -> PatternQualificationResult:
-        events = self._chronological_events(results)
+        return self._evaluate_events(self._chronological_events(results))
 
+    def state_from_results(
+        self,
+        results: Sequence[EvidenceResult],
+    ) -> PatternQualificationState:
+        """Build first-class qualification state from legacy replay history."""
+
+        return self.state_from_events(self._chronological_events(results))
+
+    def state_from_events(
+        self,
+        events: Iterable[Evidence],
+    ) -> PatternQualificationState:
+        """Build causal state directly from structural events.
+
+        This is the migration seam for durable scanner state: callers no longer
+        need to manufacture ``EvidenceResult`` snapshots merely to represent
+        qualification history.
+        """
+
+        state = PatternQualificationState()
+        return self.advance(state, events)
+
+    def advance(
+        self,
+        state: PatternQualificationState,
+        events: Iterable[Evidence],
+    ) -> PatternQualificationState:
+        """Advance qualification state with newly observed structural events."""
+
+        active = list(state.active_events)
+        seen = {(item.bar_index, item.code) for item in active}
+
+        incoming = sorted(
+            (
+                item
+                for item in events
+                if item.code in self._STRUCTURAL_CODES
+            ),
+            key=lambda item: (item.bar_index, str(item.code)),
+        )
+
+        for item in incoming:
+            key = (item.bar_index, item.code)
+            if key in seen:
+                continue
+
+            if active and item.direction != active[-1].direction:
+                active = [item]
+                seen = {key}
+                continue
+
+            active.append(item)
+            seen.add(key)
+
+        return PatternQualificationState(active_events=tuple(active))
+
+    def evaluate_state(
+        self,
+        state: PatternQualificationState,
+    ) -> PatternQualificationResult:
+        """Evaluate qualification from first-class causal state."""
+
+        return self._evaluate_events(list(state.active_events))
+
+    def qualifying_events(
+        self,
+        state: PatternQualificationState,
+    ) -> tuple[Evidence, ...]:
+        """Return the events selected by the current qualification result."""
+
+        result = self.evaluate_state(state)
+        if not result.evidence_codes or not result.evidence_bar_indices:
+            return ()
+
+        wanted = set(zip(result.evidence_bar_indices, result.evidence_codes))
+        return tuple(
+            item
+            for item in state.active_events
+            if (item.bar_index, item.code) in wanted
+        )
+
+    def _evaluate_events(
+        self,
+        events: Sequence[Evidence],
+    ) -> PatternQualificationResult:
         bullish = self._persistent_events(
             events,
             self._BULLISH_CODES,
@@ -103,8 +207,8 @@ class PatternQualificationEngine:
         )
 
     @staticmethod
-    def _chronological_events(results: Sequence[EvidenceResult]):
-        events = []
+    def _chronological_events(results: Sequence[EvidenceResult]) -> list[Evidence]:
+        events: list[Evidence] = []
         seen: set[tuple[int, EvidenceCode]] = set()
 
         for result in results:
@@ -127,10 +231,10 @@ class PatternQualificationEngine:
 
     def _persistent_events(
         self,
-        events,
+        events: Sequence[Evidence],
         codes: frozenset[EvidenceCode],
         direction: EvidenceDirection,
-    ):
+    ) -> list[Evidence]:
         selected = [
             event
             for event in events
@@ -185,3 +289,11 @@ class PatternQualificationEngine:
             return []
 
         return qualifying
+
+
+__all__ = [
+    "PatternQualification",
+    "PatternQualificationEngine",
+    "PatternQualificationResult",
+    "PatternQualificationState",
+]

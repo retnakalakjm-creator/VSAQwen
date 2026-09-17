@@ -5,22 +5,23 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from background.qualification import (
+    PatternQualificationEngine,
+    PatternQualificationState,
+)
 from engine.columns import COL_WEEK
 from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
 from models import Evidence
 from scanner import ScannerCandidate, ScannerEngine
+from scanner_state import StructuralEventState
+from scanner_state_evaluation import evaluate_from_qualification_state
 from trend import TrendAnalyzer, TrendResult
 
 
 @dataclass(frozen=True, slots=True)
 class MarketBar:
-    """Stable identity for one scanner transition bar.
-
-    This contract object is intentionally small. It gives the future transition
-    engine a row-independent bar identity without changing the current scanner
-    execution path.
-    """
+    """Stable identity for one scanner transition bar."""
 
     index: int
     week: str | None
@@ -28,33 +29,34 @@ class MarketBar:
 
 @dataclass(frozen=True, slots=True)
 class BarFeatures:
-    """Feature snapshot consumed by one scanner transition.
-
-    For the first transition-engine slice this holds the point-in-time metrics
-    prefix used by the existing scanner engines. Later PRs can narrow this shape
-    into immutable per-bar features without changing callers that depend on the
-    step contract.
-    """
+    """Feature snapshot consumed by one scanner transition."""
 
     metrics_prefix: pd.DataFrame
 
 
 @dataclass(frozen=True, slots=True)
 class ScanState:
-    """Deterministic scanner state carried between step calls.
+    """Deterministic causal scanner state carried between step calls.
 
-    `history` intentionally mirrors the existing scanner qualification history.
-    It stores structural evidence only, not the full per-bar evidence payload, so
-    the contract is compatible with the current production scanner behavior.
+    Qualification and structural progression are now explicit state. The
+    transition path no longer retains synthetic ``EvidenceResult`` history merely
+    to satisfy candidate qualification.
     """
 
     last_bar_index: int | None = None
-    history: tuple[EvidenceResult, ...] = ()
+    qualification: PatternQualificationState = PatternQualificationState()
+    structural_events: tuple[StructuralEventState, ...] = ()
 
-    def with_step(self, bar_index: int, structural_evidence: EvidenceResult) -> "ScanState":
+    def with_step(
+        self,
+        bar_index: int,
+        qualification: PatternQualificationState,
+        structural_events: tuple[StructuralEventState, ...],
+    ) -> "ScanState":
         return ScanState(
             last_bar_index=bar_index,
-            history=(*self.history, structural_evidence),
+            qualification=qualification,
+            structural_events=structural_events,
         )
 
 
@@ -70,16 +72,16 @@ class BarEvaluation:
 
 
 class ScannerTransitionEngine:
-    """Small deterministic step adapter over the existing scanner pipeline.
+    """Deterministic step adapter over the existing scanner pipeline.
 
-    The transition runner is now the shared scanner boundary behind production
-    full replay/fallback, production resume, snapshot refresh, historical, and
-    audit paths. It preserves current scanner semantics while exposing explicit
-    sequential state seams for safe optimization.
+    Historical, production-resume, snapshot, audit, and replay callers share this
+    sequential boundary. Candidate evaluation now consumes explicit causal
+    qualification state rather than reconstructed replay history.
     """
 
     def __init__(self, scanner: ScannerEngine | None = None) -> None:
         self._scanner = scanner or ScannerEngine()
+        self._qualification = PatternQualificationEngine()
 
     @staticmethod
     def bar_for(metrics: pd.DataFrame, index: int) -> MarketBar:
@@ -103,6 +105,24 @@ class ScannerTransitionEngine:
             if item.code in ScannerEngine._STRUCTURAL_CODES
         )
 
+    @staticmethod
+    def _advance_structural_events(
+        current: tuple[StructuralEventState, ...],
+        evidence: tuple[Evidence, ...],
+    ) -> tuple[StructuralEventState, ...]:
+        """Advance durable structural-event state without replay-history coupling."""
+
+        captured: dict[tuple[str, object], StructuralEventState] = {
+            (item.bar_key, item.code): item for item in current
+        }
+        for item in evidence:
+            event = StructuralEventState.from_evidence(item)
+            captured[(event.bar_key, event.code)] = event
+        return tuple(
+            captured[key]
+            for key in sorted(captured, key=lambda value: (value[0], str(value[1])))
+        )
+
     def step(
         self,
         state: ScanState,
@@ -111,12 +131,7 @@ class ScannerTransitionEngine:
         *,
         metrics: pd.DataFrame,
     ) -> tuple[ScanState, BarEvaluation]:
-        """Advance the scanner by exactly one bar.
-
-        The method is deliberately sequential. A caller must provide the next bar
-        after `state.last_bar_index`, which prevents accidental gaps and keeps the
-        future runner contract deterministic.
-        """
+        """Advance the scanner by exactly one bar."""
 
         if bar.index < self._scanner.MIN_REPLAY_BARS:
             raise ValueError(
@@ -140,11 +155,26 @@ class ScannerTransitionEngine:
             context=evidence.context,
             evidence=self._structural_evidence(evidence),
         )
-        next_state = state.with_step(bar.index, structural)
-        candidate = self._scanner.evaluate(
+        qualification = self._qualification.advance(
+            state.qualification,
+            structural.evidence,
+        )
+        structural_events = self._advance_structural_events(
+            state.structural_events,
+            structural.evidence,
+        )
+        next_state = state.with_step(
+            bar.index,
+            qualification,
+            structural_events,
+        )
+
+        candidate = evaluate_from_qualification_state(
+            self._scanner,
+            self._qualification,
             trend=trend,
             evidence=evidence,
-            history=next_state.history,
+            qualification_state=next_state.qualification,
             bar_index=bar.index,
             week=bar.week,
             execution_bar_index=self._scanner._next_bar_index(metrics, bar.index),
@@ -203,12 +233,7 @@ class ScannerTransitionEngine:
         metrics: pd.DataFrame,
         target_indices: Sequence[int],
     ) -> dict[int, ScannerCandidate]:
-        """Return candidates for increasing targets using one transition state.
-
-        This is the first suffix-reuse API over the transition runner. It keeps
-        every step sequential and point-in-time while avoiding repeated replay
-        from ``ScannerEngine.MIN_REPLAY_BARS`` for each independent target.
-        """
+        """Return candidates for increasing targets using one transition state."""
 
         targets = tuple(target_indices)
         if not targets:
@@ -238,11 +263,7 @@ class ScannerTransitionEngine:
         return candidates
 
     def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
-        """Return all transition-runner candidates without production wiring.
-
-        This mirrors `ScannerEngine.scan()` so later PRs can switch one caller at
-        a time after parity is proven by tests.
-        """
+        """Return all transition-runner candidates without production wiring."""
 
         if len(metrics) <= self._scanner.MIN_REPLAY_BARS:
             return []
