@@ -13,6 +13,7 @@ Available modules:
 - ``audit.weekly_foundation_runner``: WF1-WF6 historical study execution and export.
 - ``audit.weekly_actionability_counterfactual_runner``: WF7A legacy-actionability contradiction counterfactual execution and export.
 - ``audit.weekly_contradiction_reason_runner``: WF7B contradiction-reason and episode decomposition execution and export.
+- ``audit.weekly_input_reproducibility_runner``: WF7C0 exact completed-week input fingerprint capture and export.
 - ``audit.stability``: confidence-aware calibration stability diagnostics.
 - ``audit.vsa_events``: VSA event causality contract catalog.
 - ``audit.vsa_event_diagnostics``: VSA event outcome diagnostic summaries.
