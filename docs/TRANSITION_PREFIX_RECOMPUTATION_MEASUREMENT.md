@@ -63,21 +63,21 @@ one latest-candidate evaluation
 
 ## Guardrails to keep
 
-The following tests are now core safety coverage and should not be archived during the cleanup milestone:
+The following tests are now core safety coverage and should not be archived during the cleanup milestone. On Windows PowerShell, expand wildcard file groups through `Get-ChildItem` before passing them to pytest:
 
 ```powershell
-pytest tests/test_production_replay_reuse_measurement_guard.py -v
-pytest tests/test_production_resume_snapshot_reuse.py -v
-pytest tests/test_production_bootstrap_snapshot_reuse.py -v
-pytest tests/test_production_suffix_reuse_parity_guard.py -v
-pytest tests/test_scanner_transition*.py -v
-pytest tests/test_production*.py -v
+python -m pytest tests/test_production_replay_reuse_measurement_guard.py -v
+python -m pytest tests/test_production_resume_snapshot_reuse.py -v
+python -m pytest tests/test_production_bootstrap_snapshot_reuse.py -v
+python -m pytest tests/test_production_suffix_reuse_parity_guard.py -v
+python -m pytest -v (Get-ChildItem tests -Filter "test_scanner_transition*.py").FullName
+python -m pytest -v (Get-ChildItem tests -Filter "test_production*.py").FullName
 ```
 
 The full safety validation remains:
 
 ```powershell
-pytest
+python -m pytest
 cd frontend
 npm run build
 ```

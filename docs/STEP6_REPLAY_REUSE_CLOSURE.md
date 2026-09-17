@@ -50,30 +50,32 @@ ScannerTransitionResumeAdapter.resume_latest(...)
 
 ## Guardrails that must stay active
 
-Keep these groups active during cleanup and future feature work:
+Keep these groups active during cleanup and future feature work. On Windows PowerShell, expand wildcard file groups through `Get-ChildItem` before passing them to pytest:
 
 ```powershell
-pytest tests/test_production_replay_reuse_measurement_guard.py -v
-pytest tests/test_production_resume_snapshot_reuse.py -v
-pytest tests/test_production_bootstrap_snapshot_reuse.py -v
-pytest tests/test_production_suffix_reuse_parity_guard.py -v
-pytest tests/test_scanner_transition*.py -v
-pytest tests/test_production*.py -v
+python -m pytest tests/test_production_replay_reuse_measurement_guard.py -v
+python -m pytest tests/test_production_resume_snapshot_reuse.py -v
+python -m pytest tests/test_production_bootstrap_snapshot_reuse.py -v
+python -m pytest tests/test_production_suffix_reuse_parity_guard.py -v
+python -m pytest -v (Get-ChildItem tests -Filter "test_scanner_transition*.py").FullName
+python -m pytest -v (Get-ChildItem tests -Filter "test_production*.py").FullName
 ```
 
 The full safety gate remains:
 
 ```powershell
-pytest
+python -m pytest
 cd frontend
 npm run build
 ```
 
-## Remaining work after Step 6
+## Cleanup handoff
 
-Step 6 core/audit/production replay reuse is closed. The next milestone should be cleanup before new trading logic:
+Step 6 core/audit/production replay reuse is closed. Cleanup before new trading logic is tracked in `docs/CLEANUP_MILESTONE_INVENTORY.md`.
 
-1. review duplicate or obsolete tests;
+The cleanup milestone should proceed in small slices:
+
+1. classify protected versus cleanup-candidate tests and docs;
 2. consolidate scattered Step 6 docs;
 3. review compatibility fallbacks added for test doubles;
 4. clean up merged branches when stable;
