@@ -1141,7 +1141,8 @@ See `docs/FROZEN_DAILY_SEQUENCE_STUDY.md`.
 
 ### PR-K10 — Production Weekly Authority Audit Ledger
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #307
 
 K10 explains the first LT.NS real-study asymmetry without changing weekly
 qualification or coordinator behavior.
@@ -1163,6 +1164,34 @@ direction counts. This allows the LT 37-setup / 463-all-bearish result to be
 localized to production qualification versus coordinator authority timing.
 
 See `docs/WEEKLY_AUTHORITY_AUDIT.md`.
+
+### PR-K11 — Production Weekly Candidate Decision Audit
+
+**Status:** IN PROGRESS
+
+K11 moves one boundary earlier than K10 and audits all production weekly
+ScannerCandidate outputs before WeeklySetup materialization.
+
+For every candidate it records final qualification, qualification-evidence
+actionability, candidate actionability, confidence, net strength/pressure,
+scoring-evidence age, fallback usage, anomaly status, exact final reason,
+qualifying/scoring evidence codes, and whether the existing materializer creates
+a WeeklySetup.
+
+The summary independently reports:
+
+```text
+all candidates by qualification
+actionable candidates by qualification
+materialized setups by direction
+persistent-bullish final reason counts
+persistent-bearish final reason counts
+```
+
+This determines whether LT.NS has persistent-bullish candidates that are blocked
+later, or whether persistent-bullish structural qualification never forms.
+
+See `docs/WEEKLY_CANDIDATE_DECISION_AUDIT.md`.
 
 
 ---
@@ -1229,7 +1258,8 @@ Avoid:
 | 30 | PR-K7 / #304 | P1 | Compose K5 Evidence + K6 directions into frozen K4 dataset | VALIDATED |
 | 31 | PR-K8 / #305 | P1 | Generate genuine frozen K4 case from production weekly authority + real daily history | VALIDATED |
 | 32 | PR-K9 / #306 | P1 | Run frozen K4 through unchanged K3/K2/K1 and write review bundle | VALIDATED |
-| 33 | PR-K10 | P1 | Audit production weekly setup directions versus causal daily authority spans | IN PROGRESS |
+| 33 | PR-K10 / #307 | P1 | Audit production weekly setup directions versus causal daily authority spans | VALIDATED |
+| 34 | PR-K11 | P1 | Audit all production weekly candidate decisions before WeeklySetup materialization | IN PROGRESS |
 
 ---
 
@@ -1314,36 +1344,37 @@ measurable benchmark improvement
 | 2026-09-18 | #304 | M11 | VALIDATED | K5/K6 composer manually validated locally and merged; exact completed-session alignment and K4 round-trip gates passed. |
 | 2026-09-18 | #305 | M11 | VALIDATED | Real-market generator manually validated and merged; LT.NS produced 1246 daily bars, 37 production-weekly setups, 463 weekly-direction assignments, and a frozen non-actionable K4 dataset. |
 | 2026-09-18 | #306 | M11 | VALIDATED | First frozen LT.NS study completed with the original K4 fingerprint, 463 records, 65 fresh sequences, 325 horizon observations, 85 signature summaries, and zero symbol failures. |
-| 2026-09-18 | PR-K10 | M11 | IN PROGRESS | Explain LT.NS weekly-authority asymmetry by comparing production WeeklySetup direction history with exact daily coordinator selection spans. |
+| 2026-09-18 | #307 | M11 | VALIDATED | LT.NS authority audit localized the asymmetry upstream of K6: all 37 production WeeklySetup rows are persistent-bearish; 36 were selected, while the final 2026-09-14 setup first becomes available after the study cutoff. |
+| 2026-09-18 | PR-K11 | M11 | IN PROGRESS | Audit all 243 production weekly ScannerCandidate decisions to determine whether persistent-bullish candidates exist but fail later gates, or never form structurally. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K10 — Production Weekly Authority Audit Ledger
+## NEXT: PR-K11 — Production Weekly Candidate Decision Audit
 
 Checklist:
 
-- [x] Mark #306 / K9 validated and merged from the successful frozen LT study bundle.
-- [x] Preserve the original LT K4 fingerprint and non-actionable study boundary.
-- [x] Reuse K8 production weekly setup derivation unchanged.
-- [x] Reuse K6 causal coordinator assignments unchanged.
-- [x] Separate production setup direction counts from daily assignment direction counts.
-- [x] Record setup signal week, completion session, and first available daily session.
-- [x] Record selected daily count plus first/last selected session per setup.
-- [x] Preserve production-weekly and K6 source fingerprints in the audit summary.
-- [x] Add a read-only CLI for LT.NS.
-- [x] Add deterministic bullish→bearish and all-bearish audit tests.
+- [x] Mark #307 / K10 validated and merged.
+- [x] Record the K10 finding: 37/37 production WeeklySetup rows are persistent-bearish.
+- [x] Record the expected unselected final setup whose first consumer is after the 2026-09-18 cutoff.
+- [x] Reuse the completed-daily → completed-weekly → MetricsEngine → HistoricalScannerRunner production path.
+- [x] Audit all production weekly candidates, not only materialized setups.
+- [x] Record final qualification and qualification-evidence actionability.
+- [x] Record final candidate actionability and exact reason.
+- [x] Record confidence, net strength/pressure, scoring age, fallback usage, and anomaly status.
+- [x] Record qualifying/scoring evidence codes.
+- [x] Reuse the existing WeeklySetup materializer as the materialization boundary.
+- [x] Report explicit zero-count qualification/actionability/direction categories.
 - [x] Keep all output explicitly non-actionable.
-- [x] Add K10 module/CLI to Ruff.
-- [ ] Run focused K10 + K8 + K6 tests locally.
+- [x] Add K11 module/CLI to Ruff.
+- [ ] Run focused K11 + K10 + K8 scanner-boundary tests locally.
 - [ ] Run Ruff locally.
-- [ ] Run K10 against LT.NS at the same 2026-09-18 cutoff.
-- [ ] Compare setup_direction_counts with assignment_direction_counts.
-- [ ] Inspect which setup first became selected on 2024-11-11.
-- [ ] Determine whether any bullish production WeeklySetup exists among the 37 rows.
+- [ ] Run K11 against LT.NS at the same 2026-09-18 cutoff.
+- [ ] Inspect persistent_bullish candidate count.
+- [ ] If bullish candidates exist, inspect their final reason counts and materialization failures.
+- [ ] If bullish candidates do not exist, move the audit boundary into structural progression/qualification events.
 - [ ] Merge after manual validation.
-- [ ] Only then decide whether to broaden real frozen studies to multiple symbols or investigate production-weekly asymmetry further.
 
 ---
 
@@ -1402,4 +1433,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K10 — Production Weekly Authority Audit Ledger
+**Current PR:** PR-K11 — Production Weekly Candidate Decision Audit
