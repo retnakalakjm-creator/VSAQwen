@@ -9,6 +9,7 @@ from engine.columns import COL_WEEK
 from historical_scanner import HistoricalScannerRunner
 from logger import Log
 from scanner import ScannerCandidate, ScannerEngine
+from scanner_recovery import ScannerRecoveryEvent, ScannerRecoveryPhase
 from scanner_state import (
     ScannerState,
     ScannerStateFingerprintMismatch,
@@ -146,18 +147,28 @@ def _snapshot_from_resume_result(
 def _record_fallback(
     diagnostics: MutableSequence[str] | None,
     *,
+    recovery_events: MutableSequence[ScannerRecoveryEvent] | None = None,
+    phase: ScannerRecoveryPhase,
     symbol: str,
     timeframe: str,
     code: str,
     reason: str,
+    exception: BaseException | None = None,
 ) -> None:
-    message = (
-        f"{code}: {reason}; symbol={symbol}; timeframe={timeframe}; "
-        "full replay fallback used"
+    event = ScannerRecoveryEvent(
+        code=code,
+        phase=phase,
+        reason=reason,
+        symbol=symbol,
+        timeframe=timeframe,
+        exception_type=(None if exception is None else type(exception).__name__),
     )
+    message = event.message
     Log.warn("Scanner fallback: %s", message)
     if diagnostics is not None:
         diagnostics.append(message)
+    if recovery_events is not None:
+        recovery_events.append(event)
 
 
 def _fingerprint_fallback_code(exc: ScannerStateFingerprintMismatch) -> str:
@@ -190,6 +201,7 @@ def scan_latest_candidate_production(
     state_root: str | Path = "state",
     allow_full_replay_fallback: bool = True,
     fallback_diagnostics: MutableSequence[str] | None = None,
+    recovery_events: MutableSequence[ScannerRecoveryEvent] | None = None,
 ) -> ScannerCandidate | None:
     """Scan the latest bar using the production scanner path.
 
@@ -201,8 +213,9 @@ def scan_latest_candidate_production(
     match the current runtime and data prefix; stale state falls back to a full
     transition-runner replay when fallback is allowed.
 
-    ``fallback_diagnostics`` receives explicit diagnostic messages when a saved
-    checkpoint is corrupt, stale, or unable to resume. Normal first-run bootstrap
+    ``fallback_diagnostics`` receives the existing human-readable diagnostic
+    strings. ``recovery_events`` receives equivalent structured telemetry with
+    recovery phase and originating exception type. Normal first-run bootstrap
     remains quiet because no persisted checkpoint was rejected.
     """
     target_index = _target_index(metrics)
@@ -231,21 +244,27 @@ def scan_latest_candidate_production(
         code = _fingerprint_fallback_code(exc)
         _record_fallback(
             fallback_diagnostics,
+            recovery_events=recovery_events,
+            phase=ScannerRecoveryPhase.LOAD_VALIDATE,
             symbol=symbol,
             timeframe=timeframe,
             code=code,
             reason=_fingerprint_reason(code),
+            exception=exc,
         )
         state = None
-    except ValueError:
+    except ValueError as exc:
         if not allow_full_replay_fallback:
             raise
         _record_fallback(
             fallback_diagnostics,
+            recovery_events=recovery_events,
+            phase=ScannerRecoveryPhase.LOAD_VALIDATE,
             symbol=symbol,
             timeframe=timeframe,
             code=CHECKPOINT_CORRUPT,
             reason="persisted scanner state could not be loaded or validated",
+            exception=exc,
         )
         state = None
 
@@ -270,15 +289,18 @@ def scan_latest_candidate_production(
                     )
             else:
                 candidate = transition_resume.resume_latest(metrics, state)
-        except (ValueError, IndexError, RuntimeError):
+        except (ValueError, IndexError, RuntimeError) as exc:
             if not allow_full_replay_fallback:
                 raise
             _record_fallback(
                 fallback_diagnostics,
+                recovery_events=recovery_events,
+                phase=ScannerRecoveryPhase.RESUME,
                 symbol=symbol,
                 timeframe=timeframe,
                 code=ENGINE_DIVERGENCE,
                 reason="persisted scanner state could not resume current metrics",
+                exception=exc,
             )
             candidate, replay_snapshot = _full_replay_candidate_and_snapshot(
                 metrics,
@@ -320,6 +342,7 @@ def scan_actionable_production(
     state_root: str | Path = "state",
     allow_full_replay_fallback: bool = True,
     fallback_diagnostics: MutableSequence[str] | None = None,
+    recovery_events: MutableSequence[ScannerRecoveryEvent] | None = None,
 ) -> list[ScannerCandidate]:
     """Return the latest actionable candidate via the production scanner path."""
     candidate = scan_latest_candidate_production(
@@ -330,6 +353,7 @@ def scan_actionable_production(
         state_root=state_root,
         allow_full_replay_fallback=allow_full_replay_fallback,
         fallback_diagnostics=fallback_diagnostics,
+        recovery_events=recovery_events,
     )
     if candidate is None or not candidate.actionable:
         return []
@@ -344,6 +368,8 @@ __all__ = [
     "CHECKPOINT_STALE",
     "DEFAULT_TIMEFRAME",
     "ENGINE_DIVERGENCE",
+    "ScannerRecoveryEvent",
+    "ScannerRecoveryPhase",
     "scan_actionable_production",
     "scan_latest_candidate_production",
 ]

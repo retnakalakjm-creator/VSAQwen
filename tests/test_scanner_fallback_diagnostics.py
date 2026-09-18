@@ -28,6 +28,7 @@ from production_scanner import (
     scan_latest_candidate_production,
 )
 from scanner import ScannerEngine
+from scanner_recovery import ScannerRecoveryPhase
 from scanner_state import ScannerStateStore
 
 
@@ -242,3 +243,125 @@ def test_actionable_scan_forwards_fallback_diagnostics(tmp_path) -> None:
 
     assert len(diagnostics) == 1
     assert diagnostics[0].startswith(CHECKPOINT_CONFIG_MISMATCH)
+
+
+def test_structured_config_fallback_event_matches_legacy_diagnostic(tmp_path) -> None:
+    metrics = _metrics()
+    store = ScannerStateStore(tmp_path)
+    store.save(replace(_snapshot_at(metrics), config_fingerprint="stale-config"))
+    diagnostics: list[str] = []
+    recovery_events = []
+
+    candidate = scan_latest_candidate_production(
+        metrics,
+        symbol="TEST",
+        timeframe="1wk",
+        state_store=store,
+        fallback_diagnostics=diagnostics,
+        recovery_events=recovery_events,
+    )
+
+    assert len(diagnostics) == 1
+    assert len(recovery_events) == 1
+    event = recovery_events[0]
+    assert event.code == CHECKPOINT_CONFIG_MISMATCH
+    assert event.phase is ScannerRecoveryPhase.LOAD_VALIDATE
+    assert event.symbol == "TEST"
+    assert event.timeframe == "1wk"
+    assert event.fallback_used is True
+    assert event.exception_type == "ScannerStateFingerprintMismatch"
+    assert event.message == diagnostics[0]
+    _assert_matches_full_replay(candidate, metrics)
+
+
+def test_structured_corrupt_checkpoint_event_exposes_exception_type(tmp_path) -> None:
+    metrics = _metrics()
+    store = ScannerStateStore(tmp_path)
+    store.path_for("TEST", "1wk").write_text("not-json", encoding="utf-8")
+    recovery_events = []
+
+    candidate = scan_latest_candidate_production(
+        metrics,
+        symbol="TEST",
+        timeframe="1wk",
+        state_store=store,
+        recovery_events=recovery_events,
+    )
+
+    assert len(recovery_events) == 1
+    event = recovery_events[0]
+    assert event.code == CHECKPOINT_CORRUPT
+    assert event.phase is ScannerRecoveryPhase.LOAD_VALIDATE
+    assert event.exception_type == "ScannerStateCorruptError"
+    _assert_matches_full_replay(candidate, metrics)
+
+
+def test_structured_resume_failure_event_identifies_resume_phase(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    metrics = _metrics()
+    store = ScannerStateStore(tmp_path)
+    store.save(_snapshot_at(metrics))
+    diagnostics: list[str] = []
+    recovery_events = []
+
+    class FailingTransitionResumeAdapter:
+        def resume_latest(self, _metrics, _state):
+            raise RuntimeError("forced transition resume divergence")
+
+    monkeypatch.setattr(
+        "production_scanner.ScannerTransitionResumeAdapter",
+        FailingTransitionResumeAdapter,
+    )
+
+    candidate = scan_latest_candidate_production(
+        metrics,
+        symbol="TEST",
+        timeframe="1wk",
+        state_store=store,
+        fallback_diagnostics=diagnostics,
+        recovery_events=recovery_events,
+    )
+
+    assert len(recovery_events) == 1
+    event = recovery_events[0]
+    assert event.code == ENGINE_DIVERGENCE
+    assert event.phase is ScannerRecoveryPhase.RESUME
+    assert event.exception_type == "RuntimeError"
+    assert event.message == diagnostics[0]
+    _assert_matches_full_replay(candidate, metrics)
+
+
+def test_normal_bootstrap_emits_no_structured_recovery_event(tmp_path) -> None:
+    metrics = _metrics()
+    recovery_events = []
+
+    candidate = scan_latest_candidate_production(
+        metrics,
+        symbol="TEST",
+        timeframe="1wk",
+        state_store=ScannerStateStore(tmp_path),
+        recovery_events=recovery_events,
+    )
+
+    assert recovery_events == []
+    _assert_matches_full_replay(candidate, metrics)
+
+
+def test_actionable_scan_forwards_structured_recovery_events(tmp_path) -> None:
+    metrics = _metrics()
+    store = ScannerStateStore(tmp_path)
+    store.save(replace(_snapshot_at(metrics), data_fingerprint="stale-data"))
+    recovery_events = []
+
+    scan_actionable_production(
+        metrics,
+        symbol="TEST",
+        timeframe="1wk",
+        state_store=store,
+        recovery_events=recovery_events,
+    )
+
+    assert len(recovery_events) == 1
+    assert recovery_events[0].code == CHECKPOINT_DATA_MISMATCH
