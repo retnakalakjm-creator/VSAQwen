@@ -989,7 +989,8 @@ See `docs/DAILY_BEHAVIOR_SEQUENCE_DATASET_CONTRACT.md`.
 
 ### PR-K5 — Offline Point-in-Time Daily Evidence Producer
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #302
 
 K5 provides the genuine daily-evidence source required by K4 without introducing
 a competing detector.
@@ -1021,6 +1022,33 @@ It does not run ScannerEngine qualification/ranking/actionability and does not
 infer the weekly direction needed by K3/K4.
 
 See `docs/OFFLINE_DAILY_EVIDENCE_PRODUCER.md`.
+
+### PR-K6 — Causal Weekly-Direction Assignment Exporter
+
+**Status:** IN PROGRESS
+
+K6 supplies the remaining point-in-time input required by K4/K3 without deriving
+weekly direction from daily prices.
+
+For each completed daily bar:
+
+```text
+WeeklySetup history
+→ WeeklyDailyCoordinator
+→ causally visible setup
+→ emit direction only when setup is ARMED
+→ K3-compatible bar-indexed direction assignment
+```
+
+The same-week Friday setup cannot leak into Monday-Friday bars from its own signal
+week. Visibility starts on the next valid exchange session according to the
+existing TradingCalendar.
+
+K6 fingerprints the exact completed-session identities plus the relevant setup
+identity/direction/status/availability inputs. Outputs remain explicitly
+non-actionable.
+
+See `docs/CAUSAL_WEEKLY_DIRECTION_ASSIGNMENTS.md`.
 
 
 ---
@@ -1082,7 +1110,8 @@ Avoid:
 | 25 | PR-K2 / #299 | P1 | Analysis-only daily behavior sequence outcome study | VALIDATED |
 | 26 | PR-K3 / #300 | P1 | Reproducible multi-symbol daily sequence historical runner | VALIDATED |
 | 27 | PR-K4 / #301 | P1 | Frozen prepared daily sequence dataset contract | VALIDATED |
-| 28 | PR-K5 | P1 | Offline point-in-time daily evidence producer using existing VSA stack | IN PROGRESS |
+| 28 | PR-K5 / #302 | P1 | Offline point-in-time daily evidence producer using existing VSA stack | VALIDATED |
+| 29 | PR-K6 | P1 | Causal weekly-direction assignments from WeeklySetup/Coordinator | IN PROGRESS |
 
 ---
 
@@ -1162,38 +1191,36 @@ measurable benchmark improvement
 | 2026-09-18 | #299 | M11 | VALIDATED | Causal next-bar outcomes attach only to fresh current-bar sequence observations; study remains descriptive and non-actionable. |
 | 2026-09-18 | #300 | M11 | VALIDATED | Reproducible multi-symbol K1/K2 runner validated with fingerprints, failure ledger, and stable research artifacts. |
 | 2026-09-18 | #301 | M11 | VALIDATED | Frozen 1D sequence-study dataset contract validates provenance/timeframe/schema and fails closed on fingerprint mismatch. |
-| 2026-09-18 | PR-K5 | M11 | IN PROGRESS | Produce genuine point-in-time daily Evidence offline by replaying the existing metrics/structure/trend/evidence stack on completed daily prefixes. |
+| 2026-09-18 | #302 | M11 | VALIDATED | Offline point-in-time daily Evidence producer manually validated locally after merge; hosted CI unavailable due usage limits. |
+| 2026-09-18 | PR-K6 | M11 | IN PROGRESS | Export causal bar-indexed weekly directions from existing WeeklySetup/WeeklyDailyCoordinator boundaries without changing production qualification/actionability. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K5 — Offline Point-in-Time Daily Evidence Producer
+## NEXT: PR-K6 — Causal Weekly-Direction Assignment Exporter
 
 Checklist:
 
-- [x] Merge and validate #301 frozen daily sequence dataset contract.
-- [x] Reuse existing MetricsEngine, SwingEngine, StructureFilter, TrendAnalyzer, and EvidenceEngine.
-- [x] Do not run ScannerEngine qualification/ranking/actionability on daily bars.
-- [x] Apply completed_daily_only before evidence replay.
-- [x] Recompute each target from the raw daily prefix only.
-- [x] Never pass future daily bars to the evidence evaluator.
-- [x] Retain only Evidence whose bar_index equals the current target bar.
-- [x] Reject an evaluator that returns evidence for another bar.
-- [x] Preserve exact daily session identity through the legacy Evidence.week_beginning field.
-- [x] Fingerprint the completed raw OHLCV source.
-- [x] Keep all K5 outputs explicitly non-actionable.
-- [x] Keep weekly direction outside K5.
-- [x] Add prefix/no-look-ahead/completion/fingerprint tests.
-- [x] Add a smoke test through the real existing VSA stack.
-- [x] Add K5 producer to Ruff.
-- [ ] Run K5 + K4 + K3 + K2 + K1 tests locally.
-- [ ] Run Ruff.
-- [ ] Confirm forming daily bar exclusion.
-- [ ] Confirm future extension does not change already-produced observations.
-- [ ] Confirm real-stack output is target-bar-only.
+- [x] Mark #302 / K5 manually validated from the local focused suite.
+- [x] Reuse WeeklySetup and WeeklyDailyCoordinator as the authoritative weekly-direction boundary.
+- [x] Apply completed_daily_only before bar-index assignment.
+- [x] Prevent same-week Friday setup leakage.
+- [x] Emit direction only when the causally selected setup is ARMED.
+- [x] Preserve exact completed-daily positional bar_index for K3/K4.
+- [x] Keep terminal setup snapshots non-observing rather than inventing lifecycle history.
+- [x] Fingerprint completed session identities and relevant setup visibility inputs.
+- [x] Expose K3-compatible DailyBehaviorSequenceDirectionAssignment tuples.
+- [x] Keep all output explicitly non-actionable.
+- [x] Add holiday/closure, future-invariance, symbol-isolation, and fingerprint tests.
+- [x] Add K6 exporter to Ruff.
+- [ ] Run focused K6 + coordinator + K5 + K4 + K3 tests locally.
+- [ ] Run Ruff locally.
+- [ ] Confirm same-week sessions receive no new-Friday direction.
+- [ ] Confirm terminal latest setup suppresses active direction assignment.
+- [ ] Confirm future weekly setups do not change prior assignments.
 - [ ] Merge after manual validation.
-- [ ] Then add a causal weekly-direction assignment exporter and build the first genuine frozen K4 case.
+- [ ] Then compose K5 Evidence + K6 weekly directions + real completed daily OHLCV into the first genuine frozen K4 dataset.
 
 ---
 
@@ -1252,4 +1279,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K5 — Offline Point-in-Time Daily Evidence Producer
+**Current PR:** PR-K6 — Causal Weekly-Direction Assignment Exporter
