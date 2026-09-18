@@ -1196,7 +1196,8 @@ See `docs/WEEKLY_CANDIDATE_DECISION_AUDIT.md`.
 
 ### PR-K12 — Production Weekly Structural Progression Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #309
 
 K12 moves one boundary earlier than K11 and audits the exact structural
 progression events emitted by the existing production evidence path.
@@ -1223,6 +1224,37 @@ whether bullish events existed but never satisfied the existing persistence
 sequence.
 
 See `docs/WEEKLY_STRUCTURAL_PROGRESSION_AUDIT.md`.
+
+### PR-K13 — Production Weekly Progression Score Input Audit
+
+**Status:** IN PROGRESS
+
+K13 decomposes the exact structural-swing score windows behind each emitted
+professional progression event.
+
+For every event it reconstructs the production older/recent weighted-average
+comparison and records component deltas for:
+
+```text
+professional overall
+├── structural overall
+│   ├── price
+│   ├── structural size
+│   ├── duration
+│   ├── volume
+│   └── spread
+└── smart-money overall
+    ├── stopping volume
+    └── climactic volume
+```
+
+The audit also writes one deduplicated ledger of production structural swings,
+including score components and history-snapshot inputs.
+
+The reconstructed professional delta must match the production-reported
+progression difference exactly.
+
+See `docs/WEEKLY_PROGRESSION_SCORE_INPUT_AUDIT.md`.
 
 
 ---
@@ -1291,7 +1323,8 @@ Avoid:
 | 32 | PR-K9 / #306 | P1 | Run frozen K4 through unchanged K3/K2/K1 and write review bundle | VALIDATED |
 | 33 | PR-K10 / #307 | P1 | Audit production weekly setup directions versus causal daily authority spans | VALIDATED |
 | 34 | PR-K11 / #308 | P1 | Audit all production weekly candidate decisions before WeeklySetup materialization | VALIDATED |
-| 35 | PR-K12 | P1 | Audit raw weekly structural-progression events feeding qualification | IN PROGRESS |
+| 35 | PR-K12 / #309 | P1 | Audit raw weekly structural-progression events feeding qualification | VALIDATED |
+| 36 | PR-K13 | P1 | Decompose structural-swing score inputs behind progression events | IN PROGRESS |
 
 ---
 
@@ -1378,36 +1411,38 @@ measurable benchmark improvement
 | 2026-09-18 | #306 | M11 | VALIDATED | First frozen LT.NS study completed with the original K4 fingerprint, 463 records, 65 fresh sequences, 325 horizon observations, 85 signature summaries, and zero symbol failures. |
 | 2026-09-18 | #307 | M11 | VALIDATED | LT.NS authority audit localized the asymmetry upstream of K6: all 37 production WeeklySetup rows are persistent-bearish; 36 were selected, while the final 2026-09-14 setup first becomes available after the study cutoff. |
 | 2026-09-18 | #308 | M11 | VALIDATED | LT.NS candidate audit showed 243 candidates = 136 unqualified + 107 persistent-bearish + 0 persistent-bullish; 37 bearish candidates were actionable/materialized and 70 bearish-qualified candidates were blocked by existing VSA freshness/confirmation/conflict gates. |
-| 2026-09-18 | PR-K12 | M11 | IN PROGRESS | Audit the raw production weekly structural-progression event stream, swing provenance, campaign resets, and qualification state to explain why no persistent-bullish qualification forms. |
+| 2026-09-18 | #309 | M11 | VALIDATED | LT.NS progression audit found 7 events: 1 improving on 2024-03-11 and 6 weakening. The bullish campaign was reset by the next bearish event; three bearish events at bars 137/146/156 satisfied spacing and created persistent-bearish on 2024-09-02. |
+| 2026-09-18 | PR-K13 | M11 | IN PROGRESS | Reconstruct and decompose the exact older-vs-recent structural swing score windows behind each progression event to identify which scoring components drive the one-sided negative progression stream. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K12 — Production Weekly Structural Progression Audit
+## NEXT: PR-K13 — Production Weekly Progression Score Input Audit
 
 Checklist:
 
-- [x] Mark #308 / K11 validated and merged.
-- [x] Record K11 result: 136 unqualified, 107 persistent-bearish, 0 persistent-bullish.
-- [x] Preserve the same production-weekly source fingerprint used by K8/K10/K11.
-- [x] Reuse the existing HistoricalScannerRunner candidate stream.
-- [x] Consume only structural-progression events already emitted in target-bar evidence.
-- [x] Record professional progression difference without changing its threshold.
-- [x] Record trend direction/state and structural pattern at each event.
-- [x] Record latest confirmed structural-swing provenance and professional overall score.
-- [x] Record spacing from the prior event and prior same-direction event.
-- [x] Mirror PatternQualificationEngine opposing-event campaign reset semantics.
-- [x] Record qualification state immediately after each event.
-- [x] Record whether each event was selected into qualifying evidence.
+- [x] Mark #309 / K12 validated and merged.
+- [x] Record K12 result: 1 improving event, 6 weakening events.
+- [x] Record exact bearish persistence chronology at bars 137, 146, and 156.
+- [x] Preserve the same production-weekly source fingerprint.
+- [x] Reuse production structural swing evaluations from ScannerCandidate context.
+- [x] Reconstruct the exact progression window size used at each event.
+- [x] Reconstruct older/recent recency-weighted professional averages.
+- [x] Fail visibly if reconstructed progression delta differs from production output.
+- [x] Decompose structural-overall and Smart Money deltas.
+- [x] Decompose price, structural-size, duration, volume, and spread deltas.
+- [x] Decompose stopping-volume and climactic-volume Smart Money deltas.
+- [x] Export one deduplicated structural-swing score ledger.
+- [x] Retain history snapshot amplitude/duration/sample-count inputs.
 - [x] Keep all output explicitly non-actionable.
-- [x] Add K12 module/CLI to Ruff.
-- [ ] Run focused K12 + qualification + transition evidence tests locally.
+- [x] Add K13 module/CLI to Ruff.
+- [ ] Run focused K13 + K12 + structural scoring/progression tests locally.
 - [ ] Run Ruff locally.
-- [ ] Run K12 against LT.NS at the same 2026-09-18 cutoff.
-- [ ] Inspect bullish versus bearish progression-event counts.
-- [ ] If bullish event count is zero, move the audit into progression score inputs / structural swing scoring.
-- [ ] If bullish events exist, inspect spacing/reset chronology before changing any qualification rule.
+- [ ] Run K13 against LT.NS at the same 2026-09-18 cutoff.
+- [ ] Confirm every reconstructed progression delta matches production exactly.
+- [ ] Identify which component deltas dominate the six negative events.
+- [ ] Decide whether the next audit belongs in percentile-history construction, Smart Money scoring, or progression semantics.
 - [ ] Merge after manual validation.
 
 ---
@@ -1467,4 +1502,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K12 — Production Weekly Structural Progression Audit
+**Current PR:** PR-K13 — Production Weekly Progression Score Input Audit
