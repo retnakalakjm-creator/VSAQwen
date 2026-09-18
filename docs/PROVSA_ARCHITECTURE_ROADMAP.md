@@ -1227,7 +1227,8 @@ See `docs/WEEKLY_STRUCTURAL_PROGRESSION_AUDIT.md`.
 
 ### PR-K13 — Production Weekly Progression Score Input Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #310
 
 K13 decomposes the exact structural-swing score windows behind each emitted
 professional progression event.
@@ -1255,6 +1256,69 @@ The reconstructed professional delta must match the production-reported
 progression difference exactly.
 
 See `docs/WEEKLY_PROGRESSION_SCORE_INPUT_AUDIT.md`.
+
+### PR-K14 — Progression Directionality Semantics Audit
+
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #311
+
+K14 broadens the investigation from LT.NS to the existing repeatable VSA audit
+basket before any production semantic change.
+
+The current production mapping is:
+
+```text
+recent professional swing quality > older quality
+→ improving
+→ bullish evidence
+
+recent professional swing quality < older quality
+→ weakening
+→ bearish evidence
+```
+
+K14 does not assume this mapping is wrong. It measures whether emitted event
+direction agrees or conflicts with independent same-bar context:
+
+```text
+trend direction
+structural pattern
+```
+
+The default run uses the existing 30-symbol large-cap audit basket and isolates
+symbol failures instead of discarding successful results.
+
+See `docs/PROGRESSION_DIRECTIONALITY_SEMANTICS_AUDIT.md`.
+
+### PR-K15 — Progression Directional Forward-Outcome Audit
+
+**Status:** IN PROGRESS
+
+K15 tests the question K14 cannot answer from same-bar context alone:
+
+```text
+does emitted progression direction
+have future weekly directional value?
+```
+
+It reuses the existing next-bar audit outcome contract:
+
+```text
+progression event known on weekly bar N
+→ no same-bar scoring
+→ execution at weekly bar N+1 close
+→ 1 / 3 / 5 / 10 / 15-week forward outcomes
+```
+
+Bullish progression is evaluated long-side; bearish progression short-side.
+The audit records direction-adjusted favorable return, MFE, MAE, completeness,
+and cohorts by event direction, trend alignment, and structural-pattern
+alignment.
+
+This distinguishes a genuinely useful early-warning/reversal label from a
+non-directional swing-quality change.
+
+See `docs/PROGRESSION_DIRECTIONAL_OUTCOME_AUDIT.md`.
 
 
 ---
@@ -1324,7 +1388,9 @@ Avoid:
 | 33 | PR-K10 / #307 | P1 | Audit production weekly setup directions versus causal daily authority spans | VALIDATED |
 | 34 | PR-K11 / #308 | P1 | Audit all production weekly candidate decisions before WeeklySetup materialization | VALIDATED |
 | 35 | PR-K12 / #309 | P1 | Audit raw weekly structural-progression events feeding qualification | VALIDATED |
-| 36 | PR-K13 | P1 | Decompose structural-swing score inputs behind progression events | IN PROGRESS |
+| 36 | PR-K13 / #310 | P1 | Decompose structural-swing score inputs behind progression events | VALIDATED |
+| 37 | PR-K14 / #311 | P1 | Audit progression event direction versus same-bar trend/pattern across standard basket | VALIDATED |
+| 38 | PR-K15 | P1 | Measure causal forward weekly outcomes of progression direction labels | IN PROGRESS |
 
 ---
 
@@ -1412,37 +1478,44 @@ measurable benchmark improvement
 | 2026-09-18 | #307 | M11 | VALIDATED | LT.NS authority audit localized the asymmetry upstream of K6: all 37 production WeeklySetup rows are persistent-bearish; 36 were selected, while the final 2026-09-14 setup first becomes available after the study cutoff. |
 | 2026-09-18 | #308 | M11 | VALIDATED | LT.NS candidate audit showed 243 candidates = 136 unqualified + 107 persistent-bearish + 0 persistent-bullish; 37 bearish candidates were actionable/materialized and 70 bearish-qualified candidates were blocked by existing VSA freshness/confirmation/conflict gates. |
 | 2026-09-18 | #309 | M11 | VALIDATED | LT.NS progression audit found 7 events: 1 improving on 2024-03-11 and 6 weakening. The bullish campaign was reset by the next bearish event; three bearish events at bars 137/146/156 satisfied spacing and created persistent-bearish on 2024-09-02. |
-| 2026-09-18 | PR-K13 | M11 | IN PROGRESS | Reconstruct and decompose the exact older-vs-recent structural swing score windows behind each progression event to identify which scoring components drive the one-sided negative progression stream. |
+| 2026-09-18 | #310 | M11 | VALIDATED | LT.NS score-input audit reconstructed all 7 production progression deltas exactly. Across the six weakening events, the mean professional decline is structurally dominated; early qualifying bearish events are driven mainly by price/structural-size/duration percentile declines, while later events shift toward volume/spread and Smart Money declines. |
+| 2026-09-18 | #311 | M11 | VALIDATED | Full 30-symbol directionality audit completed with 591 progression events and zero symbol failures. Among directionally comparable trend cases, 250/467 (53.5%) were opposed; explicit improving/weakening pattern cases were 79/138 (57.2%) opposed. Event direction therefore shows only weak same-bar directional association, not a simple inversion. |
+| 2026-09-18 | PR-K15 | M11 | IN PROGRESS | Measure causal next-week and 1/3/5/10/15-week forward outcomes of progression direction labels to determine whether trend-opposed events act as useful early warnings or merely encode non-directional swing-quality change. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K13 — Production Weekly Progression Score Input Audit
+## NEXT: PR-K15 — Progression Directional Forward-Outcome Audit
 
 Checklist:
 
-- [x] Mark #309 / K12 validated and merged.
-- [x] Record K12 result: 1 improving event, 6 weakening events.
-- [x] Record exact bearish persistence chronology at bars 137, 146, and 156.
-- [x] Preserve the same production-weekly source fingerprint.
-- [x] Reuse production structural swing evaluations from ScannerCandidate context.
-- [x] Reconstruct the exact progression window size used at each event.
-- [x] Reconstruct older/recent recency-weighted professional averages.
-- [x] Fail visibly if reconstructed progression delta differs from production output.
-- [x] Decompose structural-overall and Smart Money deltas.
-- [x] Decompose price, structural-size, duration, volume, and spread deltas.
-- [x] Decompose stopping-volume and climactic-volume Smart Money deltas.
-- [x] Export one deduplicated structural-swing score ledger.
-- [x] Retain history snapshot amplitude/duration/sample-count inputs.
+- [x] Mark #311 / K14 validated and merged.
+- [x] Record K14 full-basket result: 591 events, 30/30 symbols successful, zero failures.
+- [x] Record that same-bar trend/pattern opposition is moderate, not a simple semantic inversion.
+- [x] Reuse the existing completed-weekly production event stream.
+- [x] Reuse the existing audit ForwardOutcome next-bar execution contract.
+- [x] Prevent same-bar outcome scoring.
+- [x] Validate event week identity against the exact completed-weekly row.
+- [x] Evaluate 1/3/5/10/15-week horizons.
+- [x] Convert bullish labels to long-side favorable returns.
+- [x] Convert bearish labels to short-side favorable returns.
+- [x] Record favorable return, MFE, MAE, completion, execution and exit indices.
+- [x] Summarize all events plus event-direction cohorts.
+- [x] Summarize aligned/opposed/neutral trend cohorts.
+- [x] Summarize aligned/opposed/ambiguous structural-pattern cohorts.
+- [x] Isolate per-symbol failures.
 - [x] Keep all output explicitly non-actionable.
-- [x] Add K13 module/CLI to Ruff.
-- [ ] Run focused K13 + K12 + structural scoring/progression tests locally.
+- [x] Add K15 module/CLI to Ruff.
+- [ ] Run focused K15 + K14 + forward-outcome tests locally.
 - [ ] Run Ruff locally.
-- [ ] Run K13 against LT.NS at the same 2026-09-18 cutoff.
-- [ ] Confirm every reconstructed progression delta matches production exactly.
-- [ ] Identify which component deltas dominate the six negative events.
-- [ ] Decide whether the next audit belongs in percentile-history construction, Smart Money scoring, or progression semantics.
+- [ ] Run staged 5-symbol outcome basket.
+- [ ] Run full 30-symbol outcome basket at the fixed 2026-09-18 cutoff.
+- [ ] Compare favorable hit rate and mean/median favorable return by horizon.
+- [ ] Compare trend-aligned versus trend-opposed event outcomes.
+- [ ] Compare bullish versus bearish progression outcomes.
+- [ ] If labels lack directional forward value, design a counterfactual non-directional progression-quality audit.
+- [ ] If labels show useful forward direction despite same-bar opposition, retain semantics and document reversal/early-warning behavior.
 - [ ] Merge after manual validation.
 
 ---
@@ -1502,4 +1575,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K13 — Production Weekly Progression Score Input Audit
+**Current PR:** PR-K15 — Progression Directional Forward-Outcome Audit
