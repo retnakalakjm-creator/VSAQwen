@@ -78,11 +78,18 @@ class ScannerTransitionSnapshotAdapter:
             raise ValueError("transition state must end at target_index")
 
         prefix = metrics.iloc[: target_index + 1].copy()
-        swing_state = self._snapshot_swing_state(
-            prefix,
-            symbol=symbol,
-            timeframe=timeframe,
-        )
+        if transition_state.swing_state is None:
+            swing_state = self._snapshot_swing_state(
+                prefix,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+        else:
+            swing_state = replace(
+                transition_state.swing_state,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
         state = replace(
             swing_state,
             schema_version=SCANNER_STATE_SCHEMA_VERSION,

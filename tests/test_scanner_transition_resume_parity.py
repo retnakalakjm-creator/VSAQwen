@@ -138,6 +138,7 @@ def test_transition_resume_can_translate_checkpoint_state_without_production_wir
 
     assert transition_state.last_bar_index == checkpoint_index
     assert transition_state.structural_events == checkpoint_state.structural_events
+    assert transition_state.swing_state == checkpoint_state
 
     index_by_week = {str(week): index for index, week in enumerate(metrics[COL_WEEK])}
     restored_indices = tuple(

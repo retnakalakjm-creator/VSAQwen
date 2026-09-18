@@ -17,7 +17,6 @@ from engine.columns import (
     COL_VOLUME,
 )
 from market_structure.professional_scorer import ProfessionalScorer
-from market_structure.swing_history import SwingHistoryAnalyzer
 from models import Swing, SwingType
 
 
@@ -66,63 +65,40 @@ def elapsed(fn, repeats: int) -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Benchmark ProfessionalScorer history and structural stages.")
+    parser = argparse.ArgumentParser(
+        description="Benchmark public ProfessionalScorer batch preparation and lazy evaluation."
+    )
     parser.add_argument("--size", type=int, default=5000)
     parser.add_argument("--repeats", type=int, default=20)
-    parser.add_argument("--lookback", type=int, default=10)
     args = parser.parse_args()
 
-    if args.size <= 1 or args.repeats <= 0 or args.lookback <= 0:
-        raise SystemExit("--size > 1, --repeats > 0 and --lookback > 0 are required")
+    if args.size <= 1 or args.repeats <= 0:
+        raise SystemExit("--size > 1 and --repeats > 0 are required")
 
     metrics, swings = make_inputs(args.size)
     scorer = ProfessionalScorer()
-    arrays = scorer._metric_arrays(metrics)
 
-    snapshots = scorer.prepare_history_snapshots(swings, arrays, args.lookback)
-    indices = tuple(swing.metrics_index for swing in swings)
-    smart_money = scorer.smart_money_scores_batch(arrays, indices)
-    prepared_values = scorer._structure._prepared_values
+    batch = scorer.score_batch(swings, metrics)
 
-    history_time = elapsed(
-        lambda: scorer.prepare_history_snapshots(swings, arrays, args.lookback),
-        args.repeats,
-    )
-    smart_money_time = elapsed(
-        lambda: scorer.smart_money_scores_batch(arrays, indices),
+    batch_time = elapsed(
+        lambda: scorer.score_batch(swings, metrics),
         args.repeats,
     )
 
-    def structural_stage() -> int:
+    def materialize() -> int:
         count = 0
-        for index, swing in enumerate(swings):
-            if index == 0:
-                continue
-            snapshot = snapshots[index]
-            if snapshot is None:
-                continue
-            metric_index = indices[index]
-            prepared = prepared_values(
-                snapshot=snapshot,
-                volume=float(arrays[4][metric_index]),
-                spread=float(arrays[5][metric_index]),
-            )
-            smart_money_score = smart_money[index].overall
-            if (prepared[-1] + smart_money_score) >= 0.0:
+        for index in range(1, len(batch)):
+            if batch.evaluation(index, include_components=False) is not None:
                 count += 1
         return count
 
-    structural_time = elapsed(structural_stage, args.repeats)
-    total_isolated = history_time + smart_money_time + structural_time
+    materialize_time = elapsed(materialize, args.repeats)
 
     print(f"swings:             {args.size:,}")
     print(f"repeats:            {args.repeats}")
-    print(f"lookback:           {args.lookback}")
-    print(f"history snapshots:  {history_time * 1000:.3f} ms")
-    print(f"smart money batch:  {smart_money_time * 1000:.3f} ms")
-    print(f"structural stage:   {structural_time * 1000:.3f} ms")
-    print(f"isolated total:     {total_isolated * 1000:.3f} ms")
-    print(f"snapshots:          {len(snapshots) - 1:,}")
+    print(f"batch preparation:  {batch_time * 1000:.3f} ms")
+    print(f"lazy materialize:   {materialize_time * 1000:.3f} ms")
+    print(f"evaluations:        {materialize():,}")
 
 
 if __name__ == "__main__":

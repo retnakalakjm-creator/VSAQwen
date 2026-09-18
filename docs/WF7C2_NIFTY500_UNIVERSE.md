@@ -1,5 +1,16 @@
 # WF7C2 — Reproducible Current NIFTY 500 Universe
 
+## Status
+
+WF7C2 has completed on the broad current-constituent NIFTY 500 universe. The
+reproducibility gate passed, but the effect failed horizon, OOS, direction, and
+regime stability requirements. WF7 is therefore closed with **no production weekly
+qualification/actionability change**.
+
+See `docs/research/WF7_EVIDENCE_CLOSURE.md` for the closure record and
+`reports/weekly-foundation/wf7c2-study-01/wf7c2_evidence_closure_summary.json`
+for the retained high-level metrics.
+
 WF7C2 needs a broader research universe, but the universe itself must be auditable.
 
 This helper converts the **official NSE Indices NIFTY 500 constituent CSV** into the
@@ -61,6 +72,23 @@ The bundle contains:
 
 Keep the downloaded CSV and generated manifest with the eventual WF7C2 evidence
 so the requested universe can be reconstructed exactly.
+
+## Frozen preflight snapshot
+
+WF7C2 now materializes each surviving symbol once during preflight and retains
+that read-only historical foundation result together with its exact completed-week
+input fingerprint. The aggregate WF7C1 analysis consumes those same frozen
+objects instead of re-downloading/reloading market data or rerunning the historical
+scanner.
+
+This matters for long broad-universe jobs because cache refreshes or CSV
+round-trips between two passes can change exact IEEE-754 values and therefore
+change the SHA-256 even when the visible OHLCV history appears unchanged. The
+frozen path keeps the reproducibility gate meaningful without a second data pass.
+
+The normal CLI is unchanged. `wf7c2_broad_universe_summary.json` records
+`frozen_preflight_snapshot_used: true` for the default production-backed research
+path.
 
 ## Run WF7C2
 

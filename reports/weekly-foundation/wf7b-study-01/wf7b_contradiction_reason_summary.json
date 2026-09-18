@@ -1,0 +1,56 @@
+{
+  "horizons_weeks": [
+    5,
+    10,
+    15
+  ],
+  "is_actionable": false,
+  "leave_one_symbol_out_rows": 600,
+  "reason_counts": {
+    "campaign_challenged": {
+      "bar_observations": 66,
+      "episodes": 34
+    },
+    "opposite_supported_thesis": {
+      "bar_observations": 100,
+      "episodes": 57
+    },
+    "same_direction_supported": {
+      "bar_observations": 236,
+      "episodes": 117
+    },
+    "shadow_support_missing": {
+      "bar_observations": 1062,
+      "episodes": 370
+    },
+    "structural_invalidation": {
+      "bar_observations": 2,
+      "episodes": 2
+    }
+  },
+  "summary_rows": 90,
+  "symbol_count": 20,
+  "symbols": [
+    "ASIANPAINT.NS",
+    "BHARTIARTL.NS",
+    "COALINDIA.NS",
+    "DRREDDY.NS",
+    "HDFCBANK.NS",
+    "HINDUNILVR.NS",
+    "ICICIBANK.NS",
+    "INFY.NS",
+    "ITC.NS",
+    "LT.NS",
+    "M&M.NS",
+    "MARUTI.NS",
+    "NTPC.NS",
+    "ONGC.NS",
+    "POWERGRID.NS",
+    "RELIANCE.NS",
+    "SBIN.NS",
+    "SUNPHARMA.NS",
+    "TCS.NS",
+    "ULTRACEMCO.NS"
+  ],
+  "unique_legacy_actionable_observations": 1466
+}

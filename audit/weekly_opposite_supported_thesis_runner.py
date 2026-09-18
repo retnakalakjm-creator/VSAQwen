@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 from audit.weekly_input_reproducibility_runner import (
+    ReproducibleWeeklyFoundationSnapshot,
     ReproducibleWeeklyFoundationStudy,
     run_reproducible_weekly_foundation_study,
 )
@@ -116,19 +117,51 @@ def run_reproducible_weekly_opposite_supported_study(
     expected_fingerprints: Sequence[WeeklyAuditInputFingerprint],
     horizons_weeks: Iterable[int] = (5, 10, 15),
     out_of_sample_start_week: str | None = None,
+    foundation_snapshot: ReproducibleWeeklyFoundationSnapshot | None = None,
 ) -> ReproducibleWeeklyOppositeSupportedStudy:
-    """Run WF7C1 only when the completed-week inputs match the WF7C0 baseline."""
+    """Run WF7C1 only when completed-week inputs match the reproducibility gate.
 
-    reproducible: ReproducibleWeeklyFoundationStudy = (
-        run_reproducible_weekly_foundation_study(
-            symbols,
-            horizons_weeks=horizons_weeks,
-            out_of_sample_start_week=out_of_sample_start_week,
+    A caller such as WF7C2 may supply an already-frozen foundation snapshot.
+    That path preserves the exact preflight inputs and avoids a second market
+    data/scanner pass. Direct WF7C1 calls retain the original behavior.
+    """
+
+    requested_symbols = tuple(str(item).strip().upper() for item in symbols)
+    requested_horizons = tuple(sorted(set(int(item) for item in horizons_weeks)))
+    if not requested_symbols or any(not item for item in requested_symbols):
+        raise ValueError("symbols must contain at least one non-blank symbol")
+    if len(set(requested_symbols)) != len(requested_symbols):
+        raise ValueError("symbols must be unique")
+    if not requested_horizons or any(item <= 0 for item in requested_horizons):
+        raise ValueError("horizons must contain positive week counts")
+
+    if foundation_snapshot is None:
+        reproducible: ReproducibleWeeklyFoundationStudy = (
+            run_reproducible_weekly_foundation_study(
+                requested_symbols,
+                horizons_weeks=requested_horizons,
+                out_of_sample_start_week=out_of_sample_start_week,
+            )
         )
-    )
+        symbol_results = reproducible.foundation.symbol_results
+        effective_horizons = tuple(reproducible.foundation.horizons_weeks)
+        input_fingerprints = reproducible.input_fingerprints
+    else:
+        if foundation_snapshot.symbols != requested_symbols:
+            raise ValueError(
+                "frozen WF7C1 foundation symbols do not match requested symbols"
+            )
+        if foundation_snapshot.horizons_weeks != requested_horizons:
+            raise ValueError(
+                "frozen WF7C1 foundation horizons do not match requested horizons"
+            )
+        symbol_results = foundation_snapshot.symbol_results
+        effective_horizons = foundation_snapshot.horizons_weeks
+        input_fingerprints = foundation_snapshot.input_fingerprints
+
     comparison = compare_weekly_audit_inputs(
         tuple(expected_fingerprints),
-        reproducible.input_fingerprints,
+        input_fingerprints,
     )
     if not comparison.matches:
         raise ValueError(
@@ -143,16 +176,16 @@ def run_reproducible_weekly_opposite_supported_study(
             prices=item.prices,
             out_of_sample_start_bar_index=item.out_of_sample_start_bar_index,
         )
-        for item in reproducible.foundation.symbol_results
+        for item in symbol_results
     )
     wf7a = WeeklyActionabilityCounterfactualEngine.audit(
         datasets=datasets,
-        horizons_weeks=tuple(reproducible.foundation.horizons_weeks),
+        horizons_weeks=effective_horizons,
     )
     wf7b = WeeklyContradictionReasonAuditEngine.audit(counterfactual_report=wf7a)
 
     regimes: dict[tuple[str, int], WeeklyOppositeRegime] = {}
-    for symbol_result in reproducible.foundation.symbol_results:
+    for symbol_result in symbol_results:
         for audit in symbol_result.audits:
             if audit.bar_index is None:
                 continue
@@ -168,7 +201,7 @@ def run_reproducible_weekly_opposite_supported_study(
     )
     return ReproducibleWeeklyOppositeSupportedStudy(
         report=report,
-        input_fingerprints=reproducible.input_fingerprints,
+        input_fingerprints=input_fingerprints,
         fingerprint_comparison=comparison,
     )
 

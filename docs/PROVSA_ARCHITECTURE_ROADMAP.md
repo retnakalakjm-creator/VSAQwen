@@ -3,7 +3,7 @@
 **Status:** Active / Living Document  
 **Primary product direction:** Weekly-timeframe VSA background/qualification followed by daily-timeframe entry timing.  
 **Update policy:** Update this document whenever a roadmap PR is started, merged, validated, superseded, or materially redesigned.  
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-18
 
 ---
 
@@ -242,7 +242,7 @@ zone quality/provenance
 # M6 — Daily Entry Shadow Engine
 
 **Priority:** P1  
-**Status:** IN PROGRESS
+**Status:** VALIDATED
 
 ## Objective
 
@@ -353,7 +353,8 @@ Bearish setups use symmetric supply/demand behavior where supported by existing 
 
 ## PR-F3 — Next-Session Daily Trigger / Replay Output
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #262
 
 PR-F3 consumes the validated behavior evidence from F2; it must not revert to a single-pattern mandatory trigger.
 
@@ -423,12 +424,50 @@ Execution invariant remains:
 signal bar != execution bar
 ```
 
+
+## PR-F4 — End-to-End Weekly→Daily Shadow Pipeline
+
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #281
+
+PR-F4 composes the already-validated boundaries without introducing a new
+decision rule:
+
+```text
+authoritative production ScannerCandidate
+        ↓
+WeeklySetup materializer
+        ↓
+completed_daily_only()
+        ↓
+WeeklyDailyCoordinator
+        ↓
+DailyEntryEngine behavior snapshot
+        ↓
+DailyTriggerReplayOutput
+```
+
+The pipeline must prove, in one composition, that:
+
+- a same-week daily bar cannot consume the Friday weekly setup,
+- an actionable production candidate can become an ARMED WeeklySetup,
+- non-actionable weekly candidates cannot create positive daily behavior,
+- incomplete daily bars are removed before daily evaluation,
+- future daily evidence cannot leak backward,
+- bullish and bearish weekly directions remain symmetric,
+- exact next-session timing remains pending when the expected bar is incomplete,
+- all composed output remains shadow-only and non-actionable.
+
+This orchestration accepts daily evidence that is already indexed to the completed
+daily-bar sequence. It does not run the weekly scanner unchanged on daily data and
+does not introduce a new daily evidence detector.
+
 ---
 
 # M7 — Performance Consolidation
 
 **Priority:** P1  
-**Status:** PLANNED
+**Status:** VALIDATED
 
 Work:
 
@@ -440,22 +479,86 @@ Work:
 
 ### PR-G1 — Feature Precomputation / Hot-Loop Reduction
 
-**Status:** PLANNED
+**Status:** VALIDATED  
+**PRs:** #282, #283, #284
+
+First safe cut: transition replay prefixes use shallow DataFrame copies so
+per-bar replay does not duplicate the underlying metric column buffers.
+
+Second safe cut: transition state now carries the existing causal SwingEngine
+checkpoint. Full historical replay performs one initial swing discovery and then
+uses `SwingEngine.calculate_from_state()` for subsequent bars. Production resume
+seeds this state directly from the durable ScannerState, and snapshot generation
+reuses the same transition swing state instead of replaying swings again.
+
+Candidate, resume, and snapshot semantics remain protected by the existing parity
+suite.
+
+Third safe cut: confirmed structural/professional swing evaluations are now cached
+inside transient transition state. Bars with no newly confirmed swing reuse the
+cached structural set. When a new swing appears, only a bounded
+`STRUCTURE_LOOKBACK + 1` window is rescored, preserving the existing scoring
+implementation and exact point-in-time semantics.
+
+Durable ScannerState intentionally does not persist professional structural
+evaluations; the first bar after resume rebuilds them once, then transition reuse
+continues.
 
 ### PR-G2 — Incremental Benchmark & Cleanup
 
-**Status:** PLANNED
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #285
+
+G2 adds a deterministic, network-free benchmark for the exact causal path
+optimized in G1. It measures legacy full replay, optimized transition full replay,
+in-memory one-new-bar update, and durable one-new-bar resume. Candidate parity is
+checked before timing is accepted; pytest does not enforce machine-dependent
+latency thresholds.
+
+The retained 192-bar / 7-repeat local measurement on 2026-09-18 showed:
+
+- legacy full replay median: **1386.595 ms**
+- transition full replay median: **1330.784 ms**
+- in-memory one-new-bar median: **6.228 ms**
+- durable one-new-bar resume median: **7.672 ms**
+- full replay speedup: **1.042x** (~4.0% lower median wall time)
+- one-new-bar vs legacy full replay: **222.653x**
+
+Conclusion: the rolling/new-bar path achieved a material performance improvement.
+Full historical replay improved only modestly and should not be described as a
+large replay-speed optimization. Any further full-replay work should be a
+separate measured task rather than extending G1 by assumption.
 
 ---
 
 # M8 — Module Boundary & Python Quality Cleanup
 
 **Priority:** P2  
-**Status:** PLANNED
+**Status:** IN PROGRESS
 
 ### PR-H1 — Public Professional-Scoring Batch API
 
-Remove cross-module reliance on private scorer members.
+**Status:** IN PROGRESS
+
+Replace cross-module access to `ProfessionalScorer` private arrays, scorers,
+weights, and raw Smart Money batch values with a public position-aligned batch
+contract.
+
+The public batch must preserve:
+
+- exact pre-H1 batched production StructureFilter semantics,
+- lazy Smart Money component materialization,
+- current StructureFilter thresholds and grading,
+- existing batched hot-path performance.
+
+During H1 validation, a pre-existing scalar-vs-batch discrepancy was exposed:
+`ProfessionalScorer.score()` and the production batched StructureFilter path do
+not build identical volume/spread history snapshots. H1 does not change or
+reconcile that behavior. The compatibility gate therefore targets the actual
+pre-H1 production batched path exactly; scalar/batch semantic reconciliation, if
+desired, requires a separate evidence-backed change.
+
+Benchmark tooling should also use public scoring boundaries where practical.
 
 ### PR-H2 — Domain Exceptions / Policy Boundaries
 
@@ -558,13 +661,14 @@ Avoid:
 | 11 | PR-E1 / #259 | P1 | Weekly structural zones, read-only | VALIDATED |
 | 12 | PR-F1 / #260 | P1 | Daily Entry Engine shadow | VALIDATED |
 | 13 | PR-F2 / #261 | P1 | Behavior-based daily VSA entry evidence | VALIDATED |
-| 14 | PR-F3 | P1 | Next-session daily trigger/replay output | IN PROGRESS |
-| 15 | PR-G1 | P1 | Feature precompute/hot-loop reduction | PLANNED |
-| 16 | PR-G2 | P1 | Benchmark/cleanup | PLANNED |
-| 17 | PR-H1 | P2 | Public professional-scoring batch API | PLANNED |
-| 18 | PR-H2 | P2 | Domain exceptions/policy boundaries | PLANNED |
-| 19 | PR-I1 | P2 | Recovery telemetry/persistence hardening | PLANNED |
-| 20 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
+| 14 | PR-F3 / #262 | P1 | Next-session daily trigger/replay output | VALIDATED |
+| 15 | PR-F4 / #281 | P1 | End-to-end weekly→daily shadow pipeline | VALIDATED |
+| 16 | PR-G1 / #282-#284 | P1 | Feature precompute/hot-loop reduction | VALIDATED |
+| 17 | PR-G2 / #285 | P1 | Benchmark/cleanup | VALIDATED |
+| 18 | PR-H1 | P2 | Public professional-scoring batch API | IN PROGRESS |
+| 19 | PR-H2 | P2 | Domain exceptions/policy boundaries | PLANNED |
+| 20 | PR-I1 | P2 | Recovery telemetry/persistence hardening | PLANNED |
+| 21 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
 
 ---
 
@@ -622,28 +726,32 @@ measurable benchmark improvement
 | 2026-09-16 | #259 | M5 | VALIDATED | Read-only structural zones merged. |
 | 2026-09-16 | #260 | M6 | VALIDATED | Shadow DailyEntryEngine merged. |
 | 2026-09-16 | #261 | M6 | VALIDATED | Behavior-based daily VSA evidence merged; textbook patterns remain contributors, not gates. |
-| 2026-09-16 | PR-F3 | M6 | IN PROGRESS | Add fresh-behavior signal identity and exact next-session replay output. |
+| 2026-09-16 | #262 | M6 | VALIDATED | Behavior-based fresh-signal identity and exact next-session replay output merged; focused replay tests revalidated with PR #280. |
+| 2026-09-18 | #281 | M6 | VALIDATED | End-to-end production-weekly → shadow-daily composition merged and manually validated; daily output remains non-actionable. |
+| 2026-09-18 | #282 | M7 | VALIDATED | Transition prefixes use shallow copies; metric column buffers are no longer duplicated per replay bar. |
+| 2026-09-18 | #283 | M7 | VALIDATED | Causal SwingEngine state is reused across transition bars, production resume, and snapshot creation. |
+| 2026-09-18 | #284 | M7 | VALIDATED | Stable structural swing evaluations are cached; only bounded history is rescored on new swing confirmation. |
+| 2026-09-18 | #285 | M7 | VALIDATED | Deterministic benchmark retained: full replay 1.042x faster; one-new-bar update 6.228 ms / 222.653x vs legacy full replay; durable resume 7.672 ms. |
+| 2026-09-18 | PR-H1 | M8 | IN PROGRESS | Replace StructureFilter and benchmark-tool access to ProfessionalScorer private batch internals with a public lazy batch API. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-F3 — Next-Session Daily Trigger / Replay Output
+## NEXT: PR-H1 — Public Professional-Scoring Batch API
 
 Checklist:
 
-- [x] Consume F2 behavior snapshots rather than textbook-pattern gates.
-- [x] Require fresh supported behavior evidence on the current completed daily bar.
-- [x] Preserve older lookback evidence as context only.
-- [x] Keep weekly ARMED direction authoritative.
-- [x] Validate signal-bar identity against the causal daily session.
-- [x] Reuse canonical `next_session_execution()`.
-- [x] Keep missing exact next-session data pending rather than skipping forward.
-- [x] Keep output read-only/non-actionable.
-- [ ] Run focused F3 tests.
-- [ ] Run full backend suite.
+- [x] Add a public position-aligned ProfessionalScorer batch result.
+- [x] Keep Smart Money component materialization lazy.
+- [x] Move StructureFilter off private scorer arrays, weights, and raw scores.
+- [x] Move active benchmark tooling off private metric-array access.
+- [x] Add exact pre-H1 batched production compatibility coverage.
+- [ ] Run professional scorer and batched scorer tests.
+- [ ] Run StructureFilter grading / Smart Money integration tests.
+- [ ] Run transition and incremental equivalence tests.
+- [ ] Confirm no production scoring/ranking/actionability changes.
 - [ ] Merge after manual validation.
-- [ ] Update roadmap status to VALIDATED after merge.
 
 ---
 
@@ -701,5 +809,5 @@ ProVSA should ultimately demonstrate:
 ---
 
 **Document owner:** ProVSA project  
-**Current milestone:** M6 — Daily Entry Shadow Engine  
-**Current PR:** PR-F3 — Next-Session Daily Trigger / Replay Output
+**Current milestone:** M8 — Module Boundary & Python Quality Cleanup  
+**Current PR:** PR-H1 — Public Professional-Scoring Batch API

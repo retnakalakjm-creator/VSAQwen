@@ -1,0 +1,349 @@
+{
+  "audited_bars": 13432,
+  "fingerprints": [
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-17T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "d5aa0069a7f9ceada365cdb183c09c637256513f6e105dd5d719759481378f56",
+      "symbol": "RELIANCE.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-09T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 262,
+      "sha256": "697d4c11e9a6bc086b23f0a680da76cc6f99ac854ea8039319a6a9997c66af0a",
+      "symbol": "HDFCBANK.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2002-07-01T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 1263,
+      "sha256": "f96d73610a1f1efdc0e1bb01db41a87b79052344a7481d6846fe6167629742e8",
+      "symbol": "ICICIBANK.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "1996-01-01T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 1602,
+      "sha256": "2b2a89a4c60220fbaca984c669aca8e6c21c036ed4772f60f96bb54fb08c5c90",
+      "symbol": "SBIN.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "1996-01-01T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 1602,
+      "sha256": "4cdd5c418927f63d96ba0045057fbb887fd48c16f1b88a76dcc5739d32fa4d2c",
+      "symbol": "INFY.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-16T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "b49a98b47aa60a75e0522ad701c5abcf07ac525cf7779ecad044d35be80dfbb6",
+      "symbol": "TCS.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-09T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 262,
+      "sha256": "fee4d8c8c1a4657f68e36373fbf53a0a1bbe7ae4820c5bdf5c99065b9f44ceed",
+      "symbol": "LT.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-17T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "b0de939afd2cd83a54a1d9458a9c7f9fcde0eeeb79583560c43ed36e14516d60",
+      "symbol": "BHARTIARTL.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "1996-01-01T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 1602,
+      "sha256": "94f32586b26c572bf20c3d00c7c2fe8e8d9384d8833011c2d38ccf1f75a9ae65",
+      "symbol": "ITC.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-17T00:00:00",
+      "last_week": "2026-09-08T00:00:00",
+      "row_count": 261,
+      "sha256": "43dbd5b7df5a1ee86cb4f68987d9a6190b190a0c821a1372f534bb1cc509133f",
+      "symbol": "HINDUNILVR.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2003-07-09T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 1210,
+      "sha256": "49fb45d9c65ef4c88a80dc36a5d1253fc3925bd4de2bdfb13a44615c71d0d942",
+      "symbol": "MARUTI.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-17T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "a691e97a6da874a98363b1c4d2226d640d3d643fc312fe0be926512686671d8c",
+      "symbol": "M&M.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-13T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "1c9725d4d15c8d287ad4b54620e0fb6b62b1e6fe4d1fd38ef6ebf2f012066f9a",
+      "symbol": "SUNPHARMA.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-13T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "44dee40ad88f1d91eaf15698fb96ca16f736c13a11ac65605855bc53cc0b950b",
+      "symbol": "DRREDDY.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-13T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "580106fb88bbedb7169847865ae0de8c3c13cd454873e72403d13670095522d0",
+      "symbol": "NTPC.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2007-10-05T00:00:00",
+      "last_week": "2026-09-08T00:00:00",
+      "row_count": 989,
+      "sha256": "90ad10257f17055a0acfe14075728992e2a3146585339472722b63518ac83cd6",
+      "symbol": "POWERGRID.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "1996-01-01T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 1602,
+      "sha256": "cbdf040d2da8a26e12c516b03fb3c038d309b98e18ac2c9767de2dfbfce3370a",
+      "symbol": "ONGC.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2010-11-04T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 828,
+      "sha256": "bfa95ae2ade4489d9e1ce46347060b706e4adb701cf7ed7a6292f399981e6416",
+      "symbol": "COALINDIA.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-17T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "16ddcba1b334b18a5b4dacfbe08057ab7ce27e6d1d9f0077b4e0fa484c77837f",
+      "symbol": "ULTRACEMCO.NS",
+      "version": "weekly-ohlcv-v1"
+    },
+    {
+      "columns": [
+        "week_beginning",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "first_week": "2021-09-17T00:00:00",
+      "last_week": "2026-09-07T00:00:00",
+      "row_count": 261,
+      "sha256": "b9fbae65b31db1919f33df3d9cc2159e44e4f8de516885ff5d8cad8fdd1900ea",
+      "symbol": "ASIANPAINT.NS",
+      "version": "weekly-ohlcv-v1"
+    }
+  ],
+  "is_actionable": false,
+  "symbol_count": 20,
+  "symbols": [
+    "RELIANCE.NS",
+    "HDFCBANK.NS",
+    "ICICIBANK.NS",
+    "SBIN.NS",
+    "INFY.NS",
+    "TCS.NS",
+    "LT.NS",
+    "BHARTIARTL.NS",
+    "ITC.NS",
+    "HINDUNILVR.NS",
+    "MARUTI.NS",
+    "M&M.NS",
+    "SUNPHARMA.NS",
+    "DRREDDY.NS",
+    "NTPC.NS",
+    "POWERGRID.NS",
+    "ONGC.NS",
+    "COALINDIA.NS",
+    "ULTRACEMCO.NS",
+    "ASIANPAINT.NS"
+  ]
+}

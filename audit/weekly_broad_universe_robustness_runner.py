@@ -2,9 +2,9 @@
 
 The runner preserves fail-fast behavior by default.  Large research universes
 may explicitly opt into per-symbol continuation, in which case every skipped
-symbol is written to a failure ledger.  Successful symbols are fingerprinted
-before the aggregate WF7C1 run, and those exact fingerprints become the input
-contract for the aggregate rerun.
+symbol is written to a failure ledger.  Successful symbols are fingerprinted and retained as frozen research snapshots.
+Those exact snapshots become the input contract for aggregate WF7C1 analysis, so
+the broad-universe path does not refresh market data or rerun the historical scanner.
 
 Nothing here changes production qualification, scoring, ranking, WeeklySetup,
 daily entry, alerts, execution, or orders.
@@ -22,7 +22,9 @@ from typing import Any
 import pandas as pd
 
 from audit.weekly_input_reproducibility_runner import (
-    run_reproducible_weekly_foundation_study,
+    ReproducibleWeeklyFoundationSymbolSnapshot,
+    combine_reproducible_weekly_foundation_snapshots,
+    run_reproducible_weekly_foundation_symbol_snapshot,
 )
 from audit.weekly_opposite_supported_thesis_runner import (
     ReproducibleWeeklyOppositeSupportedStudy,
@@ -57,6 +59,7 @@ class WeeklyBroadUniversePreflight:
     input_fingerprints: tuple[WeeklyAuditInputFingerprint, ...]
     failures: tuple[WeeklyBroadUniverseSymbolFailure, ...]
     external_baseline_used: bool
+    continue_on_symbol_error: bool
 
     @property
     def failed_symbols(self) -> tuple[str, ...]:
@@ -67,6 +70,7 @@ class WeeklyBroadUniversePreflight:
 class WeeklyBroadUniverseRobustnessStudy:
     preflight: WeeklyBroadUniversePreflight
     analysis: ReproducibleWeeklyOppositeSupportedStudy
+    frozen_preflight_snapshot_used: bool = False
 
     @property
     def is_actionable(self) -> bool:
@@ -194,6 +198,7 @@ def preflight_weekly_research_universe(
         input_fingerprints=tuple(observed_fingerprints),
         failures=tuple(failures),
         external_baseline_used=expected_fingerprints is not None,
+        continue_on_symbol_error=continue_on_symbol_error,
     )
 
 
@@ -207,26 +212,27 @@ def run_weekly_broad_universe_robustness_study(
     preflight_one: PreflightOne | None = None,
     analysis_runner: AnalysisRunner = run_reproducible_weekly_opposite_supported_study,
 ) -> WeeklyBroadUniverseRobustnessStudy:
-    """Run the unchanged WF7C1 analysis on the explicitly surviving universe.
+    """Run WF7C1 on the explicitly surviving frozen preflight universe.
 
-    A per-symbol full foundation preflight catches download/history/scanner
-    failures before aggregate analysis.  The aggregate WF7C1 rerun must exactly
-    match the fingerprints captured by preflight, preventing a data revision
-    between selection and analysis from being mistaken for a logic effect.
+    The default path materializes each symbol exactly once, captures the exact
+    completed-week fingerprint, and retains the resulting historical audit
+    object. Aggregate WF7C1 then consumes those same frozen objects rather than
+    refreshing market data or rerunning the expensive historical scanner.
+    Custom injected preflight callbacks retain the legacy test/extension path.
     """
 
     horizons = _normalize_horizons(horizons_weeks)
+    frozen_by_symbol: dict[str, ReproducibleWeeklyFoundationSymbolSnapshot] = {}
 
     if preflight_one is None:
         def run_one(symbol: str) -> WeeklyAuditInputFingerprint:
-            study = run_reproducible_weekly_foundation_study(
-                (symbol,),
+            snapshot = run_reproducible_weekly_foundation_symbol_snapshot(
+                symbol,
                 horizons_weeks=horizons,
                 out_of_sample_start_week=out_of_sample_start_week,
             )
-            if len(study.input_fingerprints) != 1:
-                raise RuntimeError(f"{symbol}: expected exactly one input fingerprint")
-            return study.input_fingerprints[0]
+            frozen_by_symbol[symbol] = snapshot
+            return snapshot.input_fingerprint
         preflight_callback = run_one
     else:
         preflight_callback = preflight_one
@@ -238,11 +244,23 @@ def run_weekly_broad_universe_robustness_study(
         continue_on_symbol_error=continue_on_symbol_error,
     )
 
+    frozen_snapshot = None
+    if preflight_one is None:
+        frozen_snapshot = combine_reproducible_weekly_foundation_snapshots(
+            tuple(frozen_by_symbol[symbol] for symbol in preflight.successful_symbols)
+        )
+
+    analysis_kwargs: dict[str, Any] = {
+        "expected_fingerprints": preflight.input_fingerprints,
+        "horizons_weeks": horizons,
+        "out_of_sample_start_week": out_of_sample_start_week,
+    }
+    if frozen_snapshot is not None:
+        analysis_kwargs["foundation_snapshot"] = frozen_snapshot
+
     analysis = analysis_runner(
         preflight.successful_symbols,
-        expected_fingerprints=preflight.input_fingerprints,
-        horizons_weeks=horizons,
-        out_of_sample_start_week=out_of_sample_start_week,
+        **analysis_kwargs,
     )
     if not analysis.fingerprint_comparison.matches:
         raise RuntimeError("WF7C2 aggregate analysis did not match preflight fingerprints")
@@ -250,6 +268,7 @@ def run_weekly_broad_universe_robustness_study(
     return WeeklyBroadUniverseRobustnessStudy(
         preflight=preflight,
         analysis=analysis,
+        frozen_preflight_snapshot_used=frozen_snapshot is not None,
     )
 
 
@@ -282,8 +301,9 @@ def write_weekly_broad_universe_bundle(
         "successful_symbol_count": len(study.preflight.successful_symbols),
         "failed_symbols": list(study.preflight.failed_symbols),
         "failed_symbol_count": len(study.preflight.failures),
-        "continue_on_symbol_error": bool(study.preflight.failures),
+        "continue_on_symbol_error": study.preflight.continue_on_symbol_error,
         "external_baseline_used": study.preflight.external_baseline_used,
+        "frozen_preflight_snapshot_used": study.frozen_preflight_snapshot_used,
         "aggregate_matches_preflight": study.analysis.fingerprint_comparison.matches,
         "opposite_supported_episodes": len(treatments),
         "matched_pairs": len(study.analysis.report.matched_pairs),
@@ -372,6 +392,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "failed_symbols": list(study.preflight.failed_symbols),
                 "aggregate_matches_preflight": (
                     study.analysis.fingerprint_comparison.matches
+                ),
+                "frozen_preflight_snapshot_used": (
+                    study.frozen_preflight_snapshot_used
                 ),
                 "is_actionable": False,
                 "output_paths": paths.as_dict(),

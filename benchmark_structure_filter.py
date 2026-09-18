@@ -17,7 +17,6 @@ from engine.columns import (
     COL_SPREAD,
     COL_VOLUME,
 )
-from market_structure.professional_scorer import ProfessionalScorer
 from market_structure.smart_money import SmartMoneyAnalyzer
 from market_structure.structure_filter import StructureFilter
 from models import Swing, SwingType

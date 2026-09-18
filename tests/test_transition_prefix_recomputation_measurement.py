@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import config
+
 from engine.columns import (
     COL_CLOSE,
     COL_HIGH,
@@ -16,6 +18,8 @@ from engine.columns import (
 )
 from historical_scanner import HistoricalScannerRunner
 from metrics_engine import MetricsEngine
+from market_structure.structure_filter import StructureFilter
+from market_structure.swing_engine import SwingEngine
 from scanner import ScannerCandidate, ScannerEngine
 from scanner_transition import BarFeatures, ScannerTransitionEngine
 
@@ -148,6 +152,84 @@ class RecordingBatchTransition(MeasuringTransitionEngine):
 
 def _expected_indices(start: int, target: int) -> list[int]:
     return list(range(start, target + 1))
+
+
+def test_features_for_uses_shallow_prefix_without_copying_column_buffers() -> None:
+    metrics = _metrics()
+    index = ScannerEngine.MIN_REPLAY_BARS + 5
+
+    features = ScannerTransitionEngine.features_for(metrics, index)
+
+    assert features.metrics_prefix is not metrics
+    assert len(features.metrics_prefix) == index + 1
+    assert np.shares_memory(
+        features.metrics_prefix[COL_CLOSE].to_numpy(copy=False),
+        metrics[COL_CLOSE].to_numpy(copy=False),
+    )
+
+
+def test_transition_reuses_swing_state_after_first_replay_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metrics = _metrics()
+    start = ScannerEngine.MIN_REPLAY_BARS
+    targets = tuple(range(start, len(metrics)))
+    calls = {"full": 0, "resumed": 0}
+
+    original_calculate = SwingEngine.calculate
+    original_calculate_from_state = SwingEngine.calculate_from_state
+
+    def counting_calculate(self, frame):
+        calls["full"] += 1
+        return original_calculate(self, frame)
+
+    def counting_calculate_from_state(self, frame, state):
+        calls["resumed"] += 1
+        return original_calculate_from_state(self, frame, state)
+
+    monkeypatch.setattr(SwingEngine, "calculate", counting_calculate)
+    monkeypatch.setattr(
+        SwingEngine,
+        "calculate_from_state",
+        counting_calculate_from_state,
+    )
+
+    candidates = ScannerTransitionEngine().scan_to_indices(metrics, targets)
+
+    assert list(candidates) == list(targets)
+    assert calls["full"] == 1
+    assert calls["resumed"] == len(targets) - 1
+
+
+def test_transition_rescores_structure_only_when_new_swings_arrive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metrics = _metrics()
+    start = ScannerEngine.MIN_REPLAY_BARS
+    targets = tuple(range(start, len(metrics)))
+    scored_lengths: list[int] = []
+
+    original_filter = StructureFilter.filter
+
+    def counting_filter(self, swings, frame):
+        scored_lengths.append(len(swings))
+        return original_filter(self, swings, frame)
+
+    monkeypatch.setattr(StructureFilter, "filter", counting_filter)
+
+    ScannerTransitionEngine().scan_to_indices(metrics, targets)
+
+    full_swings = SwingEngine().calculate(metrics)
+    later_confirmations = sum(
+        swing.confirmation_index > start
+        for swing in full_swings
+    )
+
+    assert len(scored_lengths) == 1 + later_confirmations
+    assert all(
+        length <= config.STRUCTURE_LOOKBACK + 1
+        for length in scored_lengths[1:]
+    )
 
 
 def test_repeated_scan_to_index_rebuilds_prefixes_from_replay_start() -> None:

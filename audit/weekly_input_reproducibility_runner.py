@@ -19,7 +19,9 @@ import pandas as pd
 from audit.weekly_foundation_runner import (
     DEFAULT_STUDY_HORIZONS,
     WeeklyFoundationStudyResult,
+    WeeklyFoundationSymbolStudy,
     run_weekly_foundation_historical_study,
+    run_weekly_foundation_symbol_study,
 )
 from data import completed_weekly_only, daily_to_weekly, download_data
 from historical_scanner import HistoricalScannerRunner
@@ -48,6 +50,33 @@ class ReproducibleWeeklyFoundationStudy:
 
 
 @dataclass(frozen=True, slots=True)
+class ReproducibleWeeklyFoundationSymbolSnapshot:
+    """One frozen symbol result plus the exact weekly input fingerprint used."""
+
+    foundation: WeeklyFoundationSymbolStudy
+    input_fingerprint: WeeklyAuditInputFingerprint
+    horizons_weeks: tuple[int, ...]
+
+    @property
+    def is_actionable(self) -> bool:
+        return False
+
+
+@dataclass(frozen=True, slots=True)
+class ReproducibleWeeklyFoundationSnapshot:
+    """Frozen multi-symbol WF7 input without rerunning WF1-WF6 or market data."""
+
+    symbols: tuple[str, ...]
+    horizons_weeks: tuple[int, ...]
+    symbol_results: tuple[WeeklyFoundationSymbolStudy, ...]
+    input_fingerprints: tuple[WeeklyAuditInputFingerprint, ...]
+
+    @property
+    def is_actionable(self) -> bool:
+        return False
+
+
+@dataclass(frozen=True, slots=True)
 class WeeklyInputFingerprintBundlePaths:
     manifest_json: Path
     manifest_csv: Path
@@ -65,6 +94,94 @@ def _default_weekly_transformer(daily: pd.DataFrame) -> pd.DataFrame:
 
 def _default_metrics_calculator(weekly: pd.DataFrame) -> pd.DataFrame:
     return MetricsEngine().calculate(weekly)
+
+
+def _normalize_horizons(horizons_weeks: Iterable[int]) -> tuple[int, ...]:
+    horizons = tuple(sorted(set(int(item) for item in horizons_weeks)))
+    if not horizons or any(item <= 0 for item in horizons):
+        raise ValueError("horizons must contain positive week counts")
+    return horizons
+
+
+def run_reproducible_weekly_foundation_symbol_snapshot(
+    symbol: str,
+    *,
+    horizons_weeks: Iterable[int] = DEFAULT_STUDY_HORIZONS,
+    out_of_sample_start_week: str | None = None,
+    daily_loader: DailyLoader = download_data,
+    metrics_calculator: MetricsCalculator = _default_metrics_calculator,
+    scanner_factory: ScannerFactory = HistoricalScannerRunner,
+) -> ReproducibleWeeklyFoundationSymbolSnapshot:
+    """Run one symbol once and retain the exact read-only historical result.
+
+    WF7C2 uses this frozen object for both its preflight fingerprint contract and
+    the later aggregate WF7C1 analysis.  This prevents a second market-data
+    refresh/cache round-trip from changing exact floating-point fingerprints and
+    avoids repeating the expensive historical scanner pass.
+    """
+
+    normalized_symbol = str(symbol).strip().upper()
+    if not normalized_symbol:
+        raise ValueError("symbol cannot be blank")
+    horizons = _normalize_horizons(horizons_weeks)
+    captured: WeeklyAuditInputFingerprint | None = None
+
+    def capturing_weekly_transformer(daily: pd.DataFrame) -> pd.DataFrame:
+        nonlocal captured
+        weekly = _default_weekly_transformer(daily)
+        if captured is not None:
+            raise RuntimeError(
+                f"weekly input captured more than once for {normalized_symbol}"
+            )
+        captured = fingerprint_weekly_audit_input(normalized_symbol, weekly)
+        return weekly
+
+    foundation = run_weekly_foundation_symbol_study(
+        normalized_symbol,
+        horizons_weeks=horizons,
+        out_of_sample_start_week=out_of_sample_start_week,
+        daily_loader=daily_loader,
+        weekly_transformer=capturing_weekly_transformer,
+        metrics_calculator=metrics_calculator,
+        scanner_factory=scanner_factory,
+    )
+    if captured is None:
+        raise RuntimeError(f"did not capture completed weekly input for {normalized_symbol}")
+    if foundation.symbol != normalized_symbol or captured.symbol != normalized_symbol:
+        raise RuntimeError("frozen symbol snapshot identity mismatch")
+
+    return ReproducibleWeeklyFoundationSymbolSnapshot(
+        foundation=foundation,
+        input_fingerprint=captured,
+        horizons_weeks=horizons,
+    )
+
+
+def combine_reproducible_weekly_foundation_snapshots(
+    snapshots: Sequence[ReproducibleWeeklyFoundationSymbolSnapshot]
+    | Iterable[ReproducibleWeeklyFoundationSymbolSnapshot],
+) -> ReproducibleWeeklyFoundationSnapshot:
+    """Combine already-frozen symbol results without recalculating market history."""
+
+    items = tuple(snapshots)
+    if not items:
+        raise ValueError("at least one frozen weekly foundation snapshot is required")
+
+    horizons = items[0].horizons_weeks
+    symbols = tuple(item.foundation.symbol for item in items)
+    if len(set(symbols)) != len(symbols):
+        raise ValueError("frozen weekly foundation snapshots require unique symbols")
+    if any(item.horizons_weeks != horizons for item in items):
+        raise ValueError("frozen weekly foundation snapshots require identical horizons")
+    if any(item.input_fingerprint.symbol != item.foundation.symbol for item in items):
+        raise ValueError("frozen weekly foundation fingerprint symbol mismatch")
+
+    return ReproducibleWeeklyFoundationSnapshot(
+        symbols=symbols,
+        horizons_weeks=horizons,
+        symbol_results=tuple(item.foundation for item in items),
+        input_fingerprints=tuple(item.input_fingerprint for item in items),
+    )
 
 
 def run_reproducible_weekly_foundation_study(
@@ -199,7 +316,11 @@ if __name__ == "__main__":
 
 __all__ = [
     "DEFAULT_WF7C0_OUTPUT_DIR",
+    "ReproducibleWeeklyFoundationSnapshot",
     "ReproducibleWeeklyFoundationStudy",
+    "ReproducibleWeeklyFoundationSymbolSnapshot",
+    "combine_reproducible_weekly_foundation_snapshots",
+    "run_reproducible_weekly_foundation_symbol_snapshot",
     "WeeklyInputFingerprintBundlePaths",
     "run_reproducible_weekly_foundation_study",
     "write_weekly_input_fingerprint_bundle",

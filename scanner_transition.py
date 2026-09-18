@@ -12,9 +12,11 @@ from background.qualification import (
 from engine.columns import COL_WEEK
 from evidence.engine import EvidenceEngine
 from model.evidence_result_model import EvidenceResult
-from models import Evidence
+from models import Evidence, StructuralSwing
 from scanner import ScannerCandidate, ScannerEngine
-from scanner_state import StructuralEventState
+from market_structure.structure_filter import StructureFilter
+from market_structure.swing_engine import SwingEngine
+from scanner_state import ScannerState, StructuralEventState
 from scanner_state_evaluation import evaluate_from_qualification_state
 from trend import TrendAnalyzer, TrendResult
 
@@ -46,17 +48,26 @@ class ScanState:
     last_bar_index: int | None = None
     qualification: PatternQualificationState = PatternQualificationState()
     structural_events: tuple[StructuralEventState, ...] = ()
+    swing_state: ScannerState | None = None
+    structural_swings: tuple[StructuralSwing, ...] = ()
+    structural_scored_swing_count: int = 0
 
     def with_step(
         self,
         bar_index: int,
         qualification: PatternQualificationState,
         structural_events: tuple[StructuralEventState, ...],
+        swing_state: ScannerState,
+        structural_swings: tuple[StructuralSwing, ...],
+        structural_scored_swing_count: int,
     ) -> "ScanState":
         return ScanState(
             last_bar_index=bar_index,
             qualification=qualification,
             structural_events=structural_events,
+            swing_state=swing_state,
+            structural_swings=structural_swings,
+            structural_scored_swing_count=structural_scored_swing_count,
         )
 
 
@@ -95,7 +106,12 @@ class ScannerTransitionEngine:
     def features_for(metrics: pd.DataFrame, index: int) -> BarFeatures:
         if index < 0 or index >= len(metrics):
             raise IndexError("bar index is outside metrics")
-        return BarFeatures(metrics_prefix=metrics.iloc[: index + 1].copy())
+        # The transition pipeline treats feature prefixes as read-only. Use a
+        # shallow frame copy so each step gets an isolated DataFrame object
+        # without duplicating the underlying column buffers on every replay bar.
+        return BarFeatures(
+            metrics_prefix=metrics.iloc[: index + 1].copy(deep=False)
+        )
 
     @staticmethod
     def _structural_evidence(evidence: EvidenceResult) -> tuple[Evidence, ...]:
@@ -144,8 +160,53 @@ class ScannerTransitionEngine:
         if len(features.metrics_prefix) != bar.index + 1:
             raise ValueError("bar features must contain the point-in-time metrics prefix")
 
-        trend = TrendAnalyzer().analyze(features.metrics_prefix)
-        structural_swings = list(trend.structure.structural_swings)
+        swing_engine = SwingEngine()
+        if state.swing_state is None:
+            swings = swing_engine.calculate(features.metrics_prefix)
+        else:
+            if state.last_bar_index is None:
+                raise ValueError("swing state requires last_bar_index")
+            expected_week = self.bar_for(metrics, state.last_bar_index).week
+            if str(state.swing_state.last_closed_bar) != str(expected_week):
+                raise ValueError(
+                    "scanner transition swing state does not match last_bar_index"
+                )
+            swings = swing_engine.calculate_from_state(
+                features.metrics_prefix,
+                state.swing_state,
+            )
+        swing_state = swing_engine.snapshot_state(
+            symbol="__TRANSITION__",
+            timeframe="1wk",
+        )
+
+        previous_swing_count = (
+            0
+            if state.swing_state is None
+            else len(state.swing_state.confirmed_swings)
+        )
+        structure_filter = StructureFilter()
+        if state.structural_scored_swing_count == previous_swing_count:
+            structural_swings = structure_filter.filter_incremental(
+                swings,
+                features.metrics_prefix,
+                cached=state.structural_swings,
+                previous_swing_count=previous_swing_count,
+            )
+        else:
+            # Durable ScannerState does not persist professional structural
+            # evaluations. Rebuild them once after resume, then reuse them on
+            # subsequent transition bars.
+            structural_swings = structure_filter.filter(
+                list(swings),
+                features.metrics_prefix,
+            )
+
+        trend = TrendAnalyzer().analyze_from_swings(
+            features.metrics_prefix,
+            swings,
+            structural_swings=structural_swings,
+        )
         evidence = EvidenceEngine().collect(
             metrics=features.metrics_prefix,
             trend=trend,
@@ -167,6 +228,9 @@ class ScannerTransitionEngine:
             bar.index,
             qualification,
             structural_events,
+            swing_state,
+            tuple(structural_swings),
+            len(swings),
         )
 
         candidate = evaluate_from_qualification_state(

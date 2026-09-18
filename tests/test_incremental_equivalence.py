@@ -15,6 +15,7 @@ from engine.columns import (
     COL_WEEK,
 )
 from incremental_scanner import IncrementalScannerEngine
+from market_structure.structure_filter import StructureFilter
 from market_structure.swing_engine import SwingEngine
 from metrics_engine import MetricsEngine
 from models import SwingSearchState
@@ -154,6 +155,28 @@ def test_full_history_matches_prefix_structural_state() -> None:
         assert structure.direction == TrendAnalyzer().analyze(
             metrics.iloc[: end_index + 1].copy()
         ).structure.direction
+
+
+def test_incremental_structural_filter_matches_full_prefix_state() -> None:
+    metrics = _metrics()
+    cached = ()
+    previous_swing_count = 0
+
+    for end_index in range(30, len(metrics)):
+        prefix = metrics.iloc[: end_index + 1].copy()
+        swings = SwingEngine().calculate(prefix)
+        incremental = StructureFilter().filter_incremental(
+            swings,
+            prefix,
+            cached=cached,
+            previous_swing_count=previous_swing_count,
+        )
+        full = StructureFilter().filter(list(swings), prefix)
+
+        assert _structural_signature(incremental) == _structural_signature(full)
+
+        cached = tuple(incremental)
+        previous_swing_count = len(swings)
 
 
 def test_in_memory_swing_continuation_matches_full_history() -> None:

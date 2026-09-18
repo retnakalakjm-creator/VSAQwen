@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pandas as pd
 
 from engine.columns import COL_AVG_SPREAD, COL_AVG_VOLUME, COL_CLOSE, COL_HIGH, COL_LOW, COL_OPEN, COL_SPREAD, COL_VOLUME
@@ -14,14 +16,126 @@ from models import (
     SwingContext,
     SwingHistorySnapshot,
     SwingMetricSnapshot,
+    StructuralSwingEvaluation,
+    StructuralSwingScore,
     SwingProfessionalEvaluation,
     SwingProfessionalScore,
     SwingType,
 )
+from .batched_structural_scorer import score_prepared_batch
 from .structural_swing_scorer import StructuralSwingScorer
 from .smart_money import SmartMoneyAnalyzer
 from .batched_smart_money import BatchedSmartMoneyAnalyzer
 from line_profiler import profile
+
+
+@dataclass(frozen=True, slots=True)
+class ProfessionalScoreBatch:
+    """Public lazy batch result for professional swing scoring.
+
+    Structural component arrays and raw Smart Money values remain encapsulated.
+    Callers can inspect the combined professional score cheaply and materialize
+    the full evaluation only for positions they actually need.
+    """
+
+    _history_snapshots: tuple[SwingHistorySnapshot | None, ...]
+    _metric_indices: tuple[int, ...]
+    _price_scores: object
+    _structural_sizes: object
+    _duration_scores: object
+    _volume_scores: object
+    _spread_scores: object
+    _structure_scores: object
+    _raw_smart_money: object
+    _smart_money: BatchedSmartMoneyAnalyzer
+    _structure_weight: float
+    _smart_money_weight: float
+    _total_weight: float
+
+    def __len__(self) -> int:
+        return len(self._history_snapshots)
+
+    def _validate_index(self, index: int) -> None:
+        if index < 0 or index >= len(self):
+            raise IndexError("professional score batch index is out of range")
+
+    def structure_score(self, index: int) -> StructuralSwingScore | None:
+        """Return the structural component score for one swing position."""
+
+        self._validate_index(index)
+        snapshot = self._history_snapshots[index]
+        if snapshot is None:
+            return None
+
+        return StructuralSwingScore(
+            price=float(self._price_scores[index]),
+            structural_size=float(self._structural_sizes[index]),
+            duration=float(self._duration_scores[index]),
+            volume=float(self._volume_scores[index]),
+            spread=float(self._spread_scores[index]),
+            overall=float(self._structure_scores[index]),
+        )
+
+    def professional_overall(self, index: int) -> float | None:
+        """Return combined professional score without materializing components."""
+
+        self._validate_index(index)
+        if self._history_snapshots[index] is None:
+            return None
+
+        structure_overall = float(self._structure_scores[index])
+        smart_money_overall = float(self._raw_smart_money[-1][index])
+        if self._total_weight <= 0:
+            return 0.0
+        return min(
+            (
+                structure_overall * self._structure_weight
+                + smart_money_overall * self._smart_money_weight
+            )
+            / self._total_weight,
+            1.0,
+        )
+
+    def evaluation(
+        self,
+        index: int,
+        *,
+        include_components: bool = True,
+    ) -> SwingProfessionalEvaluation | None:
+        """Materialize one complete professional evaluation on demand."""
+
+        self._validate_index(index)
+        snapshot = self._history_snapshots[index]
+        structure_score = self.structure_score(index)
+        professional_overall = self.professional_overall(index)
+        if (
+            snapshot is None
+            or structure_score is None
+            or professional_overall is None
+        ):
+            return None
+
+        metric_index = int(self._metric_indices[index])
+        smart_money = self._smart_money.score_from_batch_raw(
+            self._raw_smart_money,
+            index,
+            source_index=metric_index,
+            include_components=include_components,
+        )
+        structure_evaluation = StructuralSwingEvaluation(
+            score=structure_score,
+            snapshot=snapshot,
+        )
+        professional_score = SwingProfessionalScore(
+            structure=structure_score,
+            smart_money=smart_money,
+            overall=professional_overall,
+        )
+        return SwingProfessionalEvaluation(
+            structure=structure_evaluation,
+            smart_money=smart_money,
+            professional=professional_score,
+        )
 
 
 class ProfessionalScorer:
@@ -248,6 +362,80 @@ class ProfessionalScorer:
 
         return tuple(snapshots)
 
+    def prepare_history_snapshots_for_metrics(
+        self,
+        swings: list[Swing] | tuple[Swing, ...],
+        metrics: pd.DataFrame,
+        lookback: int = config.STRUCTURE_LOOKBACK,
+    ) -> tuple[SwingHistorySnapshot | None, ...]:
+        """Prepare history snapshots without exposing metric-array internals."""
+
+        return self.prepare_history_snapshots(
+            swings,
+            self._metric_arrays(metrics),
+            lookback,
+        )
+
+    def score_batch(
+        self,
+        swings: list[Swing] | tuple[Swing, ...],
+        metrics: pd.DataFrame,
+    ) -> ProfessionalScoreBatch:
+        """Prepare position-aligned professional scores for confirmed swings.
+
+        This is the public batch boundary used by market-structure consumers.
+        It intentionally keeps metric arrays, raw Smart Money arrays, scorer
+        weights, and structural batch implementation details private.
+        """
+
+        swing_tuple = tuple(swings)
+        metric_indices = tuple(int(swing.metrics_index) for swing in swing_tuple)
+        arrays = self._metric_arrays(metrics)
+        history_snapshots = self.prepare_history_snapshots(
+            swing_tuple,
+            arrays,
+            config.STRUCTURE_LOOKBACK,
+        )
+        (
+            price_scores,
+            structural_sizes,
+            duration_scores,
+            volume_scores,
+            spread_scores,
+            structure_scores,
+        ) = score_prepared_batch(
+            self._structure,
+            history_snapshots,
+            arrays[4],
+            arrays[5],
+            metric_indices,
+        )
+        raw_smart_money = self._smart_money.score_values_batch_raw(
+            open_values=arrays[0],
+            low_values=arrays[2],
+            close_values=arrays[3],
+            spread_values=arrays[5],
+            avg_spread_values=arrays[7],
+            volume_values=arrays[4],
+            avg_volume_values=arrays[6],
+            indices=metric_indices,
+        )
+        return ProfessionalScoreBatch(
+            _history_snapshots=history_snapshots,
+            _metric_indices=metric_indices,
+            _price_scores=price_scores,
+            _structural_sizes=structural_sizes,
+            _duration_scores=duration_scores,
+            _volume_scores=volume_scores,
+            _spread_scores=spread_scores,
+            _structure_scores=structure_scores,
+            _raw_smart_money=raw_smart_money,
+            _smart_money=self._smart_money,
+            _structure_weight=self._professional_structure_weight,
+            _smart_money_weight=self._professional_smart_money_weight,
+            _total_weight=self._professional_total_weight,
+        )
+
     def smart_money_scores_batch(
         self,
         arrays,
@@ -395,3 +583,6 @@ class ProfessionalScorer:
         )
 
         return SmartMoneySnapshot(bars=bars)
+
+
+__all__ = ["ProfessionalScorer", "ProfessionalScoreBatch"]

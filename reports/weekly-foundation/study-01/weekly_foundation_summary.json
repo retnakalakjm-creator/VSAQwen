@@ -1,0 +1,47 @@
+{
+  "audited_bars": 13431,
+  "horizons_weeks": [
+    5,
+    10,
+    15
+  ],
+  "is_actionable": false,
+  "leave_one_symbol_out_rows": 1677,
+  "location_distance_thresholds_pct": [
+    0.5,
+    1.0,
+    2.0
+  ],
+  "location_sensitivity_rows": 18,
+  "promotion_observations": 197800,
+  "promotion_summaries": 5715,
+  "replay_bucket_counts": {
+    "legacy_no_shadow_no": 9634,
+    "legacy_no_shadow_yes": 2330,
+    "legacy_yes_shadow_no": 1130,
+    "legacy_yes_shadow_yes": 337
+  },
+  "symbol_count": 20,
+  "symbols": [
+    "RELIANCE.NS",
+    "HDFCBANK.NS",
+    "ICICIBANK.NS",
+    "SBIN.NS",
+    "INFY.NS",
+    "TCS.NS",
+    "LT.NS",
+    "BHARTIARTL.NS",
+    "ITC.NS",
+    "HINDUNILVR.NS",
+    "MARUTI.NS",
+    "M&M.NS",
+    "SUNPHARMA.NS",
+    "DRREDDY.NS",
+    "NTPC.NS",
+    "POWERGRID.NS",
+    "ONGC.NS",
+    "COALINDIA.NS",
+    "ULTRACEMCO.NS",
+    "ASIANPAINT.NS"
+  ]
+}

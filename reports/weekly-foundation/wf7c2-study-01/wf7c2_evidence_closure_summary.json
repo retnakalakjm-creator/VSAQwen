@@ -1,0 +1,70 @@
+{
+  "study": "WF7C2 broad-universe robustness closure",
+  "research_only": true,
+  "is_actionable": false,
+  "requested_symbol_count": 501,
+  "successful_symbol_count": 486,
+  "failed_symbol_count": 15,
+  "successful_coverage_pct": 97.0059880239521,
+  "aggregate_matches_preflight": true,
+  "frozen_preflight_snapshot_used": true,
+  "opposite_supported_episodes": 259,
+  "matched_pairs": 240,
+  "unmatched_treatments": 19,
+  "bearish_oos_matched": [
+    {
+      "horizon_weeks": 5,
+      "complete_pair_count": 123,
+      "mean_paired_close_delta_pct": -0.27675529173606295,
+      "symbol_balanced_mean_paired_close_delta_pct": 0.06853521255891293
+    },
+    {
+      "horizon_weeks": 10,
+      "complete_pair_count": 110,
+      "mean_paired_close_delta_pct": 0.4848119187143939,
+      "symbol_balanced_mean_paired_close_delta_pct": 0.6783652353408274
+    },
+    {
+      "horizon_weeks": 15,
+      "complete_pair_count": 97,
+      "mean_paired_close_delta_pct": 1.747254333592815,
+      "symbol_balanced_mean_paired_close_delta_pct": 1.3941991400705236
+    }
+  ],
+  "bullish_oos_matched": [
+    {
+      "horizon_weeks": 5,
+      "complete_pair_count": 6,
+      "mean_paired_close_delta_pct": -2.1866697971640283
+    },
+    {
+      "horizon_weeks": 10,
+      "complete_pair_count": 5,
+      "mean_paired_close_delta_pct": -5.0980440876708935
+    },
+    {
+      "horizon_weeks": 15,
+      "complete_pair_count": 3,
+      "mean_paired_close_delta_pct": 8.211580235154067
+    }
+  ],
+  "failed_symbols": [
+    "GROWW.NS",
+    "CANHLIFE.NS",
+    "DUMMYHEG.NS",
+    "EMMVEE.NS",
+    "ICICIAMC.NS",
+    "JAINREC.NS",
+    "LGEINDIA.NS",
+    "LENSKART.NS",
+    "MEESHO.NS",
+    "PWL.NS",
+    "PINELABS.NS",
+    "PIRAMALFIN.NS",
+    "TATACAP.NS",
+    "TMCV.NS",
+    "TENNIND.NS"
+  ],
+  "universe_limitation": "Current-constituent NIFTY 500 universe; not point-in-time historical membership. Survivor-bias and index-reconstitution limitations remain.",
+  "decision": "close_wf7_no_production_weekly_qualification_or_actionability_change"
+}

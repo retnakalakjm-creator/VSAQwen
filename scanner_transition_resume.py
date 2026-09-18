@@ -78,6 +78,7 @@ class ScannerTransitionResumeAdapter:
             last_bar_index=checkpoint_index,
             qualification=self._qualification.state_from_events(structural_evidence),
             structural_events=state.structural_events,
+            swing_state=state,
         )
 
     def resume_latest(self, metrics: pd.DataFrame, state: ScannerState) -> ScannerCandidate:

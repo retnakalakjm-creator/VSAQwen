@@ -80,18 +80,16 @@ def main() -> None:
 
     metrics, swings = make_inputs(args.size)
     scorer = ProfessionalScorer()
-    arrays = scorer._metric_arrays(metrics)
-
-    baseline = scorer.prepare_history_snapshots(
+    baseline = scorer.prepare_history_snapshots_for_metrics(
         swings,
-        arrays,
+        metrics,
         args.lookback,
     )
 
     elapsed_time = elapsed(
-        lambda: scorer.prepare_history_snapshots(
+        lambda: scorer.prepare_history_snapshots_for_metrics(
             swings,
-            arrays,
+            metrics,
             args.lookback,
         ),
         args.repeats,

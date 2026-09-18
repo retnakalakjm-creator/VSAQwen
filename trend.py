@@ -109,31 +109,49 @@ class TrendAnalyzer:
         self,
         df: pd.DataFrame,
     ) -> TrendResult:
+        """Analyze trend from a complete point-in-time metrics frame."""
+
+        swings = self._swing_engine.calculate(df)
+        return self.analyze_from_swings(df, swings)
+
+    def analyze_from_swings(
+        self,
+        df: pd.DataFrame,
+        swings,
+        *,
+        structural_swings: tuple[StructuralSwing, ...] | list[StructuralSwing] | None = None,
+    ) -> TrendResult:
+        """Analyze trend using already-resolved causal swings.
+
+        Structural filtering and classification remain unchanged. This path lets
+        transition replay reuse SwingEngine state without rediscovering the full
+        swing history on every bar.
+        """
 
         Log.info("Starting trend analysis.")
 
         self._reset(df)
 
-        swings = list(
-            self._swing_engine.calculate(df)
-        )
-
-        structural_swings = StructureFilter().filter(
-            swings,
-            df,
+        resolved_structural_swings = (
+            StructureFilter().filter(
+                list(swings),
+                df,
+            )
+            if structural_swings is None
+            else list(structural_swings)
         )
 
         self._classified_swings = self._classify_swings(
-            structural_swings
+            resolved_structural_swings
         )
-        self._structural_swings = structural_swings
+        self._structural_swings = resolved_structural_swings
         self._create_structure()
 
         Log.info(
             "Trend analysis completed. Confirmed swings: %d",
             len(self._classified_swings),
         )
-        
+
         return self._build_result()
 
     # -------------------------------------------------------------------------

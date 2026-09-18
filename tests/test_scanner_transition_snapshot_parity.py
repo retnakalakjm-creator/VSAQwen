@@ -138,6 +138,33 @@ def test_transition_snapshot_fingerprints_validate_current_prefix(
     } == scanner_state_fingerprints(prefix, snapshot.last_closed_bar)
 
 
+def test_transition_snapshot_reuses_transition_swing_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metrics = _metrics()
+    adapter = ScannerTransitionSnapshotAdapter()
+
+    def forbidden_replay(*args, **kwargs):
+        raise AssertionError("snapshot must reuse transition swing state")
+
+    monkeypatch.setattr(
+        ScannerTransitionSnapshotAdapter,
+        "_snapshot_swing_state",
+        staticmethod(forbidden_replay),
+    )
+
+    snapshot = adapter.snapshot(
+        metrics,
+        target_index=72,
+        symbol="SNAPSHOT-REUSE",
+        timeframe="1wk",
+    )
+
+    assert snapshot.last_closed_bar == str(metrics.iloc[72][COL_WEEK])
+    assert snapshot.symbol == "SNAPSHOT-REUSE"
+    assert snapshot.timeframe == "1wk"
+
+
 def test_transition_snapshot_matches_expected_checkpoint_identity() -> None:
     metrics = _metrics()
     target_index = 72

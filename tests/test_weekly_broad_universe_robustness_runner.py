@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import audit.weekly_broad_universe_robustness_runner as broad_runner
 from audit.weekly_broad_universe_robustness_runner import (
     preflight_weekly_research_universe,
     run_weekly_broad_universe_robustness_study,
@@ -158,3 +159,51 @@ def test_broad_runner_rejects_aggregate_data_drift_after_preflight() -> None:
             preflight_one=lambda symbol: _fingerprint(symbol),
             analysis_runner=lambda symbols, **kwargs: analysis,
         )
+
+
+def test_default_runner_reuses_frozen_preflight_snapshots_without_second_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot_calls: list[str] = []
+    captured: dict[str, object] = {}
+
+    def fake_symbol_snapshot(symbol: str, **kwargs):
+        snapshot_calls.append(symbol)
+        digest = ("a" if symbol == "ONE.NS" else "b") * 64
+        return SimpleNamespace(
+            foundation=SimpleNamespace(symbol=symbol),
+            input_fingerprint=_fingerprint(symbol, digest),
+            horizons_weeks=tuple(kwargs["horizons_weeks"]),
+        )
+
+    analysis = SimpleNamespace(
+        fingerprint_comparison=SimpleNamespace(matches=True),
+    )
+
+    def analysis_runner(symbols, **kwargs):
+        captured["symbols"] = tuple(symbols)
+        captured.update(kwargs)
+        return analysis
+
+    monkeypatch.setattr(
+        broad_runner,
+        "run_reproducible_weekly_foundation_symbol_snapshot",
+        fake_symbol_snapshot,
+    )
+
+    result = broad_runner.run_weekly_broad_universe_robustness_study(
+        ("ONE.NS", "TWO.NS"),
+        horizons_weeks=(15, 5, 10),
+        analysis_runner=analysis_runner,
+    )
+
+    assert snapshot_calls == ["ONE.NS", "TWO.NS"]
+    assert captured["symbols"] == ("ONE.NS", "TWO.NS")
+    frozen = captured["foundation_snapshot"]
+    assert frozen.symbols == ("ONE.NS", "TWO.NS")
+    assert frozen.horizons_weeks == (5, 10, 15)
+    assert tuple(item.symbol for item in frozen.input_fingerprints) == (
+        "ONE.NS",
+        "TWO.NS",
+    )
+    assert result.frozen_preflight_snapshot_used is True
