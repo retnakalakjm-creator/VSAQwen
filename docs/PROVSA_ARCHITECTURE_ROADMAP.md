@@ -1116,7 +1116,8 @@ See `docs/GENUINE_DAILY_SEQUENCE_CASE.md`.
 
 ### PR-K9 — Frozen K4 → K3/K2/K1 Study Runner
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #306
 
 K9 loads an already-frozen K4 dataset, verifies its embedded fingerprint, passes
 the unchanged prepared inputs and fingerprints into K3, and writes the existing
@@ -1137,6 +1138,31 @@ The CLI also reports bullish/bearish weekly-direction assignment counts as a
 diagnostic. It does not rebalance or reinterpret them.
 
 See `docs/FROZEN_DAILY_SEQUENCE_STUDY.md`.
+
+### PR-K10 — Production Weekly Authority Audit Ledger
+
+**Status:** IN PROGRESS
+
+K10 explains the first LT.NS real-study asymmetry without changing weekly
+qualification or coordinator behavior.
+
+It separates:
+
+```text
+production WeeklySetup rows created
+!=
+WeeklySetup selected as daily authority
+```
+
+For every production-authorized setup, K10 records direction, signal week,
+completion/availability timing, and the exact daily-session span where the
+existing coordinator selected it.
+
+The summary independently reports setup direction counts and daily assignment
+direction counts. This allows the LT 37-setup / 463-all-bearish result to be
+localized to production qualification versus coordinator authority timing.
+
+See `docs/WEEKLY_AUTHORITY_AUDIT.md`.
 
 
 ---
@@ -1202,7 +1228,8 @@ Avoid:
 | 29 | PR-K6 / #303 | P1 | Causal weekly-direction assignments from WeeklySetup/Coordinator | VALIDATED |
 | 30 | PR-K7 / #304 | P1 | Compose K5 Evidence + K6 directions into frozen K4 dataset | VALIDATED |
 | 31 | PR-K8 / #305 | P1 | Generate genuine frozen K4 case from production weekly authority + real daily history | VALIDATED |
-| 32 | PR-K9 | P1 | Run frozen K4 through unchanged K3/K2/K1 and write review bundle | IN PROGRESS |
+| 32 | PR-K9 / #306 | P1 | Run frozen K4 through unchanged K3/K2/K1 and write review bundle | VALIDATED |
+| 33 | PR-K10 | P1 | Audit production weekly setup directions versus causal daily authority spans | IN PROGRESS |
 
 ---
 
@@ -1286,35 +1313,37 @@ measurable benchmark improvement
 | 2026-09-18 | #303 | M11 | VALIDATED | Causal weekly-direction exporter manually validated locally and merged; same-week leakage remains blocked and output stays non-actionable. |
 | 2026-09-18 | #304 | M11 | VALIDATED | K5/K6 composer manually validated locally and merged; exact completed-session alignment and K4 round-trip gates passed. |
 | 2026-09-18 | #305 | M11 | VALIDATED | Real-market generator manually validated and merged; LT.NS produced 1246 daily bars, 37 production-weekly setups, 463 weekly-direction assignments, and a frozen non-actionable K4 dataset. |
-| 2026-09-18 | PR-K9 | M11 | IN PROGRESS | Load frozen K4 with fingerprint verification, run unchanged K3/K2/K1, and emit the existing study JSON/CSV bundle for real-case review. |
+| 2026-09-18 | #306 | M11 | VALIDATED | First frozen LT.NS study completed with the original K4 fingerprint, 463 records, 65 fresh sequences, 325 horizon observations, 85 signature summaries, and zero symbol failures. |
+| 2026-09-18 | PR-K10 | M11 | IN PROGRESS | Explain LT.NS weekly-authority asymmetry by comparing production WeeklySetup direction history with exact daily coordinator selection spans. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K9 — Frozen K4 → K3/K2/K1 Study Runner
+## NEXT: PR-K10 — Production Weekly Authority Audit Ledger
 
 Checklist:
 
-- [x] Mark #305 / K8 manually validated and merged.
-- [x] Confirm the first LT.NS frozen case remains non-actionable.
-- [x] Reuse the existing K4 loader and fingerprint verification.
-- [x] Pass K4 fingerprints into K3 as the expected external baseline.
-- [x] Reuse the unchanged K3/K2/K1 study logic.
-- [x] Reuse the existing K3 JSON/CSV bundle writer.
-- [x] Report weekly-direction assignment counts as diagnostics only.
-- [x] Keep all study output explicitly non-actionable.
-- [x] Add tamper rejection and output-bundle tests.
-- [x] Add K9 runner/CLI to Ruff.
-- [ ] Run focused K9 + K4 + K3 + K2 + K1 tests locally.
+- [x] Mark #306 / K9 validated and merged from the successful frozen LT study bundle.
+- [x] Preserve the original LT K4 fingerprint and non-actionable study boundary.
+- [x] Reuse K8 production weekly setup derivation unchanged.
+- [x] Reuse K6 causal coordinator assignments unchanged.
+- [x] Separate production setup direction counts from daily assignment direction counts.
+- [x] Record setup signal week, completion session, and first available daily session.
+- [x] Record selected daily count plus first/last selected session per setup.
+- [x] Preserve production-weekly and K6 source fingerprints in the audit summary.
+- [x] Add a read-only CLI for LT.NS.
+- [x] Add deterministic bullish→bearish and all-bearish audit tests.
+- [x] Keep all output explicitly non-actionable.
+- [x] Add K10 module/CLI to Ruff.
+- [ ] Run focused K10 + K8 + K6 tests locally.
 - [ ] Run Ruff locally.
-- [ ] Run K9 against reports/daily-behavior-sequences/genuine/LT_NS.json.
-- [ ] Confirm K4 input fingerprint remains sha256:240c8b57c39ccd353a13787ffb31f80e70579df2ba5cb9f6ba74396b0aa15b53.
-- [ ] Review fresh sequence count and signature summaries.
-- [ ] Review 1/3/5/10/15-bar outcomes, MFE, and MAE.
-- [ ] Investigate the LT all-bearish weekly-direction assignment characteristic before broad-universe interpretation.
+- [ ] Run K10 against LT.NS at the same 2026-09-18 cutoff.
+- [ ] Compare setup_direction_counts with assignment_direction_counts.
+- [ ] Inspect which setup first became selected on 2024-11-11.
+- [ ] Determine whether any bullish production WeeklySetup exists among the 37 rows.
 - [ ] Merge after manual validation.
-- [ ] Then decide whether the next M11 cut is a weekly-authority audit or broader multi-symbol frozen-case sampling.
+- [ ] Only then decide whether to broaden real frozen studies to multiple symbols or investigate production-weekly asymmetry further.
 
 ---
 
@@ -1373,4 +1402,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K9 — Frozen K4 → K3/K2/K1 Study Runner
+**Current PR:** PR-K10 — Production Weekly Authority Audit Ledger
