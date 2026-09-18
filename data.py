@@ -33,6 +33,9 @@ PARQUET_CACHE_UNUSABLE_REASON = (
     "Parquet cache exists, but no usable Parquet engine is installed or "
     "the engine DLL is blocked by policy. CSV fallback will be rebuilt."
 )
+HISTORY_REVISION_COLUMNS = ("open", "high", "low", "close", "volume")
+HISTORY_REVISION_ABS_TOLERANCE = 1e-9
+HISTORY_REVISION_REL_TOLERANCE = 1e-12
 
 
 class _DataModuleYFinanceProvider:
@@ -116,6 +119,30 @@ class CacheGenerationStatus:
     reason: str
     metadata_generation: str | None = None
     actual_generation: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryRevisionAudit:
+    """Read-only comparison between cached and freshly downloaded raw history."""
+
+    symbol: str
+    provider: str
+    period: str
+    status: str
+    cached_rows: int
+    downloaded_rows: int
+    overlap_rows: int
+    changed_rows: int
+    changed_columns: tuple[str, ...]
+    earliest_changed_date: str | None
+    latest_changed_date: str | None
+    cached_only_dates: int
+    provider_only_dates: int
+    provider_newer_rows: int
+
+    @property
+    def revision_detected(self) -> bool:
+        return self.status == "REVISION_DETECTED"
 
 
 def _normalize_daily_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -491,6 +518,201 @@ def _read_cached_data(symbol: str) -> tuple[pd.DataFrame, Path, str] | None:
         return None
 
     return None
+
+
+def _history_audit_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize one already-canonical daily frame for date-stable comparison."""
+
+    result = df.loc[:, list(HISTORY_REVISION_COLUMNS)].copy()
+    index = pd.DatetimeIndex(pd.to_datetime(result.index))
+    if index.tz is not None:
+        index = index.tz_localize(None)
+    result.index = index.normalize()
+    result.index.name = "date"
+    result.sort_index(inplace=True)
+    if result.index.has_duplicates:
+        raise ValueError("History revision audit requires unique daily dates")
+    return result
+
+
+def _history_values_equal(left: object, right: object) -> bool:
+    if pd.isna(left) and pd.isna(right):
+        return True
+    try:
+        left_value = float(left)
+        right_value = float(right)
+    except (TypeError, ValueError):
+        return left == right
+
+    difference = abs(left_value - right_value)
+    tolerance = max(
+        HISTORY_REVISION_ABS_TOLERANCE,
+        HISTORY_REVISION_REL_TOLERANCE
+        * max(abs(left_value), abs(right_value)),
+    )
+    return difference <= tolerance
+
+
+def compare_cached_history_revision(
+    symbol: str,
+    cached: pd.DataFrame,
+    downloaded: pd.DataFrame,
+    *,
+    provider_name: str,
+    period: str = DEFAULT_PERIOD,
+) -> HistoryRevisionAudit:
+    """Compare overlapping raw OHLCV history without mutating either dataset."""
+
+    cached_frame = _history_audit_frame(cached)
+    downloaded_frame = _history_audit_frame(downloaded)
+
+    if cached_frame.empty or downloaded_frame.empty:
+        return HistoryRevisionAudit(
+            symbol=symbol,
+            provider=provider_name,
+            period=period,
+            status="NO_OVERLAP",
+            cached_rows=len(cached_frame),
+            downloaded_rows=len(downloaded_frame),
+            overlap_rows=0,
+            changed_rows=0,
+            changed_columns=(),
+            earliest_changed_date=None,
+            latest_changed_date=None,
+            cached_only_dates=0,
+            provider_only_dates=0,
+            provider_newer_rows=0,
+        )
+
+    comparison_start = max(cached_frame.index.min(), downloaded_frame.index.min())
+    comparison_end = min(cached_frame.index.max(), downloaded_frame.index.max())
+    if comparison_start > comparison_end:
+        return HistoryRevisionAudit(
+            symbol=symbol,
+            provider=provider_name,
+            period=period,
+            status="NO_OVERLAP",
+            cached_rows=len(cached_frame),
+            downloaded_rows=len(downloaded_frame),
+            overlap_rows=0,
+            changed_rows=0,
+            changed_columns=(),
+            earliest_changed_date=None,
+            latest_changed_date=None,
+            cached_only_dates=0,
+            provider_only_dates=0,
+            provider_newer_rows=int(
+                (downloaded_frame.index > cached_frame.index.max()).sum()
+            ),
+        )
+
+    cached_overlap = cached_frame.loc[
+        (cached_frame.index >= comparison_start)
+        & (cached_frame.index <= comparison_end)
+    ]
+    downloaded_overlap = downloaded_frame.loc[
+        (downloaded_frame.index >= comparison_start)
+        & (downloaded_frame.index <= comparison_end)
+    ]
+
+    cached_dates = set(cached_overlap.index)
+    downloaded_dates = set(downloaded_overlap.index)
+    shared_dates = sorted(cached_dates & downloaded_dates)
+    cached_only = sorted(cached_dates - downloaded_dates)
+    provider_only = sorted(downloaded_dates - cached_dates)
+
+    changed_dates = set(cached_only) | set(provider_only)
+    changed_columns: set[str] = set()
+    if cached_only or provider_only:
+        changed_columns.add("__date_identity__")
+
+    for date in shared_dates:
+        for column in HISTORY_REVISION_COLUMNS:
+            if not _history_values_equal(
+                cached_overlap.at[date, column],
+                downloaded_overlap.at[date, column],
+            ):
+                changed_dates.add(date)
+                changed_columns.add(column)
+
+    ordered_changes = sorted(changed_dates)
+    return HistoryRevisionAudit(
+        symbol=symbol,
+        provider=provider_name,
+        period=period,
+        status="REVISION_DETECTED" if ordered_changes else "MATCH",
+        cached_rows=len(cached_frame),
+        downloaded_rows=len(downloaded_frame),
+        overlap_rows=len(shared_dates),
+        changed_rows=len(ordered_changes),
+        changed_columns=tuple(sorted(changed_columns)),
+        earliest_changed_date=(
+            None if not ordered_changes else ordered_changes[0].isoformat()
+        ),
+        latest_changed_date=(
+            None if not ordered_changes else ordered_changes[-1].isoformat()
+        ),
+        cached_only_dates=len(cached_only),
+        provider_only_dates=len(provider_only),
+        provider_newer_rows=int(
+            (downloaded_frame.index > cached_frame.index.max()).sum()
+        ),
+    )
+
+
+def audit_cached_history_revision(
+    symbol: str,
+    *,
+    provider: MarketDataProvider | None = None,
+    period: str = DEFAULT_PERIOD,
+) -> HistoryRevisionAudit:
+    """Explicitly audit cached raw history against a fresh provider download.
+
+    This function is read-only with respect to the cache. It never rewrites
+    market data or metadata and never tries to infer whether a revision was
+    caused by a corporate action versus a provider correction.
+    """
+
+    cached_result = _read_cached_data(symbol)
+    market_data_provider = _resolve_market_data_provider(provider)
+    provider_name = str(getattr(market_data_provider, "name", "unknown"))
+
+    if cached_result is None:
+        return HistoryRevisionAudit(
+            symbol=symbol,
+            provider=provider_name,
+            period=period,
+            status="NO_CACHE",
+            cached_rows=0,
+            downloaded_rows=0,
+            overlap_rows=0,
+            changed_rows=0,
+            changed_columns=(),
+            earliest_changed_date=None,
+            latest_changed_date=None,
+            cached_only_dates=0,
+            provider_only_dates=0,
+            provider_newer_rows=0,
+        )
+
+    cached, _cache_path, _cache_format = cached_result
+    validate_data(cached)
+    downloaded = _normalize_daily_data(
+        market_data_provider.download_daily(
+            symbol,
+            period=period,
+            interval=CACHE_INTERVAL,
+            auto_adjust=False,
+        )
+    )
+    validate_data(downloaded)
+    return compare_cached_history_revision(
+        symbol,
+        cached,
+        downloaded,
+        provider_name=provider_name,
+        period=period,
+    )
 
 
 def _download_history(

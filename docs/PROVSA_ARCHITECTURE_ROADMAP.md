@@ -680,7 +680,8 @@ cross-process lock.
 
 ### PR-I2 — Cache / Metadata Generation Consistency
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #292
 
 Daily cache data and the metadata sidecar are separate filesystem artifacts.
 I2 makes that relationship observable and serializes same-symbol writers without
@@ -704,6 +705,47 @@ market-data invalidation
 !=
 scanner decision input
 ```
+
+---
+
+### PR-I3 — Historical Revision / Corporate-Action Audit Policy
+
+**Status:** IN PROGRESS
+
+Routine production refresh remains incremental, so provider corrections older than
+the recent merge window require an explicit audit path.
+
+I3 adds a read-only raw-history comparison:
+
+```text
+current usable cache
+        +
+fresh provider production-history download
+(auto_adjust=False)
+        ↓
+overlapping daily identity + OHLCV comparison
+        ↓
+MATCH / REVISION_DETECTED / NO_CACHE / NO_OVERLAP
+```
+
+The audit reports changed dates and columns plus appended provider rows. It does
+not mutate cache data or metadata.
+
+Policy boundary:
+
+```text
+REVISION_DETECTED
+!=
+CORPORATE_ACTION_CONFIRMED
+```
+
+OHLCV changes alone cannot distinguish a split/dividend/bonus/merger from an
+exchange/provider correction. Corporate-action attribution therefore requires a
+separate authoritative event source if later needed.
+
+If revised history is explicitly rebuilt later, the existing ScannerState data
+fingerprint remains the downstream safety gate: old checkpoints are rejected and
+the existing replay fallback rebuilds state.
 
 ---
 
@@ -778,8 +820,9 @@ Avoid:
 | 18 | PR-H1 / #286 | P2 | Public professional-scoring batch API | VALIDATED |
 | 19 | PR-H2 / #287-#288 | P2 | Domain exceptions/policy boundaries | VALIDATED |
 | 20 | PR-I1 / #289-#291 | P2 | Recovery telemetry/persistence hardening | VALIDATED |
-| 21 | PR-I2 | P2 | Cache/metadata generation consistency | IN PROGRESS |
-| 22 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
+| 21 | PR-I2 / #292 | P2 | Cache/metadata generation consistency | VALIDATED |
+| 22 | PR-I3 | P2 | Historical revision/corporate-action audit policy | IN PROGRESS |
+| 23 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
 
 ---
 
@@ -849,32 +892,34 @@ measurable benchmark improvement
 | 2026-09-18 | #289 | M9 | VALIDATED | Structured LOAD_VALIDATE/RESUME recovery telemetry merged alongside unchanged legacy fallback diagnostics. |
 | 2026-09-18 | #290 | M9 | VALIDATED | Atomic persistence write failures are observable through PERSIST telemetry and fail closed while preserving last-good state. |
 | 2026-09-18 | #291 | M9 | VALIDATED | Cross-process checkpoint lock + revision CAS prevents stale production writers from replacing newer state. |
-| 2026-09-18 | PR-I2 | M9 | IN PROGRESS | Bind cache metadata to exact data-file generation and serialize same-symbol cache/metadata writers. |
+| 2026-09-18 | #292 | M9 | VALIDATED | Cache metadata is bound to exact file generations; same-symbol cache/metadata writes are serialized and mismatch remains diagnostic-only. |
+| 2026-09-18 | PR-I3 | M9 | IN PROGRESS | Add explicit read-only audit for provider revisions outside the incremental refresh window without inferring corporate-action cause. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-I2 — Cache / Metadata Generation Consistency
+## NEXT: PR-I3 — Historical Revision / Corporate-Action Audit Policy
 
 Checklist:
 
-- [x] Mark I1 / #289-#291 validated.
-- [x] Keep cache metadata diagnostic-only and non-authoritative.
-- [x] Serialize same-symbol cache/metadata commits with a cross-process lock.
-- [x] Bump new metadata writes to schema version 2.
-- [x] Add exact cache-file SHA-256 generation identity.
-- [x] Keep version-1 metadata backward readable.
-- [x] Add inspect_cache_generation() without changing normal cache selection.
-- [x] Detect data/metadata generation mismatch.
-- [x] Detect interrupted metadata commit after data replacement.
-- [x] Prove a generation mismatch does not reject an otherwise usable cache.
-- [ ] Run data-cache tests on Windows.
-- [ ] Run cache/artifact resilience tests.
-- [ ] Run download-period and API data-path regression tests.
-- [ ] Confirm scanner/VSA semantics are unchanged.
+- [x] Mark I2 / #292 validated.
+- [x] Keep production market data raw with auto_adjust=False.
+- [x] Add read-only history revision audit against a fresh production-window download.
+- [x] Compare overlapping daily identities plus OHLCV.
+- [x] Treat append-only new provider bars as normal, not a historical revision.
+- [x] Detect revisions older than the incremental refresh window.
+- [x] Detect historical inserted/removed dates.
+- [x] Use a tiny numerical tolerance only for floating representation noise.
+- [x] Never infer corporate-action type from OHLCV revision alone.
+- [x] Never rewrite cache or scanner state from the audit.
+- [x] Document existing ScannerState data fingerprint as the downstream stale-state gate after an explicit rebuild.
+- [ ] Run history revision audit tests.
+- [ ] Run data-cache / provider / resilience tests.
+- [ ] Run scanner state fingerprint tests.
+- [ ] Confirm audit is read-only and production scan semantics are unchanged.
 - [ ] Merge after manual validation.
-- [ ] Then assess corporate-action/history-revision policy as the remaining M9 gap.
+- [ ] If validated, close M9 unless another concrete operational defect remains.
 
 ---
 
@@ -933,4 +978,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M9 — State, Cache & Operational Robustness  
-**Current PR:** PR-I2 — Cache / Metadata Generation Consistency
+**Current PR:** PR-I3 — Historical Revision / Corporate-Action Audit Policy

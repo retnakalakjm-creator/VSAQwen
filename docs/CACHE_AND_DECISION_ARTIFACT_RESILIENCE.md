@@ -81,3 +81,13 @@ is operational telemetry and repair evidence, not a VSA/scanner decision input.
 
 Existing version-1 metadata remains readable. It is reported as
 `legacy_metadata_without_generation` until the cache is next rewritten.
+
+
+## Historical revision auditing
+
+Incremental cache refresh cannot discover every provider correction outside its
+recent merge window. ProVSA therefore provides an explicit read-only historical
+revision audit. See `docs/HISTORY_REVISION_POLICY.md`.
+
+The audit is diagnostic-only: it does not rewrite cache history and does not
+infer a corporate action from OHLCV changes.
