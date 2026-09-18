@@ -859,7 +859,8 @@ See `docs/DAILY_BEHAVIOR_SEQUENCE_AUDIT.md`.
 
 ### PR-K2 — Daily Behavior Sequence Outcome Study
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #299
 
 K2 reuses the existing analysis-only `audit.outcomes` next-bar execution
 contract to measure fresh K1 sequence observations without changing production.
@@ -899,6 +900,52 @@ production actionability
 ```
 
 See `docs/DAILY_BEHAVIOR_SEQUENCE_OUTCOME_STUDY.md`.
+
+### PR-K3 — Reproducible Multi-Symbol Daily Sequence Historical Runner
+
+**Status:** IN PROGRESS
+
+K3 runs K1/K2 across explicit prepared point-in-time research inputs without
+inventing a second daily evidence detector or reconstructing weekly setup
+visibility.
+
+Prepared input boundary:
+
+```text
+symbol
+completed daily close/high/low history
+point-in-time weekly direction assignments by daily bar
+point-in-time daily Evidence
+```
+
+Each prepared symbol input is fingerprinted over the exact fields consumed by the
+study. Optional expected fingerprints can gate reruns.
+
+Universe policy is fail-fast by default. Explicit per-symbol continuation writes
+an exact failure ledger so a broad study cannot silently shrink its universe.
+
+Outputs include:
+
+- study summary;
+- input fingerprint manifest;
+- failure ledger;
+- per-bar sequence records;
+- causal K2 outcomes;
+- exact-signature descriptive summaries.
+
+Safety boundary:
+
+```text
+reproducible historical study
+!=
+daily evidence detector
+!=
+sequence promotion
+!=
+production actionability
+```
+
+See `docs/DAILY_BEHAVIOR_SEQUENCE_HISTORICAL_RUNNER.md`.
 
 
 ---
@@ -957,7 +1004,8 @@ Avoid:
 | 22 | PR-I3 / #293 | P2 | Historical revision/corporate-action audit policy | VALIDATED |
 | 23 | PR-J1 / #294-#297 | P2 | Ruff/type/coverage gates | VALIDATED |
 | 24 | PR-K1 / #298 | P1 | Read-only daily behavior sequence audit | VALIDATED |
-| 25 | PR-K2 | P1 | Analysis-only daily behavior sequence outcome study | IN PROGRESS |
+| 25 | PR-K2 / #299 | P1 | Analysis-only daily behavior sequence outcome study | VALIDATED |
+| 26 | PR-K3 | P1 | Reproducible multi-symbol daily sequence historical runner | IN PROGRESS |
 
 ---
 
@@ -1034,35 +1082,39 @@ measurable benchmark improvement
 | 2026-09-18 | #296 | M10 | VALIDATED | Strict mypy expanded to WeeklySetup materialization plus daily behavior/entry domain with no runtime changes. |
 | 2026-09-18 | #297 | M10 | VALIDATED | 70% aggregate core coverage floor validated at 73.87%; full suite 1018 passed / 1 skipped. |
 | 2026-09-18 | #298 | M11 | VALIDATED | Read-only daily behavior sequence audit preserves temporal ordering without changing F3 trigger/replay behavior. |
-| 2026-09-18 | PR-K2 | M11 | IN PROGRESS | Attach causal next-bar forward outcomes to fresh sequence observations for descriptive research only. |
+| 2026-09-18 | #299 | M11 | VALIDATED | Causal next-bar outcomes attach only to fresh current-bar sequence observations; study remains descriptive and non-actionable. |
+| 2026-09-18 | PR-K3 | M11 | IN PROGRESS | Run K1/K2 across fingerprinted prepared multi-symbol inputs with explicit failure accounting. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K2 — Daily Behavior Sequence Outcome Study
+## NEXT: PR-K3 — Reproducible Multi-Symbol Daily Sequence Historical Runner
 
 Checklist:
 
-- [x] Merge and validate #298 sequence audit.
-- [x] Reuse audit.outcomes instead of creating a second outcome engine.
-- [x] Preserve signal bar != execution bar.
-- [x] Require fresh supported behavior on sequence.end_bar_index.
-- [x] Return no outcomes for stale sequence snapshots.
-- [x] Retain latest observations when no execution bar exists.
-- [x] Preserve incomplete-horizon state from ForwardOutcome.
-- [x] Build sequence signatures from relative offsets and behavior dimensions.
-- [x] Keep bullish/bearish outcomes direction-relative to WeeklySetup.
-- [x] Aggregate only descriptive exact-signature cohort metrics.
-- [x] Use complete outcomes only for return/MFE/MAE summary values.
-- [x] Keep all outcome study objects explicitly non-actionable.
-- [x] Add synthetic causal and no-look-ahead tests.
-- [x] Add the analysis module to Ruff.
-- [ ] Run K2 outcome tests plus K1/F3 regression tests.
+- [x] Merge and validate #299 K2 outcome study.
+- [x] Keep K3 input-driven; do not invent a price-derived daily evidence detector.
+- [x] Accept explicit point-in-time weekly direction assignments by daily bar.
+- [x] Accept explicit point-in-time daily Evidence.
+- [x] Replay K1 sequence audit per assigned bar.
+- [x] Attach K2 outcomes only through the existing fresh-sequence guard.
+- [x] Fingerprint consumed close/high/low history, directions, and evidence.
+- [x] Normalize equivalent input ordering for reproducible fingerprints.
+- [x] Support optional expected-fingerprint gating.
+- [x] Fail fast by default.
+- [x] Allow explicit per-symbol continuation with exact failure ledger.
+- [x] Aggregate exact-signature descriptive outcomes across successful symbols.
+- [x] Export transparent JSON/CSV study artifacts.
+- [x] Keep all runner outputs explicitly non-actionable.
+- [x] Add deterministic synthetic multi-symbol/fingerprint/failure tests.
+- [x] Add K3 runner to Ruff.
+- [ ] Run K3 + K2 + K1 tests locally.
 - [ ] Run Ruff.
-- [ ] Confirm no production import path consumes the K2 audit module.
+- [ ] Confirm fingerprint mismatch fails closed.
+- [ ] Confirm continuation never silently drops a failed symbol.
 - [ ] Merge after manual validation.
-- [ ] Then build a reproducible multi-symbol historical runner before interpreting any sequence relationship.
+- [ ] Then materialize one small real historical prepared dataset before any broad-universe interpretation.
 
 ---
 
@@ -1121,4 +1173,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K2 — Daily Behavior Sequence Outcome Study
+**Current PR:** PR-K3 — Reproducible Multi-Symbol Daily Sequence Historical Runner
