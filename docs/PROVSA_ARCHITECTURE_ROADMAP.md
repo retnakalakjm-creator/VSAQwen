@@ -1085,7 +1085,8 @@ See `docs/DAILY_BEHAVIOR_SEQUENCE_PREPARATION.md`.
 
 ### PR-K8 — Genuine Real-Market Frozen Case Generator
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #305
 
 K8 derives historical WeeklySetup objects only through the existing production
 weekly path:
@@ -1112,6 +1113,30 @@ If the selected history contains no actionable persistent production weekly
 setup, K8 fails closed instead of fabricating one.
 
 See `docs/GENUINE_DAILY_SEQUENCE_CASE.md`.
+
+### PR-K9 — Frozen K4 → K3/K2/K1 Study Runner
+
+**Status:** IN PROGRESS
+
+K9 loads an already-frozen K4 dataset, verifies its embedded fingerprint, passes
+the unchanged prepared inputs and fingerprints into K3, and writes the existing
+K3 study bundle.
+
+```text
+frozen K4 JSON
+→ K4 fingerprint verification
+→ K3 historical runner
+→ K1 sequence audit + K2 outcomes
+→ existing JSON/CSV review bundle
+```
+
+K9 does not recompute K5 Evidence, K6 weekly directions, or K8 production-weekly
+authority. It adds no ranking or actionability.
+
+The CLI also reports bullish/bearish weekly-direction assignment counts as a
+diagnostic. It does not rebalance or reinterpret them.
+
+See `docs/FROZEN_DAILY_SEQUENCE_STUDY.md`.
 
 
 ---
@@ -1176,7 +1201,8 @@ Avoid:
 | 28 | PR-K5 / #302 | P1 | Offline point-in-time daily evidence producer using existing VSA stack | VALIDATED |
 | 29 | PR-K6 / #303 | P1 | Causal weekly-direction assignments from WeeklySetup/Coordinator | VALIDATED |
 | 30 | PR-K7 / #304 | P1 | Compose K5 Evidence + K6 directions into frozen K4 dataset | VALIDATED |
-| 31 | PR-K8 | P1 | Generate genuine frozen K4 case from production weekly authority + real daily history | IN PROGRESS |
+| 31 | PR-K8 / #305 | P1 | Generate genuine frozen K4 case from production weekly authority + real daily history | VALIDATED |
+| 32 | PR-K9 | P1 | Run frozen K4 through unchanged K3/K2/K1 and write review bundle | IN PROGRESS |
 
 ---
 
@@ -1259,37 +1285,36 @@ measurable benchmark improvement
 | 2026-09-18 | #302 | M11 | VALIDATED | Offline point-in-time daily Evidence producer manually validated locally after merge; hosted CI unavailable due usage limits. |
 | 2026-09-18 | #303 | M11 | VALIDATED | Causal weekly-direction exporter manually validated locally and merged; same-week leakage remains blocked and output stays non-actionable. |
 | 2026-09-18 | #304 | M11 | VALIDATED | K5/K6 composer manually validated locally and merged; exact completed-session alignment and K4 round-trip gates passed. |
-| 2026-09-18 | PR-K8 | M11 | IN PROGRESS | Generate the first real-market frozen case from actual daily history and historical production ScannerCandidate → WeeklySetup authority, with weekly OHLCV provenance fingerprinting. |
+| 2026-09-18 | #305 | M11 | VALIDATED | Real-market generator manually validated and merged; LT.NS produced 1246 daily bars, 37 production-weekly setups, 463 weekly-direction assignments, and a frozen non-actionable K4 dataset. |
+| 2026-09-18 | PR-K9 | M11 | IN PROGRESS | Load frozen K4 with fingerprint verification, run unchanged K3/K2/K1, and emit the existing study JSON/CSV bundle for real-case review. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K8 — Genuine Real-Market Frozen Case Generator
+## NEXT: PR-K9 — Frozen K4 → K3/K2/K1 Study Runner
 
 Checklist:
 
-- [x] Mark #304 / K7 manually validated and merged.
-- [x] Use actual daily market history as the source boundary.
-- [x] Filter completed daily sessions before weekly aggregation.
-- [x] Reuse daily_to_weekly and completed_weekly_only.
-- [x] Reuse MetricsEngine + HistoricalScannerRunner.
-- [x] Materialize WeeklySetup only from authoritative actionable production ScannerCandidate output.
-- [x] Never infer weekly direction from daily price movement.
-- [x] Fail closed when no actionable production weekly setup exists.
-- [x] Fingerprint exact completed weekly OHLCV consumed by the weekly scanner.
-- [x] Feed production WeeklySetup history into K7 unchanged.
-- [x] Add a CLI using the existing read-only market-data cache/provider path.
-- [x] Keep generated datasets explicitly non-actionable.
-- [x] Add deterministic unit coverage for production-authority filtering, fingerprinting, composition, and K4 round-trip.
-- [x] Add K8 generator to Ruff.
-- [ ] Run focused K8 + K7 + K6 + K5 + K4 + K3 tests locally.
+- [x] Mark #305 / K8 manually validated and merged.
+- [x] Confirm the first LT.NS frozen case remains non-actionable.
+- [x] Reuse the existing K4 loader and fingerprint verification.
+- [x] Pass K4 fingerprints into K3 as the expected external baseline.
+- [x] Reuse the unchanged K3/K2/K1 study logic.
+- [x] Reuse the existing K3 JSON/CSV bundle writer.
+- [x] Report weekly-direction assignment counts as diagnostics only.
+- [x] Keep all study output explicitly non-actionable.
+- [x] Add tamper rejection and output-bundle tests.
+- [x] Add K9 runner/CLI to Ruff.
+- [ ] Run focused K9 + K4 + K3 + K2 + K1 tests locally.
 - [ ] Run Ruff locally.
-- [ ] Run the real-data CLI for LT.NS at a fixed point-in-time cutoff.
-- [ ] Confirm at least one production weekly setup is present.
-- [ ] Inspect emitted source and K4 fingerprints.
+- [ ] Run K9 against reports/daily-behavior-sequences/genuine/LT_NS.json.
+- [ ] Confirm K4 input fingerprint remains sha256:240c8b57c39ccd353a13787ffb31f80e70579df2ba5cb9f6ba74396b0aa15b53.
+- [ ] Review fresh sequence count and signature summaries.
+- [ ] Review 1/3/5/10/15-bar outcomes, MFE, and MAE.
+- [ ] Investigate the LT all-bearish weekly-direction assignment characteristic before broad-universe interpretation.
 - [ ] Merge after manual validation.
-- [ ] Then run the first genuine frozen dataset through K3 → K2 → K1 and review actual sequence/outcome observations.
+- [ ] Then decide whether the next M11 cut is a weekly-authority audit or broader multi-symbol frozen-case sampling.
 
 ---
 
@@ -1348,4 +1373,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K8 — Genuine Real-Market Frozen Case Generator
+**Current PR:** PR-K9 — Frozen K4 → K3/K2/K1 Study Runner
