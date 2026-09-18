@@ -1025,7 +1025,8 @@ See `docs/OFFLINE_DAILY_EVIDENCE_PRODUCER.md`.
 
 ### PR-K6 — Causal Weekly-Direction Assignment Exporter
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #303
 
 K6 supplies the remaining point-in-time input required by K4/K3 without deriving
 weekly direction from daily prices.
@@ -1049,6 +1050,68 @@ identity/direction/status/availability inputs. Outputs remain explicitly
 non-actionable.
 
 See `docs/CAUSAL_WEEKLY_DIRECTION_ASSIGNMENTS.md`.
+
+### PR-K7 — K5 + K6 Frozen K4 Dataset Composer
+
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #304
+
+K7 composes the validated daily research producers into the existing K4
+interchange boundary:
+
+```text
+completed daily OHLCV
+├── K5 point-in-time daily Evidence
+└── K6 causal ARMED weekly direction
+          ↓
+DailyBehaviorSequenceStudyInput
+          ↓
+K4 frozen dataset
+```
+
+K5 and K6 independently receive the same daily source, now boundary, and trading
+calendar. Their retained completed-session identities must match exactly before
+K7 freezes the input; any mismatch fails closed.
+
+The K4 source metadata retains both K5 and K6 source fingerprints. K7 remains
+analysis-only and does not alter production qualification, scoring, F3,
+actionability, alerts, or orders.
+
+The repository does not fabricate a real-data fixture. After K7 validation, the
+first genuine case will be generated from actual daily market history plus
+historical production-weekly WeeklySetup outputs.
+
+See `docs/DAILY_BEHAVIOR_SEQUENCE_PREPARATION.md`.
+
+### PR-K8 — Genuine Real-Market Frozen Case Generator
+
+**Status:** IN PROGRESS
+
+K8 derives historical WeeklySetup objects only through the existing production
+weekly path:
+
+```text
+actual daily market history
+→ completed daily sessions
+→ daily_to_weekly
+→ completed_weekly_only
+→ MetricsEngine
+→ HistoricalScannerRunner
+→ production ScannerCandidate
+→ materialize_production_weekly_setup
+→ WeeklySetup history
+```
+
+That WeeklySetup history is passed into K7, which continues to own K5/K6/K4
+composition.
+
+K8 fingerprints the exact completed weekly OHLCV consumed by the production
+weekly scanner path and adds that fingerprint to the frozen dataset provenance.
+
+If the selected history contains no actionable persistent production weekly
+setup, K8 fails closed instead of fabricating one.
+
+See `docs/GENUINE_DAILY_SEQUENCE_CASE.md`.
 
 
 ---
@@ -1111,7 +1174,9 @@ Avoid:
 | 26 | PR-K3 / #300 | P1 | Reproducible multi-symbol daily sequence historical runner | VALIDATED |
 | 27 | PR-K4 / #301 | P1 | Frozen prepared daily sequence dataset contract | VALIDATED |
 | 28 | PR-K5 / #302 | P1 | Offline point-in-time daily evidence producer using existing VSA stack | VALIDATED |
-| 29 | PR-K6 | P1 | Causal weekly-direction assignments from WeeklySetup/Coordinator | IN PROGRESS |
+| 29 | PR-K6 / #303 | P1 | Causal weekly-direction assignments from WeeklySetup/Coordinator | VALIDATED |
+| 30 | PR-K7 / #304 | P1 | Compose K5 Evidence + K6 directions into frozen K4 dataset | VALIDATED |
+| 31 | PR-K8 | P1 | Generate genuine frozen K4 case from production weekly authority + real daily history | IN PROGRESS |
 
 ---
 
@@ -1192,35 +1257,39 @@ measurable benchmark improvement
 | 2026-09-18 | #300 | M11 | VALIDATED | Reproducible multi-symbol K1/K2 runner validated with fingerprints, failure ledger, and stable research artifacts. |
 | 2026-09-18 | #301 | M11 | VALIDATED | Frozen 1D sequence-study dataset contract validates provenance/timeframe/schema and fails closed on fingerprint mismatch. |
 | 2026-09-18 | #302 | M11 | VALIDATED | Offline point-in-time daily Evidence producer manually validated locally after merge; hosted CI unavailable due usage limits. |
-| 2026-09-18 | PR-K6 | M11 | IN PROGRESS | Export causal bar-indexed weekly directions from existing WeeklySetup/WeeklyDailyCoordinator boundaries without changing production qualification/actionability. |
+| 2026-09-18 | #303 | M11 | VALIDATED | Causal weekly-direction exporter manually validated locally and merged; same-week leakage remains blocked and output stays non-actionable. |
+| 2026-09-18 | #304 | M11 | VALIDATED | K5/K6 composer manually validated locally and merged; exact completed-session alignment and K4 round-trip gates passed. |
+| 2026-09-18 | PR-K8 | M11 | IN PROGRESS | Generate the first real-market frozen case from actual daily history and historical production ScannerCandidate → WeeklySetup authority, with weekly OHLCV provenance fingerprinting. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K6 — Causal Weekly-Direction Assignment Exporter
+## NEXT: PR-K8 — Genuine Real-Market Frozen Case Generator
 
 Checklist:
 
-- [x] Mark #302 / K5 manually validated from the local focused suite.
-- [x] Reuse WeeklySetup and WeeklyDailyCoordinator as the authoritative weekly-direction boundary.
-- [x] Apply completed_daily_only before bar-index assignment.
-- [x] Prevent same-week Friday setup leakage.
-- [x] Emit direction only when the causally selected setup is ARMED.
-- [x] Preserve exact completed-daily positional bar_index for K3/K4.
-- [x] Keep terminal setup snapshots non-observing rather than inventing lifecycle history.
-- [x] Fingerprint completed session identities and relevant setup visibility inputs.
-- [x] Expose K3-compatible DailyBehaviorSequenceDirectionAssignment tuples.
-- [x] Keep all output explicitly non-actionable.
-- [x] Add holiday/closure, future-invariance, symbol-isolation, and fingerprint tests.
-- [x] Add K6 exporter to Ruff.
-- [ ] Run focused K6 + coordinator + K5 + K4 + K3 tests locally.
+- [x] Mark #304 / K7 manually validated and merged.
+- [x] Use actual daily market history as the source boundary.
+- [x] Filter completed daily sessions before weekly aggregation.
+- [x] Reuse daily_to_weekly and completed_weekly_only.
+- [x] Reuse MetricsEngine + HistoricalScannerRunner.
+- [x] Materialize WeeklySetup only from authoritative actionable production ScannerCandidate output.
+- [x] Never infer weekly direction from daily price movement.
+- [x] Fail closed when no actionable production weekly setup exists.
+- [x] Fingerprint exact completed weekly OHLCV consumed by the weekly scanner.
+- [x] Feed production WeeklySetup history into K7 unchanged.
+- [x] Add a CLI using the existing read-only market-data cache/provider path.
+- [x] Keep generated datasets explicitly non-actionable.
+- [x] Add deterministic unit coverage for production-authority filtering, fingerprinting, composition, and K4 round-trip.
+- [x] Add K8 generator to Ruff.
+- [ ] Run focused K8 + K7 + K6 + K5 + K4 + K3 tests locally.
 - [ ] Run Ruff locally.
-- [ ] Confirm same-week sessions receive no new-Friday direction.
-- [ ] Confirm terminal latest setup suppresses active direction assignment.
-- [ ] Confirm future weekly setups do not change prior assignments.
+- [ ] Run the real-data CLI for LT.NS at a fixed point-in-time cutoff.
+- [ ] Confirm at least one production weekly setup is present.
+- [ ] Inspect emitted source and K4 fingerprints.
 - [ ] Merge after manual validation.
-- [ ] Then compose K5 Evidence + K6 weekly directions + real completed daily OHLCV into the first genuine frozen K4 dataset.
+- [ ] Then run the first genuine frozen dataset through K3 → K2 → K1 and review actual sequence/outcome observations.
 
 ---
 
@@ -1279,4 +1348,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K6 — Causal Weekly-Direction Assignment Exporter
+**Current PR:** PR-K8 — Genuine Real-Market Frozen Case Generator
