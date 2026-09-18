@@ -12,6 +12,12 @@ from model.evidence_result_model import EvidenceResult
 from model.score_model import ProfessionalScoreResult
 from models import Evidence, EvidenceCode
 from professional.scoring_engine import ProfessionalScoringEngine
+from scanner_policy import (
+    DEFAULT_CANDIDATE_ACTIONABILITY_POLICY,
+    DEFAULT_CANDIDATE_EXECUTION_POLICY,
+    DEFAULT_CANDIDATE_RANKING_POLICY,
+    DEFAULT_VSA_FRESHNESS_POLICY,
+)
 from trend import TrendAnalyzer, TrendResult
 
 
@@ -69,10 +75,10 @@ class ScannerCandidate:
 
     @property
     def actionable(self) -> bool:
-        return (
-            self.qualification_result.is_actionable_evidence
-            and self.professional.confidence > 0.0
-            and not self.signal_bar_anomaly
+        return DEFAULT_CANDIDATE_ACTIONABILITY_POLICY.is_actionable(
+            qualification=self.qualification_result,
+            confidence=self.professional.confidence,
+            signal_bar_anomaly=self.signal_bar_anomaly,
         )
 
     @property
@@ -87,9 +93,10 @@ class ScannerCandidate:
 
     @property
     def ranking_score(self) -> float:
-        if self.qualification in (PatternQualification.PERSISTENT_BULLISH, PatternQualification.PERSISTENT_BEARISH):
-            return abs(self.base_score)
-        return self.base_score
+        return DEFAULT_CANDIDATE_RANKING_POLICY.score(
+            qualification=self.qualification,
+            base_score=self.base_score,
+        )
 
     @property
     def net_strength(self) -> float:
@@ -120,18 +127,23 @@ class ScannerCandidate:
     @property
     def execution_available(self) -> bool:
         """Whether a following bar exists for evaluating execution rules."""
-        return self.execution_bar_index is not None
+        return DEFAULT_CANDIDATE_EXECUTION_POLICY.is_available(
+            execution_bar_index=self.execution_bar_index
+        )
 
     @property
     def execution_pending(self) -> bool:
         """True when the latest actionable setup has no following bar yet."""
-        return self.actionable and not self.execution_available
+        return DEFAULT_CANDIDATE_EXECUTION_POLICY.is_pending(
+            actionable=self.actionable,
+            execution_bar_index=self.execution_bar_index,
+        )
 
     @property
     def execution_note(self) -> str:
-        if self.execution_available:
-            return "Evaluate execution only from the next bar/session after the signal bar."
-        return "No execution bar is available yet; this is a setup signal, not a same-bar entry."
+        return DEFAULT_CANDIDATE_EXECUTION_POLICY.note(
+            execution_bar_index=self.execution_bar_index
+        )
 
     @property
     def evidence_codes(self) -> tuple[str, ...]:
@@ -215,7 +227,14 @@ class ScannerCandidate:
 
 
 def rank_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:
-    return sorted(candidates, key=lambda candidate: (candidate.actionable, candidate.ranking_score), reverse=True)
+    return sorted(
+        candidates,
+        key=lambda candidate: DEFAULT_CANDIDATE_RANKING_POLICY.sort_key(
+            actionable=candidate.actionable,
+            ranking_score=candidate.ranking_score,
+        ),
+        reverse=True,
+    )
 
 
 def rank_actionable_candidates(candidates: tuple[ScannerCandidate, ...] | list[ScannerCandidate]) -> list[ScannerCandidate]:
@@ -226,8 +245,8 @@ class ScannerEngine:
     """Point-in-time scanner pipeline."""
 
     MIN_REPLAY_BARS = 20
-    SCORING_LOOKBACK_BARS = 10
-    MAX_ACTIONABLE_VSA_AGE = 3
+    SCORING_LOOKBACK_BARS = DEFAULT_VSA_FRESHNESS_POLICY.scoring_lookback_bars
+    MAX_ACTIONABLE_VSA_AGE = DEFAULT_VSA_FRESHNESS_POLICY.max_actionable_age
 
     _STRUCTURAL_CODES = frozenset({
         EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING,
@@ -299,10 +318,10 @@ class ScannerEngine:
 
     @classmethod
     def _vsa_confirmation_is_current(cls, scoring_evidence: tuple[Evidence, ...], bar_index: int | None) -> bool:
-        if bar_index is None or not scoring_evidence:
-            return False
-        scoring_bar_index = max(item.bar_index for item in scoring_evidence)
-        return 0 <= bar_index - scoring_bar_index <= cls.MAX_ACTIONABLE_VSA_AGE
+        return DEFAULT_VSA_FRESHNESS_POLICY.is_current(
+            scoring_bar_index=cls._scoring_bar_index(scoring_evidence),
+            target_bar_index=bar_index,
+        )
 
     @staticmethod
     def _qualifying_evidence(history, qualification: PatternQualificationResult) -> tuple[Evidence, ...]:
@@ -422,9 +441,14 @@ class ScannerEngine:
             elif scoring_bar_index is None:
                 qualification = self._invalidate_missing_vsa_confirmation(qualification)
             else:
-                scoring_age = bar_index - scoring_bar_index if bar_index is not None else None
-                vsa_current = scoring_age is not None and 0 <= scoring_age <= self.MAX_ACTIONABLE_VSA_AGE
-                if not vsa_current:
+                scoring_age = DEFAULT_VSA_FRESHNESS_POLICY.age(
+                    scoring_bar_index=scoring_bar_index,
+                    target_bar_index=bar_index,
+                )
+                if not self._vsa_confirmation_is_current(
+                    scoring_evidence,
+                    bar_index,
+                ):
                     qualification = self._invalidate_stale_vsa_confirmation(qualification, scoring_age if scoring_age is not None else self.MAX_ACTIONABLE_VSA_AGE + 1)
                 elif self._vsa_conflicts_with_qualification(qualification, professional, scoring_evidence):
                     qualification = self._invalidate_vsa_conflict(qualification, professional)

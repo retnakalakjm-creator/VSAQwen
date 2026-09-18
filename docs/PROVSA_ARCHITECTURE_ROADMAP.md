@@ -538,7 +538,8 @@ separate measured task rather than extending G1 by assumption.
 
 ### PR-H1 — Public Professional-Scoring Batch API
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #286
 
 Replace cross-module access to `ProfessionalScorer` private arrays, scorers,
 weights, and raw Smart Money batch values with a public position-aligned batch
@@ -562,17 +563,27 @@ Benchmark tooling should also use public scoring boundaries where practical.
 
 ### PR-H2 — Domain Exceptions / Policy Boundaries
 
-Separate concepts such as:
+**Status:** IN PROGRESS
+
+H2 is split into behavior-preserving cuts.
+
+First cut: extract the scanner decision rules that already exist into named
+policies while preserving the current ScannerCandidate/ScannerEngine public
+surface:
 
 ```text
-QualificationPolicy
-FreshnessPolicy
-ActionabilityPolicy
-RankingPolicy
-ExecutionPolicy
+PatternQualificationEngine   → existing qualification authority
+VSAFreshnessPolicy           → scoring window / maximum actionable VSA age
+CandidateActionabilityPolicy → qualification + confidence + anomaly gate
+CandidateRankingPolicy       → directional conviction ranking
+CandidateExecutionPolicy     → next-bar availability/pending semantics
 ```
 
-and introduce semantic recovery/transition exceptions.
+The existing ScannerEngine constants and candidate properties remain compatibility
+facades. No threshold or decision rule changes in this extraction.
+
+A later H2 cut may introduce semantic transition/recovery exception types after
+the policy boundary is validated.
 
 ---
 
@@ -665,8 +676,8 @@ Avoid:
 | 15 | PR-F4 / #281 | P1 | End-to-end weekly→daily shadow pipeline | VALIDATED |
 | 16 | PR-G1 / #282-#284 | P1 | Feature precompute/hot-loop reduction | VALIDATED |
 | 17 | PR-G2 / #285 | P1 | Benchmark/cleanup | VALIDATED |
-| 18 | PR-H1 | P2 | Public professional-scoring batch API | IN PROGRESS |
-| 19 | PR-H2 | P2 | Domain exceptions/policy boundaries | PLANNED |
+| 18 | PR-H1 / #286 | P2 | Public professional-scoring batch API | VALIDATED |
+| 19 | PR-H2 | P2 | Domain exceptions/policy boundaries | IN PROGRESS |
 | 20 | PR-I1 | P2 | Recovery telemetry/persistence hardening | PLANNED |
 | 21 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
 
@@ -732,26 +743,30 @@ measurable benchmark improvement
 | 2026-09-18 | #283 | M7 | VALIDATED | Causal SwingEngine state is reused across transition bars, production resume, and snapshot creation. |
 | 2026-09-18 | #284 | M7 | VALIDATED | Stable structural swing evaluations are cached; only bounded history is rescored on new swing confirmation. |
 | 2026-09-18 | #285 | M7 | VALIDATED | Deterministic benchmark retained: full replay 1.042x faster; one-new-bar update 6.228 ms / 222.653x vs legacy full replay; durable resume 7.672 ms. |
-| 2026-09-18 | PR-H1 | M8 | IN PROGRESS | Replace StructureFilter and benchmark-tool access to ProfessionalScorer private batch internals with a public lazy batch API. |
+| 2026-09-18 | #286 | M8 | VALIDATED | StructureFilter now consumes the public lazy ProfessionalScorer batch API while preserving exact pre-H1 batched production semantics. |
+| 2026-09-18 | PR-H2 | M8 | IN PROGRESS | Extract scanner freshness, actionability, ranking, and execution rules into explicit behavior-preserving policy objects. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-H1 — Public Professional-Scoring Batch API
+## NEXT: PR-H2 — Scanner Policy Boundaries
 
 Checklist:
 
-- [x] Add a public position-aligned ProfessionalScorer batch result.
-- [x] Keep Smart Money component materialization lazy.
-- [x] Move StructureFilter off private scorer arrays, weights, and raw scores.
-- [x] Move active benchmark tooling off private metric-array access.
-- [x] Add exact pre-H1 batched production compatibility coverage.
-- [ ] Run professional scorer and batched scorer tests.
-- [ ] Run StructureFilter grading / Smart Money integration tests.
-- [ ] Run transition and incremental equivalence tests.
-- [ ] Confirm no production scoring/ranking/actionability changes.
+- [x] Keep PatternQualificationEngine as the existing qualification authority.
+- [x] Extract VSA freshness limits into an explicit policy.
+- [x] Extract final candidate actionability into an explicit policy.
+- [x] Extract directional ranking semantics into an explicit policy.
+- [x] Extract execution availability/pending messaging into an explicit policy.
+- [x] Preserve ScannerEngine constants and ScannerCandidate properties as compatibility facades.
+- [x] Reuse the same freshness policy in legacy and state-driven evaluation.
+- [x] Add direct policy boundary tests.
+- [ ] Run scanner decision/freshness/ranking/execution tests.
+- [ ] Run transition/resume/incremental equivalence tests.
+- [ ] Confirm candidate signatures are unchanged.
 - [ ] Merge after manual validation.
+- [ ] Then evaluate semantic transition/recovery exception extraction as the remaining H2 cut.
 
 ---
 
@@ -810,4 +825,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M8 — Module Boundary & Python Quality Cleanup  
-**Current PR:** PR-H1 — Public Professional-Scoring Batch API
+**Current PR:** PR-H2 — Scanner Policy Boundaries

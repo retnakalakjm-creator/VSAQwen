@@ -3,6 +3,7 @@ from __future__ import annotations
 from background.qualification import PatternQualificationEngine, PatternQualificationState
 from model.evidence_result_model import EvidenceResult
 from scanner import ANOMALY_SIGNAL_BAR_REASON, ScannerCandidate, ScannerEngine
+from scanner_policy import DEFAULT_VSA_FRESHNESS_POLICY
 from trend import TrendResult
 
 
@@ -54,16 +55,14 @@ def evaluate_from_qualification_state(
         elif scoring_bar_index is None:
             qualification = scanner._invalidate_missing_vsa_confirmation(qualification)
         else:
-            scoring_age = (
-                bar_index - scoring_bar_index
-                if bar_index is not None
-                else None
+            scoring_age = DEFAULT_VSA_FRESHNESS_POLICY.age(
+                scoring_bar_index=scoring_bar_index,
+                target_bar_index=bar_index,
             )
-            vsa_current = (
-                scoring_age is not None
-                and 0 <= scoring_age <= scanner.MAX_ACTIONABLE_VSA_AGE
-            )
-            if not vsa_current:
+            if not scanner._vsa_confirmation_is_current(
+                scoring_evidence,
+                bar_index,
+            ):
                 qualification = scanner._invalidate_stale_vsa_confirmation(
                     qualification,
                     scoring_age
