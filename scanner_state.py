@@ -17,6 +17,7 @@ from scanner_exceptions import (
     ScannerStateError,
     ScannerStateIdentityError,
     ScannerStateSchemaError,
+    ScannerStateWriteError,
 )
 
 from models import (
@@ -420,11 +421,15 @@ class ScannerStateStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temp_name, destination)
-        except Exception:
+        except Exception as exc:
             try:
                 os.unlink(temp_name)
             except FileNotFoundError:
                 pass
+            if isinstance(exc, OSError):
+                raise ScannerStateWriteError(
+                    f"Failed to persist ScannerState: {destination}: {exc}"
+                ) from exc
             raise
         return destination
 

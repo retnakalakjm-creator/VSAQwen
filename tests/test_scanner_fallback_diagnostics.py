@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from engine.columns import (
     COL_AVG_SPREAD,
@@ -23,11 +24,13 @@ from production_scanner import (
     CHECKPOINT_CORRUPT,
     CHECKPOINT_DATA_MISMATCH,
     CHECKPOINT_STALE,
+    CHECKPOINT_WRITE_FAILED,
     ENGINE_DIVERGENCE,
     scan_actionable_production,
     scan_latest_candidate_production,
 )
 from scanner import ScannerEngine
+from scanner_exceptions import ScannerStateWriteError
 from scanner_recovery import ScannerRecoveryPhase
 from scanner_state import ScannerStateStore
 
@@ -365,3 +368,44 @@ def test_actionable_scan_forwards_structured_recovery_events(tmp_path) -> None:
 
     assert len(recovery_events) == 1
     assert recovery_events[0].code == CHECKPOINT_DATA_MISMATCH
+
+
+def test_persistence_write_failure_emits_structured_event_and_propagates(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    metrics = _metrics()
+    store = ScannerStateStore(tmp_path)
+    diagnostics: list[str] = []
+    recovery_events = []
+
+    def fail_replace(_source, _destination):
+        raise OSError("simulated persistence write failure")
+
+    monkeypatch.setattr("scanner_state.os.replace", fail_replace)
+
+    with pytest.raises(
+        ScannerStateWriteError,
+        match="simulated persistence write failure",
+    ):
+        scan_latest_candidate_production(
+            metrics,
+            symbol="TEST",
+            timeframe="1wk",
+            state_store=store,
+            fallback_diagnostics=diagnostics,
+            recovery_events=recovery_events,
+        )
+
+    assert diagnostics == []
+    assert len(recovery_events) == 1
+    event = recovery_events[0]
+    assert event.code == CHECKPOINT_WRITE_FAILED
+    assert event.phase is ScannerRecoveryPhase.PERSIST
+    assert event.symbol == "TEST"
+    assert event.timeframe == "1wk"
+    assert event.fallback_used is False
+    assert event.exception_type == "ScannerStateWriteError"
+    assert "full replay fallback not used" in event.message
+    assert not store.path_for("TEST", "1wk").exists()
+    assert not list(tmp_path.glob(".*.tmp"))

@@ -49,6 +49,10 @@ class ScannerStateIdentityError(ScannerStateError):
     """Persisted scanner-state symbol/timeframe identity does not match."""
 
 
+class ScannerStateWriteError(OSError):
+    """Persisted scanner state could not be written atomically."""
+
+
 __all__ = [
     "ScannerDomainError",
     "ScannerResumeCheckpointBeyondMetricsError",
@@ -59,6 +63,7 @@ __all__ = [
     "ScannerStateError",
     "ScannerStateIdentityError",
     "ScannerStateSchemaError",
+    "ScannerStateWriteError",
     "ScannerTransitionError",
     "ScannerTransitionSequenceError",
     "ScannerTransitionStateMismatchError",

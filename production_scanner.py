@@ -27,6 +27,7 @@ CHECKPOINT_CONFIG_MISMATCH = "CHECKPOINT_CONFIG_MISMATCH"
 CHECKPOINT_DATA_MISMATCH = "CHECKPOINT_DATA_MISMATCH"
 CHECKPOINT_CORRUPT = "CHECKPOINT_CORRUPT"
 ENGINE_DIVERGENCE = "ENGINE_DIVERGENCE"
+CHECKPOINT_WRITE_FAILED = "CHECKPOINT_WRITE_FAILED"
 
 
 def _target_index(metrics: pd.DataFrame) -> int | None:
@@ -96,6 +97,29 @@ def _full_replay_candidate_and_snapshot(
     )
 
 
+def _persist_state(
+    *,
+    state: ScannerState,
+    store: ScannerStateStore,
+    recovery_events: MutableSequence[ScannerRecoveryEvent] | None,
+) -> None:
+    try:
+        store.save(state)
+    except OSError as exc:
+        _record_fallback(
+            None,
+            recovery_events=recovery_events,
+            phase=ScannerRecoveryPhase.PERSIST,
+            symbol=state.symbol,
+            timeframe=state.timeframe,
+            code=CHECKPOINT_WRITE_FAILED,
+            reason="persisted scanner state could not be written",
+            exception=exc,
+            fallback_used=False,
+        )
+        raise
+
+
 def _snapshot_latest(
     *,
     metrics: pd.DataFrame,
@@ -103,6 +127,7 @@ def _snapshot_latest(
     timeframe: str,
     store: ScannerStateStore,
     snapshot: ScannerTransitionSnapshotAdapter,
+    recovery_events: MutableSequence[ScannerRecoveryEvent] | None = None,
 ) -> None:
     target_index = _target_index(metrics)
     if target_index is None:
@@ -114,7 +139,11 @@ def _snapshot_latest(
         symbol=symbol,
         timeframe=timeframe,
     )
-    store.save(state)
+    _persist_state(
+        state=state,
+        store=store,
+        recovery_events=recovery_events,
+    )
 
 
 def _snapshot_from_resume_result(
@@ -154,6 +183,7 @@ def _record_fallback(
     code: str,
     reason: str,
     exception: BaseException | None = None,
+    fallback_used: bool = True,
 ) -> None:
     event = ScannerRecoveryEvent(
         code=code,
@@ -161,10 +191,15 @@ def _record_fallback(
         reason=reason,
         symbol=symbol,
         timeframe=timeframe,
+        fallback_used=fallback_used,
         exception_type=(None if exception is None else type(exception).__name__),
     )
     message = event.message
-    Log.warn("Scanner fallback: %s", message)
+    Log.warn(
+        "%s: %s",
+        "Scanner fallback" if fallback_used else "Scanner recovery",
+        message,
+    )
     if diagnostics is not None:
         diagnostics.append(message)
     if recovery_events is not None:
@@ -321,7 +356,11 @@ def scan_latest_candidate_production(
 
     if needs_snapshot_refresh:
         if replay_snapshot is not None:
-            store.save(replay_snapshot)
+            _persist_state(
+                state=replay_snapshot,
+                store=store,
+                recovery_events=recovery_events,
+            )
         else:
             _snapshot_latest(
                 metrics=metrics,
@@ -329,6 +368,7 @@ def scan_latest_candidate_production(
                 timeframe=timeframe,
                 store=store,
                 snapshot=transition_snapshot,
+                recovery_events=recovery_events,
             )
     return candidate
 
@@ -364,6 +404,7 @@ __all__ = [
     "CHECKPOINT_CONFIG_MISMATCH",
     "CHECKPOINT_CORRUPT",
     "CHECKPOINT_DATA_MISMATCH",
+    "CHECKPOINT_WRITE_FAILED",
     "CHECKPOINT_MISSING",
     "CHECKPOINT_STALE",
     "DEFAULT_TIMEFRAME",

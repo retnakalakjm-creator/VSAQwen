@@ -625,7 +625,8 @@ corporate-action/history-revision policy
 
 ### PR-I1 — Recovery Telemetry + Persistence Hardening
 
-**Status:** IN PROGRESS
+**Status:** IN PROGRESS  
+**Telemetry cut:** #289 VALIDATED
 
 First cut: preserve the existing human-readable `fallback_diagnostics` channel
 while adding structured `ScannerRecoveryEvent` telemetry.
@@ -646,8 +647,17 @@ The event's rendered message must remain byte-for-byte equivalent to the existin
 diagnostic string so current operators/consumers do not break.
 
 This cut does not change fallback codes, fallback eligibility, scanner decisions,
-or persisted-state schema. Persistence-write hardening remains a later I1 step
-after structured recovery telemetry is validated.
+or persisted-state schema.
+
+Second cut: classify atomic checkpoint write failures as
+`ScannerStateWriteError` (an `OSError` subtype) and emit a structured
+`PERSIST` recovery event before re-raising. Failed writes remain fail-closed:
+they do not return a candidate as if persistence succeeded, do not emit a fake
+full-replay fallback diagnostic, preserve the last good checkpoint, and clean up
+temporary files.
+
+Cross-process compare-and-swap / stale-writer protection remains a separate
+concurrency-policy decision after write-failure observability is validated.
 
 ---
 
@@ -789,30 +799,32 @@ measurable benchmark improvement
 | 2026-09-18 | #286 | M8 | VALIDATED | StructureFilter now consumes the public lazy ProfessionalScorer batch API while preserving exact pre-H1 batched production semantics. |
 | 2026-09-18 | #287 | M8 | VALIDATED | Scanner freshness, actionability, ranking, and execution rules extracted into explicit behavior-preserving policy objects. |
 | 2026-09-18 | #288 | M8 | VALIDATED | Semantic transition/resume/persisted-state exceptions merged with ValueError compatibility and unchanged production fallback behavior. |
-| 2026-09-18 | PR-I1 | M9 | IN PROGRESS | Add structured recovery telemetry alongside the existing fallback diagnostic strings; no recovery-policy change. |
+| 2026-09-18 | #289 | M9 | VALIDATED | Structured LOAD_VALIDATE/RESUME recovery telemetry merged alongside unchanged legacy fallback diagnostics. |
+| 2026-09-18 | PR-I1 | M9 | IN PROGRESS | Classify persistence write failures, emit PERSIST telemetry, preserve last-good state, and re-raise without fake fallback success. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-I1 — Structured Recovery Telemetry
+## NEXT: PR-I1 — Persistence Write Observability
 
 Checklist:
 
-- [x] Close M8 after validated H1/H2 boundary cleanup.
-- [x] Add immutable structured recovery event model.
-- [x] Classify recovery phase as LOAD_VALIDATE or RESUME.
-- [x] Preserve existing fallback codes and human-readable diagnostic strings.
-- [x] Capture originating exception type without parsing log text.
-- [x] Keep normal first-run bootstrap silent.
-- [x] Forward structured recovery events through actionable production scans.
-- [x] Add tests proving structured event messages match legacy diagnostics.
-- [ ] Run fallback diagnostics / production scanner tests.
-- [ ] Run scanner state fingerprint and semantic exception tests.
-- [ ] Run full-vs-resume / transition parity tests.
-- [ ] Confirm candidate and persisted-state semantics are unchanged.
+- [x] Mark structured recovery telemetry #289 validated.
+- [x] Add semantic ScannerStateWriteError while preserving OSError compatibility.
+- [x] Keep temp-write + fsync + os.replace atomic persistence path.
+- [x] Preserve last good checkpoint when replace fails.
+- [x] Clean up temporary files on failed writes.
+- [x] Add PERSIST recovery phase and CHECKPOINT_WRITE_FAILED code.
+- [x] Emit structured write-failure telemetry before re-raising.
+- [x] Do not emit legacy fallback_diagnostics for a persistence failure.
+- [x] Do not return a candidate as though a failed checkpoint write succeeded.
+- [ ] Run state-store atomic-write tests.
+- [ ] Run structured recovery / production scanner tests.
+- [ ] Run state fingerprint + transition/resume equivalence tests.
+- [ ] Confirm normal successful persistence emits no PERSIST event.
 - [ ] Merge after manual validation.
-- [ ] Then harden persistence-write failure observability/concurrency only where measured operational gaps remain.
+- [ ] Then define stale-writer / cross-process concurrency policy separately.
 
 ---
 
@@ -871,4 +883,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M9 — State, Cache & Operational Robustness  
-**Current PR:** PR-I1 — Structured Recovery Telemetry
+**Current PR:** PR-I1 — Persistence Write Observability

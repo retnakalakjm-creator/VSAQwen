@@ -17,6 +17,7 @@ from scanner_exceptions import (
     ScannerStateCorruptError,
     ScannerStateIdentityError,
     ScannerStateSchemaError,
+    ScannerStateWriteError,
 )
 from scanner_state import (
     CandidateState,
@@ -271,8 +272,13 @@ def test_state_store_failed_replace_preserves_last_good_checkpoint(tmp_path: Pat
 
     monkeypatch.setattr(scanner_state.os, "replace", fail_replace)
 
-    with pytest.raises(OSError, match="simulated interrupted replace"):
+    with pytest.raises(
+        ScannerStateWriteError,
+        match="simulated interrupted replace",
+    ) as exc_info:
         store.save(replacement)
+
+    assert isinstance(exc_info.value, OSError)
 
     assert store.load(original.symbol, original.timeframe) == original
     assert destination.read_text(encoding="utf-8") == json.dumps(

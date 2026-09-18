@@ -5,10 +5,11 @@ from enum import StrEnum
 
 
 class ScannerRecoveryPhase(StrEnum):
-    """Production recovery boundary where a fallback was triggered."""
+    """Production recovery/operational boundary where state handling changed."""
 
     LOAD_VALIDATE = "LOAD_VALIDATE"
     RESUME = "RESUME"
+    PERSIST = "PERSIST"
 
 
 @dataclass(frozen=True, slots=True)
