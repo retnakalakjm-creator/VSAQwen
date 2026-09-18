@@ -146,3 +146,26 @@ typing merely because they are adjacent.
 
 No runtime source changes are required by this cut unless local strict mypy
 validation exposes a concrete type-contract defect.
+
+
+## J1 final cut — conservative coverage floor
+
+The measured core coverage baseline is 74% on the validated Windows run.
+
+After the Ruff gate and two strict-mypy scope expansions validated without lowering
+that baseline, J1 promotes a conservative CI floor of 70%:
+
+```text
+--cov-fail-under=70
+```
+
+The floor is intentionally below the observed 74% baseline. This leaves roughly
+four percentage points of headroom for legitimate refactors while preventing a
+large silent regression in exercised production/domain code.
+
+This is a repository-level core-package floor, not a claim that every individual
+module has adequate test coverage. Several modules remain much lower than the
+aggregate and should be improved through focused evidence-backed tests rather than
+by gaming exclusions.
+
+No new coverage exclusions are introduced by this cut.

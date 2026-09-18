@@ -950,7 +950,8 @@ See `docs/DAILY_BEHAVIOR_SEQUENCE_HISTORICAL_RUNNER.md`.
 
 ### PR-K4 — Frozen Prepared Daily Sequence Dataset Contract
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #301
 
 K4 makes the K3 prepared-input boundary portable without fabricating a real daily
 dataset from weekly artifacts.
@@ -985,6 +986,41 @@ K4 therefore defines the interchange/readiness contract only. A real frozen case
 must wait for a genuine daily-evidence export or reviewed daily casebook.
 
 See `docs/DAILY_BEHAVIOR_SEQUENCE_DATASET_CONTRACT.md`.
+
+### PR-K5 — Offline Point-in-Time Daily Evidence Producer
+
+**Status:** IN PROGRESS
+
+K5 provides the genuine daily-evidence source required by K4 without introducing
+a competing detector.
+
+For each completed daily target bar, K5 reuses the existing ProVSA stack:
+
+```text
+raw completed daily prefix
+→ MetricsEngine
+→ SwingEngine
+→ StructureFilter
+→ TrendAnalyzer
+→ EvidenceEngine
+→ current-target Evidence only
+```
+
+The future suffix is never passed into the stack. Metrics are recomputed from
+each raw prefix in this first research cut so the no-look-ahead boundary is
+explicit.
+
+The legacy `Evidence.week_beginning` field carries the exact daily session
+identity inside this audit path; that compatibility field name does not make the
+evidence weekly.
+
+K5 fingerprints the exact completed raw OHLCV source and keeps all outputs
+explicitly non-actionable.
+
+It does not run ScannerEngine qualification/ranking/actionability and does not
+infer the weekly direction needed by K3/K4.
+
+See `docs/OFFLINE_DAILY_EVIDENCE_PRODUCER.md`.
 
 
 ---
@@ -1045,7 +1081,8 @@ Avoid:
 | 24 | PR-K1 / #298 | P1 | Read-only daily behavior sequence audit | VALIDATED |
 | 25 | PR-K2 / #299 | P1 | Analysis-only daily behavior sequence outcome study | VALIDATED |
 | 26 | PR-K3 / #300 | P1 | Reproducible multi-symbol daily sequence historical runner | VALIDATED |
-| 27 | PR-K4 | P1 | Frozen prepared daily sequence dataset contract | IN PROGRESS |
+| 27 | PR-K4 / #301 | P1 | Frozen prepared daily sequence dataset contract | VALIDATED |
+| 28 | PR-K5 | P1 | Offline point-in-time daily evidence producer using existing VSA stack | IN PROGRESS |
 
 ---
 
@@ -1124,40 +1161,39 @@ measurable benchmark improvement
 | 2026-09-18 | #298 | M11 | VALIDATED | Read-only daily behavior sequence audit preserves temporal ordering without changing F3 trigger/replay behavior. |
 | 2026-09-18 | #299 | M11 | VALIDATED | Causal next-bar outcomes attach only to fresh current-bar sequence observations; study remains descriptive and non-actionable. |
 | 2026-09-18 | #300 | M11 | VALIDATED | Reproducible multi-symbol K1/K2 runner validated with fingerprints, failure ledger, and stable research artifacts. |
-| 2026-09-18 | PR-K4 | M11 | IN PROGRESS | Freeze/load prepared 1D sequence-study inputs with mandatory provenance and fail-closed fingerprint verification. |
+| 2026-09-18 | #301 | M11 | VALIDATED | Frozen 1D sequence-study dataset contract validates provenance/timeframe/schema and fails closed on fingerprint mismatch. |
+| 2026-09-18 | PR-K5 | M11 | IN PROGRESS | Produce genuine point-in-time daily Evidence offline by replaying the existing metrics/structure/trend/evidence stack on completed daily prefixes. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K4 — Frozen Prepared Daily Sequence Dataset Contract
+## NEXT: PR-K5 — Offline Point-in-Time Daily Evidence Producer
 
 Checklist:
 
-- [x] Merge and validate #300 K3 historical runner.
-- [x] Inspect available saved LT artifacts before claiming a real daily dataset.
-- [x] Do not reinterpret weekly audit artifacts as daily evidence.
-- [x] Define schema-versioned frozen JSON contract.
-- [x] Require dataset/source provenance.
-- [x] Require price_timeframe=1D and evidence_timeframe=1D.
-- [x] Serialize daily close/high/low bar identity exactly as consumed by K3.
-- [x] Serialize point-in-time weekly direction assignments.
-- [x] Serialize every Evidence field used by K1.
-- [x] Embed K3 input fingerprints per symbol.
-- [x] Recompute fingerprints before write.
-- [x] Recompute and verify fingerprints on load.
-- [x] Fail closed on tampered price/direction/evidence input.
-- [x] Reject unsupported schema versions.
-- [x] Allow loaded inputs to run through K3 with expected-fingerprint gating.
-- [x] Keep dataset objects explicitly non-actionable.
-- [x] Add round-trip/tamper/timeframe/schema tests.
-- [x] Add dataset module to Ruff.
-- [ ] Run K4 + K3 + K2 + K1 tests locally.
+- [x] Merge and validate #301 frozen daily sequence dataset contract.
+- [x] Reuse existing MetricsEngine, SwingEngine, StructureFilter, TrendAnalyzer, and EvidenceEngine.
+- [x] Do not run ScannerEngine qualification/ranking/actionability on daily bars.
+- [x] Apply completed_daily_only before evidence replay.
+- [x] Recompute each target from the raw daily prefix only.
+- [x] Never pass future daily bars to the evidence evaluator.
+- [x] Retain only Evidence whose bar_index equals the current target bar.
+- [x] Reject an evaluator that returns evidence for another bar.
+- [x] Preserve exact daily session identity through the legacy Evidence.week_beginning field.
+- [x] Fingerprint the completed raw OHLCV source.
+- [x] Keep all K5 outputs explicitly non-actionable.
+- [x] Keep weekly direction outside K5.
+- [x] Add prefix/no-look-ahead/completion/fingerprint tests.
+- [x] Add a smoke test through the real existing VSA stack.
+- [x] Add K5 producer to Ruff.
+- [ ] Run K5 + K4 + K3 + K2 + K1 tests locally.
 - [ ] Run Ruff.
-- [ ] Confirm loaded dataset fingerprints equal frozen fingerprints.
-- [ ] Confirm weekly-timeframe evidence is rejected.
+- [ ] Confirm forming daily bar exclusion.
+- [ ] Confirm future extension does not change already-produced observations.
+- [ ] Confirm real-stack output is target-bar-only.
 - [ ] Merge after manual validation.
-- [ ] Then obtain or build one genuine point-in-time daily evidence source before creating a real historical K4 case.
+- [ ] Then add a causal weekly-direction assignment exporter and build the first genuine frozen K4 case.
 
 ---
 
@@ -1216,4 +1252,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K4 — Frozen Prepared Daily Sequence Dataset Contract
+**Current PR:** PR-K5 — Offline Point-in-Time Daily Evidence Producer
