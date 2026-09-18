@@ -1167,7 +1167,8 @@ See `docs/WEEKLY_AUTHORITY_AUDIT.md`.
 
 ### PR-K11 — Production Weekly Candidate Decision Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #308
 
 K11 moves one boundary earlier than K10 and audits all production weekly
 ScannerCandidate outputs before WeeklySetup materialization.
@@ -1192,6 +1193,36 @@ This determines whether LT.NS has persistent-bullish candidates that are blocked
 later, or whether persistent-bullish structural qualification never forms.
 
 See `docs/WEEKLY_CANDIDATE_DECISION_AUDIT.md`.
+
+### PR-K12 — Production Weekly Structural Progression Audit
+
+**Status:** IN PROGRESS
+
+K12 moves one boundary earlier than K11 and audits the exact structural
+progression events emitted by the existing production evidence path.
+
+For each `STRUCTURAL_PROGRESSION_IMPROVING` or
+`STRUCTURAL_PROGRESSION_WEAKENING` event it records:
+
+```text
+event bar/week/code/direction/strength
+professional progression difference
+trend direction/state + structural pattern
+latest confirmed structural swing provenance
+previous event spacing
+previous same-direction spacing within the active campaign
+qualification state immediately after the event
+whether the event was selected as qualifying evidence
+```
+
+The audit mirrors the existing qualification reset rule: an opposing structural
+event clears the prior same-direction spacing reference.
+
+This determines whether LT.NS emitted no bullish progression events at all, or
+whether bullish events existed but never satisfied the existing persistence
+sequence.
+
+See `docs/WEEKLY_STRUCTURAL_PROGRESSION_AUDIT.md`.
 
 
 ---
@@ -1259,7 +1290,8 @@ Avoid:
 | 31 | PR-K8 / #305 | P1 | Generate genuine frozen K4 case from production weekly authority + real daily history | VALIDATED |
 | 32 | PR-K9 / #306 | P1 | Run frozen K4 through unchanged K3/K2/K1 and write review bundle | VALIDATED |
 | 33 | PR-K10 / #307 | P1 | Audit production weekly setup directions versus causal daily authority spans | VALIDATED |
-| 34 | PR-K11 | P1 | Audit all production weekly candidate decisions before WeeklySetup materialization | IN PROGRESS |
+| 34 | PR-K11 / #308 | P1 | Audit all production weekly candidate decisions before WeeklySetup materialization | VALIDATED |
+| 35 | PR-K12 | P1 | Audit raw weekly structural-progression events feeding qualification | IN PROGRESS |
 
 ---
 
@@ -1345,35 +1377,37 @@ measurable benchmark improvement
 | 2026-09-18 | #305 | M11 | VALIDATED | Real-market generator manually validated and merged; LT.NS produced 1246 daily bars, 37 production-weekly setups, 463 weekly-direction assignments, and a frozen non-actionable K4 dataset. |
 | 2026-09-18 | #306 | M11 | VALIDATED | First frozen LT.NS study completed with the original K4 fingerprint, 463 records, 65 fresh sequences, 325 horizon observations, 85 signature summaries, and zero symbol failures. |
 | 2026-09-18 | #307 | M11 | VALIDATED | LT.NS authority audit localized the asymmetry upstream of K6: all 37 production WeeklySetup rows are persistent-bearish; 36 were selected, while the final 2026-09-14 setup first becomes available after the study cutoff. |
-| 2026-09-18 | PR-K11 | M11 | IN PROGRESS | Audit all 243 production weekly ScannerCandidate decisions to determine whether persistent-bullish candidates exist but fail later gates, or never form structurally. |
+| 2026-09-18 | #308 | M11 | VALIDATED | LT.NS candidate audit showed 243 candidates = 136 unqualified + 107 persistent-bearish + 0 persistent-bullish; 37 bearish candidates were actionable/materialized and 70 bearish-qualified candidates were blocked by existing VSA freshness/confirmation/conflict gates. |
+| 2026-09-18 | PR-K12 | M11 | IN PROGRESS | Audit the raw production weekly structural-progression event stream, swing provenance, campaign resets, and qualification state to explain why no persistent-bullish qualification forms. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K11 — Production Weekly Candidate Decision Audit
+## NEXT: PR-K12 — Production Weekly Structural Progression Audit
 
 Checklist:
 
-- [x] Mark #307 / K10 validated and merged.
-- [x] Record the K10 finding: 37/37 production WeeklySetup rows are persistent-bearish.
-- [x] Record the expected unselected final setup whose first consumer is after the 2026-09-18 cutoff.
-- [x] Reuse the completed-daily → completed-weekly → MetricsEngine → HistoricalScannerRunner production path.
-- [x] Audit all production weekly candidates, not only materialized setups.
-- [x] Record final qualification and qualification-evidence actionability.
-- [x] Record final candidate actionability and exact reason.
-- [x] Record confidence, net strength/pressure, scoring age, fallback usage, and anomaly status.
-- [x] Record qualifying/scoring evidence codes.
-- [x] Reuse the existing WeeklySetup materializer as the materialization boundary.
-- [x] Report explicit zero-count qualification/actionability/direction categories.
+- [x] Mark #308 / K11 validated and merged.
+- [x] Record K11 result: 136 unqualified, 107 persistent-bearish, 0 persistent-bullish.
+- [x] Preserve the same production-weekly source fingerprint used by K8/K10/K11.
+- [x] Reuse the existing HistoricalScannerRunner candidate stream.
+- [x] Consume only structural-progression events already emitted in target-bar evidence.
+- [x] Record professional progression difference without changing its threshold.
+- [x] Record trend direction/state and structural pattern at each event.
+- [x] Record latest confirmed structural-swing provenance and professional overall score.
+- [x] Record spacing from the prior event and prior same-direction event.
+- [x] Mirror PatternQualificationEngine opposing-event campaign reset semantics.
+- [x] Record qualification state immediately after each event.
+- [x] Record whether each event was selected into qualifying evidence.
 - [x] Keep all output explicitly non-actionable.
-- [x] Add K11 module/CLI to Ruff.
-- [ ] Run focused K11 + K10 + K8 scanner-boundary tests locally.
+- [x] Add K12 module/CLI to Ruff.
+- [ ] Run focused K12 + qualification + transition evidence tests locally.
 - [ ] Run Ruff locally.
-- [ ] Run K11 against LT.NS at the same 2026-09-18 cutoff.
-- [ ] Inspect persistent_bullish candidate count.
-- [ ] If bullish candidates exist, inspect their final reason counts and materialization failures.
-- [ ] If bullish candidates do not exist, move the audit boundary into structural progression/qualification events.
+- [ ] Run K12 against LT.NS at the same 2026-09-18 cutoff.
+- [ ] Inspect bullish versus bearish progression-event counts.
+- [ ] If bullish event count is zero, move the audit into progression score inputs / structural swing scoring.
+- [ ] If bullish events exist, inspect spacing/reset chronology before changing any qualification rule.
 - [ ] Merge after manual validation.
 
 ---
@@ -1433,4 +1467,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K11 — Production Weekly Candidate Decision Audit
+**Current PR:** PR-K12 — Production Weekly Structural Progression Audit
