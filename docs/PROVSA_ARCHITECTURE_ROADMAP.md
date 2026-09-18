@@ -903,7 +903,8 @@ See `docs/DAILY_BEHAVIOR_SEQUENCE_OUTCOME_STUDY.md`.
 
 ### PR-K3 — Reproducible Multi-Symbol Daily Sequence Historical Runner
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #300
 
 K3 runs K1/K2 across explicit prepared point-in-time research inputs without
 inventing a second daily evidence detector or reconstructing weekly setup
@@ -946,6 +947,44 @@ production actionability
 ```
 
 See `docs/DAILY_BEHAVIOR_SEQUENCE_HISTORICAL_RUNNER.md`.
+
+### PR-K4 — Frozen Prepared Daily Sequence Dataset Contract
+
+**Status:** IN PROGRESS
+
+K4 makes the K3 prepared-input boundary portable without fabricating a real daily
+dataset from weekly artifacts.
+
+Frozen datasets carry:
+
+```text
+mandatory source provenance
+1D price/evidence timeframe identity
+daily close/high/low bars
+point-in-time weekly direction assignments
+full Evidence records
+embedded K3 fingerprints
+```
+
+The writer recomputes retained fingerprints before writing. The loader rebuilds
+the K3 inputs, recomputes fingerprints, and fails closed if price, direction, or
+evidence content has been changed.
+
+A loaded dataset can then run through K3 with its retained fingerprints as the
+expected baseline.
+
+Current real-data boundary:
+
+```text
+available saved weekly audit artifacts
+!=
+genuine point-in-time daily evidence dataset
+```
+
+K4 therefore defines the interchange/readiness contract only. A real frozen case
+must wait for a genuine daily-evidence export or reviewed daily casebook.
+
+See `docs/DAILY_BEHAVIOR_SEQUENCE_DATASET_CONTRACT.md`.
 
 
 ---
@@ -1005,7 +1044,8 @@ Avoid:
 | 23 | PR-J1 / #294-#297 | P2 | Ruff/type/coverage gates | VALIDATED |
 | 24 | PR-K1 / #298 | P1 | Read-only daily behavior sequence audit | VALIDATED |
 | 25 | PR-K2 / #299 | P1 | Analysis-only daily behavior sequence outcome study | VALIDATED |
-| 26 | PR-K3 | P1 | Reproducible multi-symbol daily sequence historical runner | IN PROGRESS |
+| 26 | PR-K3 / #300 | P1 | Reproducible multi-symbol daily sequence historical runner | VALIDATED |
+| 27 | PR-K4 | P1 | Frozen prepared daily sequence dataset contract | IN PROGRESS |
 
 ---
 
@@ -1083,38 +1123,41 @@ measurable benchmark improvement
 | 2026-09-18 | #297 | M10 | VALIDATED | 70% aggregate core coverage floor validated at 73.87%; full suite 1018 passed / 1 skipped. |
 | 2026-09-18 | #298 | M11 | VALIDATED | Read-only daily behavior sequence audit preserves temporal ordering without changing F3 trigger/replay behavior. |
 | 2026-09-18 | #299 | M11 | VALIDATED | Causal next-bar outcomes attach only to fresh current-bar sequence observations; study remains descriptive and non-actionable. |
-| 2026-09-18 | PR-K3 | M11 | IN PROGRESS | Run K1/K2 across fingerprinted prepared multi-symbol inputs with explicit failure accounting. |
+| 2026-09-18 | #300 | M11 | VALIDATED | Reproducible multi-symbol K1/K2 runner validated with fingerprints, failure ledger, and stable research artifacts. |
+| 2026-09-18 | PR-K4 | M11 | IN PROGRESS | Freeze/load prepared 1D sequence-study inputs with mandatory provenance and fail-closed fingerprint verification. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K3 — Reproducible Multi-Symbol Daily Sequence Historical Runner
+## NEXT: PR-K4 — Frozen Prepared Daily Sequence Dataset Contract
 
 Checklist:
 
-- [x] Merge and validate #299 K2 outcome study.
-- [x] Keep K3 input-driven; do not invent a price-derived daily evidence detector.
-- [x] Accept explicit point-in-time weekly direction assignments by daily bar.
-- [x] Accept explicit point-in-time daily Evidence.
-- [x] Replay K1 sequence audit per assigned bar.
-- [x] Attach K2 outcomes only through the existing fresh-sequence guard.
-- [x] Fingerprint consumed close/high/low history, directions, and evidence.
-- [x] Normalize equivalent input ordering for reproducible fingerprints.
-- [x] Support optional expected-fingerprint gating.
-- [x] Fail fast by default.
-- [x] Allow explicit per-symbol continuation with exact failure ledger.
-- [x] Aggregate exact-signature descriptive outcomes across successful symbols.
-- [x] Export transparent JSON/CSV study artifacts.
-- [x] Keep all runner outputs explicitly non-actionable.
-- [x] Add deterministic synthetic multi-symbol/fingerprint/failure tests.
-- [x] Add K3 runner to Ruff.
-- [ ] Run K3 + K2 + K1 tests locally.
+- [x] Merge and validate #300 K3 historical runner.
+- [x] Inspect available saved LT artifacts before claiming a real daily dataset.
+- [x] Do not reinterpret weekly audit artifacts as daily evidence.
+- [x] Define schema-versioned frozen JSON contract.
+- [x] Require dataset/source provenance.
+- [x] Require price_timeframe=1D and evidence_timeframe=1D.
+- [x] Serialize daily close/high/low bar identity exactly as consumed by K3.
+- [x] Serialize point-in-time weekly direction assignments.
+- [x] Serialize every Evidence field used by K1.
+- [x] Embed K3 input fingerprints per symbol.
+- [x] Recompute fingerprints before write.
+- [x] Recompute and verify fingerprints on load.
+- [x] Fail closed on tampered price/direction/evidence input.
+- [x] Reject unsupported schema versions.
+- [x] Allow loaded inputs to run through K3 with expected-fingerprint gating.
+- [x] Keep dataset objects explicitly non-actionable.
+- [x] Add round-trip/tamper/timeframe/schema tests.
+- [x] Add dataset module to Ruff.
+- [ ] Run K4 + K3 + K2 + K1 tests locally.
 - [ ] Run Ruff.
-- [ ] Confirm fingerprint mismatch fails closed.
-- [ ] Confirm continuation never silently drops a failed symbol.
+- [ ] Confirm loaded dataset fingerprints equal frozen fingerprints.
+- [ ] Confirm weekly-timeframe evidence is rejected.
 - [ ] Merge after manual validation.
-- [ ] Then materialize one small real historical prepared dataset before any broad-universe interpretation.
+- [ ] Then obtain or build one genuine point-in-time daily evidence source before creating a real historical K4 case.
 
 ---
 
@@ -1173,4 +1216,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K3 — Reproducible Multi-Symbol Daily Sequence Historical Runner
+**Current PR:** PR-K4 — Frozen Prepared Daily Sequence Dataset Contract
