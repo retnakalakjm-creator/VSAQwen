@@ -83,3 +83,66 @@ These gates do not change:
 - scanner state semantics;
 - market-data policy;
 - alerts/execution/orders.
+
+
+## J1 second cut — typed domain boundaries
+
+The second J1 cut introduces strict mypy only on small stable public/domain
+modules:
+
+```text
+scanner_exceptions.py
+scanner_recovery.py
+scanner_policy.py
+weekly_setup.py
+```
+
+Configuration:
+
+```text
+python_version = 3.11
+strict = true
+follow_imports = skip
+```
+
+`follow_imports = skip` is deliberate. The target modules are checked strictly,
+but this cut does not recursively pull pandas-heavy or legacy implementation
+modules into the typing gate.
+
+The goal is to establish a typed public-boundary island first. Expansion should
+happen one boundary at a time after each scope is clean and useful.
+
+This cut does not add `type: ignore` suppressions to runtime code and does not
+change scanner behavior.
+
+
+## J1 third cut — weekly-to-daily typed domain expansion
+
+After the initial typed-domain gate validated, the strict mypy island expands to
+three additional modules:
+
+```text
+weekly_setup_materializer.py
+daily_behavior.py
+daily_entry.py
+```
+
+These modules form the non-pandas weekly-to-daily domain handoff:
+
+```text
+production ScannerCandidate
+        ↓
+WeeklySetup materializer
+        ↓
+Daily behavior model
+        ↓
+Daily shadow-entry observation
+```
+
+The pandas/session/replay infrastructure remains outside this cut. In particular,
+`weekly_daily_coordinator.py`, `daily_trigger_replay.py`,
+`daily_completion.py`, and `trading_calendar.py` are not promoted into strict
+typing merely because they are adjacent.
+
+No runtime source changes are required by this cut unless local strict mypy
+validation exposes a concrete type-contract defect.

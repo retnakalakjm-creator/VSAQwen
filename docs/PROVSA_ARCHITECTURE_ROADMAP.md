@@ -753,7 +753,7 @@ the existing replay fallback rebuilds state.
 # M10 — Modernization & CI Quality Gates
 
 **Priority:** P2  
-**Status:** IN PROGRESS
+**Status:** VALIDATED
 
 Candidate tooling:
 
@@ -767,8 +767,8 @@ typing.Protocol boundaries
 
 ### PR-J1 — Ruff / Type / Coverage Gates
 
-**Status:** IN PROGRESS  
-**Baseline cut:** #294 VALIDATED
+**Status:** MERGED + MANUALLY VALIDATED  
+**PRs:** #294, #295, #296, #297
 
 J1 is staged to avoid a repository-wide non-semantic rewrite.
 
@@ -791,8 +791,70 @@ pytest: 1018 passed, 1 skipped
 coverage: 74% (5500 statements / 1437 missed)
 ```
 
-Later J1 cuts may add targeted typing and a justified coverage floor from this
-measured baseline.
+Second J1 cut (#295) validated strict mypy on the stable public/domain boundary
+modules `scanner_exceptions.py`, `scanner_recovery.py`, `scanner_policy.py`,
+and `weekly_setup.py`.
+
+Third J1 cut (#296) validated the strict island expansion to the non-pandas
+weekly→daily domain handoff:
+
+```text
+weekly_setup_materializer.py
+daily_behavior.py
+daily_entry.py
+```
+
+Pandas/session/replay infrastructure remains outside strict typing.
+
+Final J1 cut promotes a conservative 70% aggregate core-package coverage floor
+against the validated 74% baseline. The margin is deliberate: protect against
+large regressions without freezing legitimate refactors or pretending that low
+coverage in individual modules is solved by the aggregate percentage.
+
+---
+
+# M11 — Daily Evidence Enrichment & Sequence Audit
+
+**Priority:** P1  
+**Status:** IN PROGRESS
+
+Objective: enrich shadow daily evidence without creating a new production trigger,
+score, ranking rule, or mandatory textbook sequence.
+
+### PR-K1 — Read-Only Daily Behavior Sequence Audit
+
+**Status:** IN PROGRESS
+
+The existing DailyBehaviorSnapshot aggregates supported dimensions inside a bounded
+recent window. K1 adds a separate temporal audit that preserves the exact bars on
+which those already-supported dimensions appeared.
+
+```text
+bounded evidence window
+        ↓
+existing per-bar DailyBehavior mapping
+        ↓
+ordered sparse behavior steps
+        ↓
+first / last / repeated occurrence audit
+```
+
+K1 does not introduce a preferred sequence. An observed order such as opposing
+pressure receding → aligned pressure emerging remains descriptive only.
+
+Safety boundary:
+
+```text
+sequence observation
+!=
+sequence score
+!=
+entry trigger
+!=
+production actionability
+```
+
+See `docs/DAILY_BEHAVIOR_SEQUENCE_AUDIT.md`.
 
 ---
 
@@ -848,7 +910,8 @@ Avoid:
 | 20 | PR-I1 / #289-#291 | P2 | Recovery telemetry/persistence hardening | VALIDATED |
 | 21 | PR-I2 / #292 | P2 | Cache/metadata generation consistency | VALIDATED |
 | 22 | PR-I3 / #293 | P2 | Historical revision/corporate-action audit policy | VALIDATED |
-| 23 | PR-J1 | P2 | Ruff/type/coverage gates | IN PROGRESS |
+| 23 | PR-J1 / #294-#297 | P2 | Ruff/type/coverage gates | VALIDATED |
+| 24 | PR-K1 | P1 | Read-only daily behavior sequence audit | IN PROGRESS |
 
 ---
 
@@ -921,32 +984,36 @@ measurable benchmark improvement
 | 2026-09-18 | #292 | M9 | VALIDATED | Cache metadata is bound to exact file generations; same-symbol cache/metadata writes are serialized and mismatch remains diagnostic-only. |
 | 2026-09-18 | #293 | M9 | VALIDATED | Read-only raw-history revision audit detects older provider corrections without mutating cache or inferring corporate-action cause. |
 | 2026-09-18 | #294 | M10 | VALIDATED | Ruff correctness gate passes; full suite 1018 passed / 1 skipped; measured core coverage baseline is 74% on Windows Python 3.13.15. |
+| 2026-09-18 | #295 | M10 | VALIDATED | Strict mypy gate validated for scanner exceptions/recovery/policy and WeeklySetup public domain boundaries. |
+| 2026-09-18 | #296 | M10 | VALIDATED | Strict mypy expanded to WeeklySetup materialization plus daily behavior/entry domain with no runtime changes. |
+| 2026-09-18 | #297 | M10 | VALIDATED | 70% aggregate core coverage floor validated at 73.87%; full suite 1018 passed / 1 skipped. |
+| 2026-09-18 | PR-K1 | M11 | IN PROGRESS | Preserve temporal order of existing daily behavior dimensions as read-only shadow audit evidence. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-J1 — Python Quality Baseline
+## NEXT: PR-K1 — Daily Behavior Sequence Audit
 
 Checklist:
 
-- [x] Close M9 after validated I1/I2/I3 operational hardening.
-- [x] Add dedicated requirements-ci.txt.
-- [x] Add Python 3.11 Ruff configuration.
-- [x] Restrict the first Ruff gate to syntax/control-flow/undefined-name correctness rules.
-- [x] Apply the same Ruff gate in hosted and Windows self-hosted CI.
-- [x] Add pytest-cov to both backend CI paths.
-- [x] Measure core scanner/data/domain package coverage.
-- [x] Generate coverage.xml without enforcing an arbitrary percentage.
-- [x] Ignore generated coverage artifacts.
-- [x] Document staged type-checking and coverage-floor policy.
-- [x] Run Ruff locally on Windows.
-- [x] Run the full pytest suite with the coverage command.
-- [x] Record the observed 74% coverage baseline.
-- [x] Preserve legacy injected-state-store compatibility while retaining real-store CAS.
-- [x] Confirm the full suite passes: 1018 passed, 1 skipped.
-- [ ] Merge #294.
-- [ ] Then select a narrow public-boundary type-checking scope from measured issues.
+- [x] Close J1 / M10 after #297 coverage-floor validation.
+- [x] Keep existing DailyBehaviorDimension mappings unchanged.
+- [x] Add immutable read-only DailyBehaviorSequence and step models.
+- [x] Evaluate each bar independently with the existing behavior mapping.
+- [x] Preserve exact bar ordering for observed dimensions.
+- [x] Expose first/last/repeated occurrence audit helpers.
+- [x] Exclude stale evidence outside the bounded window.
+- [x] Exclude future evidence after the target bar.
+- [x] Keep opposing-direction evidence from becoming positive aligned behavior.
+- [x] Keep sequence output explicitly non-actionable.
+- [x] Add bullish/bearish synthetic sequence tests.
+- [x] Add the new domain module to Ruff and strict mypy gates.
+- [ ] Run sequence + existing daily behavior/entry/replay tests.
+- [ ] Run Ruff and mypy locally.
+- [ ] Confirm F3 trigger/replay behavior is unchanged.
+- [ ] Merge after manual validation.
+- [ ] Then use replay/audit evidence to decide which multi-bar relationships deserve outcome study; do not promote a sequence by assumption.
 
 ---
 
@@ -1004,5 +1071,5 @@ ProVSA should ultimately demonstrate:
 ---
 
 **Document owner:** ProVSA project  
-**Current milestone:** M10 — Modernization & CI Quality Gates  
-**Current PR:** PR-J1 — Python Quality Baseline
+**Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
+**Current PR:** PR-K1 — Daily Behavior Sequence Audit
