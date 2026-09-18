@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, time as datetime_time, timezone
 from pathlib import Path
@@ -22,7 +25,7 @@ INCREMENTAL_PERIOD = "10d"
 METRIC_REPLAY_SEED_BARS = config.LOOKBACK_PERIOD * 2
 MARKET_TIMEZONE = "Asia/Kolkata"
 WEEKLY_BAR_CLOSE_TIME = "15:30"
-CACHE_FORMAT_VERSION = 1
+CACHE_FORMAT_VERSION = 2
 CACHE_INTERVAL = "1d"
 CACHE_FORMAT_PARQUET = "parquet"
 CACHE_FORMAT_CSV = "csv"
@@ -78,6 +81,7 @@ class CacheMetadata:
     last_date: str | None
     updated_at_utc: str
     stale_reason: str | None = None
+    generation_id: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "CacheMetadata":
@@ -93,7 +97,25 @@ class CacheMetadata:
             last_date=(None if data.get("last_date") is None else str(data["last_date"])),
             updated_at_utc=str(data["updated_at_utc"]),
             stale_reason=(None if data.get("stale_reason") is None else str(data["stale_reason"])),
+            generation_id=(
+                None
+                if data.get("generation_id") is None
+                else str(data["generation_id"])
+            ),
         )
+
+@dataclass(frozen=True, slots=True)
+class CacheGenerationStatus:
+    """Diagnostic relationship between one cache file and its metadata sidecar."""
+
+    symbol: str
+    cache_format: str | None
+    metadata_present: bool
+    data_present: bool
+    consistent: bool | None
+    reason: str
+    metadata_generation: str | None = None
+    actual_generation: str | None = None
 
 
 def _normalize_daily_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -152,6 +174,53 @@ def _cache_metadata_path(symbol: str) -> Path:
     return CACHE_DIR / f"{symbol}.metadata.json"
 
 
+def _cache_lock_path(symbol: str) -> Path:
+    token = hashlib.sha256(symbol.encode("utf-8")).hexdigest()[:24]
+    return CACHE_DIR / f".{token}.cache.lock"
+
+
+@contextmanager
+def _exclusive_cache_lock(symbol: str):
+    """Serialize one symbol cache generation across processes."""
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    handle = _cache_lock_path(symbol).open("a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+                os.fsync(handle.fileno())
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
+def _file_generation(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -163,6 +232,7 @@ def _cache_metadata(
     source: str,
     cache_format: str,
     stale_reason: str | None = None,
+    generation_id: str | None = None,
 ) -> CacheMetadata:
     return CacheMetadata(
         schema_version=CACHE_FORMAT_VERSION,
@@ -176,7 +246,43 @@ def _cache_metadata(
         last_date=None if df.empty else pd.Timestamp(df.index[-1]).isoformat(),
         updated_at_utc=_utc_now(),
         stale_reason=stale_reason,
+        generation_id=generation_id,
     )
+
+
+def _cache_path_for_format(symbol: str, cache_format: str) -> Path:
+    if cache_format == CACHE_FORMAT_PARQUET:
+        return _cache_data_path(symbol)
+    if cache_format == CACHE_FORMAT_CSV:
+        return _legacy_cache_path(symbol)
+    raise ValueError(f"Unsupported cache format: {cache_format}")
+
+
+def _write_cache_metadata_unlocked(
+    symbol: str,
+    df: pd.DataFrame,
+    *,
+    source: str,
+    cache_format: str,
+    stale_reason: str | None = None,
+) -> None:
+    metadata_path = _cache_metadata_path(symbol)
+    temp_path = metadata_path.with_name(f".{metadata_path.name}.tmp")
+    data_path = _cache_path_for_format(symbol, cache_format)
+    generation_id = _file_generation(data_path) if data_path.exists() else None
+    metadata = _cache_metadata(
+        symbol,
+        df,
+        source=source,
+        cache_format=cache_format,
+        stale_reason=stale_reason,
+        generation_id=generation_id,
+    )
+    temp_path.write_text(
+        json.dumps(asdict(metadata), ensure_ascii=False, sort_keys=True, indent=2),
+        encoding="utf-8",
+    )
+    temp_path.replace(metadata_path)
 
 
 def _write_cache_metadata(
@@ -187,55 +293,51 @@ def _write_cache_metadata(
     cache_format: str,
     stale_reason: str | None = None,
 ) -> None:
-    metadata_path = _cache_metadata_path(symbol)
-    temp_path = metadata_path.with_name(f".{metadata_path.name}.tmp")
-    metadata = _cache_metadata(
-        symbol,
-        df,
-        source=source,
-        cache_format=cache_format,
-        stale_reason=stale_reason,
-    )
-    temp_path.write_text(
-        json.dumps(asdict(metadata), ensure_ascii=False, sort_keys=True, indent=2),
-        encoding="utf-8",
-    )
-    temp_path.replace(metadata_path)
+    with _exclusive_cache_lock(symbol):
+        _write_cache_metadata_unlocked(
+            symbol,
+            df,
+            source=source,
+            cache_format=cache_format,
+            stale_reason=stale_reason,
+        )
 
 
 def _write_parquet_cache(symbol: str, df: pd.DataFrame, *, source: str) -> Path:
     data_path = _cache_data_path(symbol)
     temp_path = data_path.with_name(f".{data_path.name}.tmp")
-    try:
-        df.to_parquet(temp_path)
-        temp_path.replace(data_path)
-        _write_cache_metadata(
-            symbol,
-            df,
-            source=source,
-            cache_format=CACHE_FORMAT_PARQUET,
-        )
-    except Exception:
-        temp_path.unlink(missing_ok=True)
-        raise
+    with _exclusive_cache_lock(symbol):
+        try:
+            df.to_parquet(temp_path)
+            temp_path.replace(data_path)
+            _write_cache_metadata_unlocked(
+                symbol,
+                df,
+                source=source,
+                cache_format=CACHE_FORMAT_PARQUET,
+            )
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
     return data_path
 
 
 def _write_csv_cache(symbol: str, df: pd.DataFrame, *, source: str) -> Path:
     data_path = _legacy_cache_path(symbol)
     temp_path = data_path.with_name(f".{data_path.name}.tmp")
-    try:
-        df.to_csv(temp_path)
-        temp_path.replace(data_path)
-        _write_cache_metadata(
-            symbol,
-            df,
-            source=source,
-            cache_format=CACHE_FORMAT_CSV,
-        )
-    except Exception:
-        temp_path.unlink(missing_ok=True)
-        raise
+    with _exclusive_cache_lock(symbol):
+        try:
+            df.to_csv(temp_path)
+            temp_path.replace(data_path)
+            _write_cache_metadata_unlocked(
+                symbol,
+                df,
+                source=source,
+                cache_format=CACHE_FORMAT_CSV,
+            )
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
     return data_path
 
 
@@ -256,12 +358,100 @@ def _write_cached_data(symbol: str, df: pd.DataFrame, *, source: str) -> Path:
     return _write_csv_cache(symbol, df, source=source)
 
 
-def read_cache_metadata(symbol: str) -> CacheMetadata | None:
-    """Read cache metadata for diagnostics, if the sidecar exists."""
+def _read_cache_metadata_unlocked(symbol: str) -> CacheMetadata | None:
     metadata_path = _cache_metadata_path(symbol)
     if not metadata_path.exists():
         return None
-    return CacheMetadata.from_dict(json.loads(metadata_path.read_text(encoding="utf-8")))
+    return CacheMetadata.from_dict(
+        json.loads(metadata_path.read_text(encoding="utf-8"))
+    )
+
+
+def read_cache_metadata(symbol: str) -> CacheMetadata | None:
+    """Read cache metadata for diagnostics, if the sidecar exists."""
+    with _exclusive_cache_lock(symbol):
+        return _read_cache_metadata_unlocked(symbol)
+
+
+def inspect_cache_generation(symbol: str) -> CacheGenerationStatus:
+    """Report whether metadata describes the exact current cache-file generation."""
+
+    with _exclusive_cache_lock(symbol):
+        try:
+            metadata = _read_cache_metadata_unlocked(symbol)
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+            return CacheGenerationStatus(
+                symbol=symbol,
+                cache_format=None,
+                metadata_present=True,
+                data_present=(
+                    _cache_data_path(symbol).exists()
+                    or _legacy_cache_path(symbol).exists()
+                ),
+                consistent=False,
+                reason="metadata_invalid",
+            )
+
+        if metadata is None:
+            return CacheGenerationStatus(
+                symbol=symbol,
+                cache_format=None,
+                metadata_present=False,
+                data_present=(
+                    _cache_data_path(symbol).exists()
+                    or _legacy_cache_path(symbol).exists()
+                ),
+                consistent=None,
+                reason="metadata_missing",
+            )
+
+        try:
+            data_path = _cache_path_for_format(symbol, metadata.format)
+        except ValueError:
+            return CacheGenerationStatus(
+                symbol=symbol,
+                cache_format=metadata.format,
+                metadata_present=True,
+                data_present=False,
+                consistent=False,
+                reason="metadata_format_unsupported",
+                metadata_generation=metadata.generation_id,
+            )
+
+        if not data_path.exists():
+            return CacheGenerationStatus(
+                symbol=symbol,
+                cache_format=metadata.format,
+                metadata_present=True,
+                data_present=False,
+                consistent=False,
+                reason="data_missing",
+                metadata_generation=metadata.generation_id,
+            )
+
+        actual_generation = _file_generation(data_path)
+        if metadata.generation_id is None:
+            return CacheGenerationStatus(
+                symbol=symbol,
+                cache_format=metadata.format,
+                metadata_present=True,
+                data_present=True,
+                consistent=None,
+                reason="legacy_metadata_without_generation",
+                actual_generation=actual_generation,
+            )
+
+        consistent = metadata.generation_id == actual_generation
+        return CacheGenerationStatus(
+            symbol=symbol,
+            cache_format=metadata.format,
+            metadata_present=True,
+            data_present=True,
+            consistent=consistent,
+            reason="generation_match" if consistent else "generation_mismatch",
+            metadata_generation=metadata.generation_id,
+            actual_generation=actual_generation,
+        )
 
 
 def _read_parquet_cache(symbol: str) -> pd.DataFrame:

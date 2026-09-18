@@ -50,3 +50,34 @@ It does not change:
 Before this fix is merged locally, the workaround for Parquet-engine failures is to delete the affected `.parquet` cache files from the repo `cache/` folder so CSV can be rebuilt.
 
 After this fix is active, that manual symbol-by-symbol cleanup should no longer be required for Parquet-only cache files.
+
+
+## Cache data/metadata generation consistency
+
+The daily cache file and its metadata sidecar are separate files, so replacing them
+cannot be one filesystem-atomic operation. ProVSA therefore treats the metadata as
+diagnostic rather than authoritative and adds two protections:
+
+1. cache data + metadata writes for one symbol are serialized with a cross-process
+   file lock;
+2. new metadata records a `generation_id` derived from the SHA-256 digest of the
+   exact finalized cache file.
+
+`inspect_cache_generation(symbol)` can report:
+
+```text
+generation_match
+generation_mismatch
+legacy_metadata_without_generation
+metadata_missing
+metadata_invalid
+metadata_format_unsupported
+data_missing
+```
+
+This detects interrupted commits and unexpected out-of-band cache-file changes.
+It does **not** reject otherwise usable OHLCV data. Cache generation consistency
+is operational telemetry and repair evidence, not a VSA/scanner decision input.
+
+Existing version-1 metadata remains readable. It is reported as
+`legacy_metadata_without_generation` until the cache is next rewritten.

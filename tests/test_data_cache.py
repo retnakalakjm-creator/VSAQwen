@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -205,3 +206,113 @@ def test_download_data_uses_fresh_cache_without_network(monkeypatch) -> None:
             check_freq=False,
     )
 
+
+
+def test_cache_metadata_binds_to_exact_csv_generation(monkeypatch) -> None:
+    expected = _daily_frame()
+    monkeypatch.setattr(data, "_parquet_engine_available", lambda: False)
+
+    data._write_cached_data("TEST.NS", expected, source="unit_test")
+
+    metadata = data.read_cache_metadata("TEST.NS")
+    status = data.inspect_cache_generation("TEST.NS")
+
+    assert metadata is not None
+    assert metadata.schema_version == data.CACHE_FORMAT_VERSION
+    assert metadata.generation_id is not None
+    assert metadata.generation_id.startswith("sha256:")
+    assert status.cache_format == data.CACHE_FORMAT_CSV
+    assert status.metadata_present is True
+    assert status.data_present is True
+    assert status.consistent is True
+    assert status.reason == "generation_match"
+    assert status.metadata_generation == metadata.generation_id
+    assert status.actual_generation == metadata.generation_id
+
+
+def test_cache_generation_mismatch_is_diagnostic_only(monkeypatch) -> None:
+    original = _daily_frame()
+    replacement = _daily_frame().copy()
+    replacement.loc[replacement.index[-1], "close"] += 7.0
+    monkeypatch.setattr(data, "_parquet_engine_available", lambda: False)
+
+    cache_path = data._write_cached_data(
+        "TEST.NS",
+        original,
+        source="unit_test",
+    )
+    replacement.to_csv(cache_path)
+
+    status = data.inspect_cache_generation("TEST.NS")
+    assert status.consistent is False
+    assert status.reason == "generation_mismatch"
+    assert status.metadata_generation != status.actual_generation
+
+    def fail_download(*args, **kwargs):
+        raise AssertionError("generation diagnostics must not become a cache gate")
+
+    monkeypatch.setattr(data.yf, "download", fail_download)
+    actual = data.download_data(
+        "TEST.NS",
+        cache_max_age=60 * 60,
+    )
+
+    pd.testing.assert_frame_equal(
+        actual,
+        replacement,
+        check_freq=False,
+    )
+
+
+def test_legacy_metadata_without_generation_remains_readable(monkeypatch) -> None:
+    expected = _daily_frame()
+    monkeypatch.setattr(data, "_parquet_engine_available", lambda: False)
+
+    data._write_cached_data("TEST.NS", expected, source="unit_test")
+    metadata_path = data._cache_metadata_path("TEST.NS")
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    payload.pop("generation_id")
+    payload["schema_version"] = 1
+    metadata_path.write_text(
+        json.dumps(payload, sort_keys=True, indent=2),
+        encoding="utf-8",
+    )
+
+    metadata = data.read_cache_metadata("TEST.NS")
+    status = data.inspect_cache_generation("TEST.NS")
+
+    assert metadata is not None
+    assert metadata.schema_version == 1
+    assert metadata.generation_id is None
+    assert status.data_present is True
+    assert status.consistent is None
+    assert status.reason == "legacy_metadata_without_generation"
+
+
+def test_interrupted_metadata_commit_is_detectable(
+    monkeypatch,
+) -> None:
+    original = _daily_frame()
+    replacement = _daily_frame().copy()
+    replacement.loc[replacement.index[-1], "volume"] += 500
+    monkeypatch.setattr(data, "_parquet_engine_available", lambda: False)
+
+    data._write_cached_data("TEST.NS", original, source="unit_test")
+
+    def fail_metadata(*args, **kwargs):
+        raise RuntimeError("simulated metadata commit interruption")
+
+    monkeypatch.setattr(data, "_write_cache_metadata_unlocked", fail_metadata)
+
+    with pytest.raises(RuntimeError, match="metadata commit interruption"):
+        data._write_csv_cache(
+            "TEST.NS",
+            replacement,
+            source="incremental_refresh",
+        )
+
+    status = data.inspect_cache_generation("TEST.NS")
+    assert status.data_present is True
+    assert status.metadata_present is True
+    assert status.consistent is False
+    assert status.reason == "generation_mismatch"
