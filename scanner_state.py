@@ -5,6 +5,7 @@ import json
 import os
 import re
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 import pandas as pd
 
 from scanner_exceptions import (
+    ScannerStateConflictError,
     ScannerStateCorruptError,
     ScannerStateError,
     ScannerStateIdentityError,
@@ -394,14 +396,88 @@ class ScannerStateStore:
             f"{self._safe_name(symbol)}__{self._safe_name(timeframe)}.json"
         )
 
-    def save(self, state: ScannerState) -> Path:
+    @staticmethod
+    def _lock_path(destination: Path) -> Path:
+        return destination.with_name(destination.name + ".lock")
+
+    @staticmethod
+    @contextmanager
+    def _exclusive_lock(lock_path: Path):
+        """Cross-process exclusive lock using only the Python standard library."""
+
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = lock_path.open("a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+    @staticmethod
+    def _revision_for_bytes(payload: bytes) -> str:
+        return hashlib.sha256(payload).hexdigest()
+
+    @classmethod
+    def _current_revision_unlocked(cls, destination: Path) -> str | None:
+        if not destination.exists():
+            return None
+        return cls._revision_for_bytes(destination.read_bytes())
+
+    @classmethod
+    def _decode_state(
+        cls,
+        *,
+        payload: bytes,
+        path: Path,
+        symbol: str,
+        timeframe: str,
+    ) -> tuple[ScannerState, str]:
+        revision = cls._revision_for_bytes(payload)
+        try:
+            state = ScannerState.from_dict(
+                json.loads(payload.decode("utf-8"))
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            error = ScannerStateCorruptError(f"Invalid ScannerState file: {path}")
+            error.state_revision = revision
+            raise error from exc
+
         if state.schema_version != SCANNER_STATE_SCHEMA_VERSION:
-            raise ScannerStateSchemaError(
+            error = ScannerStateSchemaError(
                 f"Unsupported ScannerState schema version: {state.schema_version}"
             )
+            error.state_revision = revision
+            raise error
+        if state.symbol != symbol or state.timeframe != timeframe:
+            error = ScannerStateIdentityError(
+                "ScannerState identity does not match requested state"
+            )
+            error.state_revision = revision
+            raise error
+        return state, revision
 
-        destination = self.path_for(state.symbol, state.timeframe)
-        self._root.mkdir(parents=True, exist_ok=True)
+    def _write_unlocked(self, state: ScannerState, destination: Path) -> Path:
         payload = json.dumps(
             state.to_dict(),
             ensure_ascii=False,
@@ -433,29 +509,97 @@ class ScannerStateStore:
             raise
         return destination
 
-    def load(self, symbol: str, timeframe: str) -> ScannerState:
-        path = self.path_for(symbol, timeframe)
-        if not path.exists():
-            raise FileNotFoundError(path)
-
-        try:
-            with path.open("r", encoding="utf-8") as handle:
-                state = ScannerState.from_dict(json.load(handle))
-        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            raise ScannerStateCorruptError(f"Invalid ScannerState file: {path}") from exc
+    def save(self, state: ScannerState) -> Path:
+        """Persist state atomically, serializing concurrent writers."""
 
         if state.schema_version != SCANNER_STATE_SCHEMA_VERSION:
             raise ScannerStateSchemaError(
                 f"Unsupported ScannerState schema version: {state.schema_version}"
             )
-        if state.symbol != symbol or state.timeframe != timeframe:
-            raise ScannerStateIdentityError(
-                "ScannerState identity does not match requested state"
+
+        destination = self.path_for(state.symbol, state.timeframe)
+        self._root.mkdir(parents=True, exist_ok=True)
+        try:
+            with self._exclusive_lock(self._lock_path(destination)):
+                return self._write_unlocked(state, destination)
+        except ScannerStateWriteError:
+            raise
+        except OSError as exc:
+            raise ScannerStateWriteError(
+                f"Failed to persist ScannerState: {destination}: {exc}"
+            ) from exc
+
+    def save_if_revision(
+        self,
+        state: ScannerState,
+        *,
+        expected_revision: str | None,
+    ) -> Path:
+        """Persist only if the checkpoint still matches the caller revision.
+
+        expected_revision=None means the caller observed no checkpoint and
+        requires that the destination is still absent.
+        """
+
+        if state.schema_version != SCANNER_STATE_SCHEMA_VERSION:
+            raise ScannerStateSchemaError(
+                f"Unsupported ScannerState schema version: {state.schema_version}"
             )
+
+        destination = self.path_for(state.symbol, state.timeframe)
+        self._root.mkdir(parents=True, exist_ok=True)
+        try:
+            with self._exclusive_lock(self._lock_path(destination)):
+                current_revision = self._current_revision_unlocked(destination)
+                if current_revision != expected_revision:
+                    raise ScannerStateConflictError(
+                        "ScannerState changed since it was loaded; "
+                        f"expected_revision={expected_revision!r}, "
+                        f"current_revision={current_revision!r}"
+                    )
+                return self._write_unlocked(state, destination)
+        except ScannerStateWriteError:
+            raise
+        except OSError as exc:
+            raise ScannerStateWriteError(
+                f"Failed to persist ScannerState: {destination}: {exc}"
+            ) from exc
+
+    def load_with_revision(
+        self,
+        symbol: str,
+        timeframe: str,
+    ) -> tuple[ScannerState, str]:
+        """Load one checkpoint together with its exact persisted-byte revision."""
+
+        path = self.path_for(symbol, timeframe)
+        try:
+            with self._exclusive_lock(self._lock_path(path)):
+                if not path.exists():
+                    raise FileNotFoundError(path)
+                payload = path.read_bytes()
+                return self._decode_state(
+                    payload=payload,
+                    path=path,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                )
+        except FileNotFoundError:
+            raise
+        except (ScannerStateCorruptError, ScannerStateSchemaError, ScannerStateIdentityError):
+            raise
+        except OSError as exc:
+            error = ScannerStateCorruptError(f"Invalid ScannerState file: {path}")
+            raise error from exc
+
+    def load(self, symbol: str, timeframe: str) -> ScannerState:
+        state, _revision = self.load_with_revision(symbol, timeframe)
         return state
 
     def delete(self, symbol: str, timeframe: str) -> None:
-        self.path_for(symbol, timeframe).unlink(missing_ok=True)
+        destination = self.path_for(symbol, timeframe)
+        with self._exclusive_lock(self._lock_path(destination)):
+            destination.unlink(missing_ok=True)
 
 
 __all__ = [

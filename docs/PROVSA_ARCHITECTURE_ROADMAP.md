@@ -625,8 +625,8 @@ corporate-action/history-revision policy
 
 ### PR-I1 — Recovery Telemetry + Persistence Hardening
 
-**Status:** IN PROGRESS  
-**Telemetry cut:** #289 VALIDATED
+**Status:** MERGED + MANUALLY VALIDATED  
+**PRs:** #289, #290, #291
 
 First cut: preserve the existing human-readable `fallback_diagnostics` channel
 while adding structured `ScannerRecoveryEvent` telemetry.
@@ -656,8 +656,54 @@ they do not return a candidate as if persistence succeeded, do not emit a fake
 full-replay fallback diagnostic, preserve the last good checkpoint, and clean up
 temporary files.
 
-Cross-process compare-and-swap / stale-writer protection remains a separate
-concurrency-policy decision after write-failure observability is validated.
+Third cut: production checkpoint persistence uses a per-checkpoint cross-process
+OS file lock plus revision compare-and-swap. The production scanner carries the
+exact persisted-byte revision it loaded and saves only if that revision is still
+current.
+
+This prevents:
+
+```text
+process A loads checkpoint K
+process B advances and persists checkpoint K+1
+process A finishes later
+→ A must not overwrite K+1 with stale state
+```
+
+A conflict raises `ScannerStateConflictError`, emits
+`PERSIST / CHECKPOINT_WRITE_CONFLICT` structured telemetry, preserves the newer
+checkpoint, and fails closed. Plain `ScannerStateStore.save()` remains available
+for explicit unconditional writes while serializing writers through the same
+cross-process lock.
+
+---
+
+### PR-I2 — Cache / Metadata Generation Consistency
+
+**Status:** IN PROGRESS
+
+Daily cache data and the metadata sidecar are separate filesystem artifacts.
+I2 makes that relationship observable and serializes same-symbol writers without
+turning metadata into a scanner gate.
+
+New cache metadata writes include a `generation_id` derived from the exact
+finalized data-file SHA-256. Same-symbol data/metadata commits are protected by a
+cross-process lock. `inspect_cache_generation()` reports whether the sidecar and
+current cache file belong to the same generation.
+
+Version-1 metadata remains readable and is reported as legacy/unverified until the
+next cache rewrite.
+
+Safety boundary:
+
+```text
+generation mismatch
+→ operational diagnostic / repair signal
+!=
+market-data invalidation
+!=
+scanner decision input
+```
 
 ---
 
@@ -731,8 +777,9 @@ Avoid:
 | 17 | PR-G2 / #285 | P1 | Benchmark/cleanup | VALIDATED |
 | 18 | PR-H1 / #286 | P2 | Public professional-scoring batch API | VALIDATED |
 | 19 | PR-H2 / #287-#288 | P2 | Domain exceptions/policy boundaries | VALIDATED |
-| 20 | PR-I1 | P2 | Recovery telemetry/persistence hardening | IN PROGRESS |
-| 21 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
+| 20 | PR-I1 / #289-#291 | P2 | Recovery telemetry/persistence hardening | VALIDATED |
+| 21 | PR-I2 | P2 | Cache/metadata generation consistency | IN PROGRESS |
+| 22 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
 
 ---
 
@@ -800,31 +847,34 @@ measurable benchmark improvement
 | 2026-09-18 | #287 | M8 | VALIDATED | Scanner freshness, actionability, ranking, and execution rules extracted into explicit behavior-preserving policy objects. |
 | 2026-09-18 | #288 | M8 | VALIDATED | Semantic transition/resume/persisted-state exceptions merged with ValueError compatibility and unchanged production fallback behavior. |
 | 2026-09-18 | #289 | M9 | VALIDATED | Structured LOAD_VALIDATE/RESUME recovery telemetry merged alongside unchanged legacy fallback diagnostics. |
-| 2026-09-18 | PR-I1 | M9 | IN PROGRESS | Classify persistence write failures, emit PERSIST telemetry, preserve last-good state, and re-raise without fake fallback success. |
+| 2026-09-18 | #290 | M9 | VALIDATED | Atomic persistence write failures are observable through PERSIST telemetry and fail closed while preserving last-good state. |
+| 2026-09-18 | #291 | M9 | VALIDATED | Cross-process checkpoint lock + revision CAS prevents stale production writers from replacing newer state. |
+| 2026-09-18 | PR-I2 | M9 | IN PROGRESS | Bind cache metadata to exact data-file generation and serialize same-symbol cache/metadata writers. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-I1 — Persistence Write Observability
+## NEXT: PR-I2 — Cache / Metadata Generation Consistency
 
 Checklist:
 
-- [x] Mark structured recovery telemetry #289 validated.
-- [x] Add semantic ScannerStateWriteError while preserving OSError compatibility.
-- [x] Keep temp-write + fsync + os.replace atomic persistence path.
-- [x] Preserve last good checkpoint when replace fails.
-- [x] Clean up temporary files on failed writes.
-- [x] Add PERSIST recovery phase and CHECKPOINT_WRITE_FAILED code.
-- [x] Emit structured write-failure telemetry before re-raising.
-- [x] Do not emit legacy fallback_diagnostics for a persistence failure.
-- [x] Do not return a candidate as though a failed checkpoint write succeeded.
-- [ ] Run state-store atomic-write tests.
-- [ ] Run structured recovery / production scanner tests.
-- [ ] Run state fingerprint + transition/resume equivalence tests.
-- [ ] Confirm normal successful persistence emits no PERSIST event.
+- [x] Mark I1 / #289-#291 validated.
+- [x] Keep cache metadata diagnostic-only and non-authoritative.
+- [x] Serialize same-symbol cache/metadata commits with a cross-process lock.
+- [x] Bump new metadata writes to schema version 2.
+- [x] Add exact cache-file SHA-256 generation identity.
+- [x] Keep version-1 metadata backward readable.
+- [x] Add inspect_cache_generation() without changing normal cache selection.
+- [x] Detect data/metadata generation mismatch.
+- [x] Detect interrupted metadata commit after data replacement.
+- [x] Prove a generation mismatch does not reject an otherwise usable cache.
+- [ ] Run data-cache tests on Windows.
+- [ ] Run cache/artifact resilience tests.
+- [ ] Run download-period and API data-path regression tests.
+- [ ] Confirm scanner/VSA semantics are unchanged.
 - [ ] Merge after manual validation.
-- [ ] Then define stale-writer / cross-process concurrency policy separately.
+- [ ] Then assess corporate-action/history-revision policy as the remaining M9 gap.
 
 ---
 
@@ -883,4 +933,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M9 — State, Cache & Operational Robustness  
-**Current PR:** PR-I1 — Persistence Write Observability
+**Current PR:** PR-I2 — Cache / Metadata Generation Consistency

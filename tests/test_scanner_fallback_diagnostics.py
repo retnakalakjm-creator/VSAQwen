@@ -25,12 +25,13 @@ from production_scanner import (
     CHECKPOINT_DATA_MISMATCH,
     CHECKPOINT_STALE,
     CHECKPOINT_WRITE_FAILED,
+    CHECKPOINT_WRITE_CONFLICT,
     ENGINE_DIVERGENCE,
     scan_actionable_production,
     scan_latest_candidate_production,
 )
 from scanner import ScannerEngine
-from scanner_exceptions import ScannerStateWriteError
+from scanner_exceptions import ScannerStateConflictError, ScannerStateWriteError
 from scanner_recovery import ScannerRecoveryPhase
 from scanner_state import ScannerStateStore
 
@@ -409,3 +410,51 @@ def test_persistence_write_failure_emits_structured_event_and_propagates(
     assert "full replay fallback not used" in event.message
     assert not store.path_for("TEST", "1wk").exists()
     assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_production_stale_writer_conflict_preserves_newer_checkpoint(
+    tmp_path,
+) -> None:
+    metrics = _metrics()
+    original = _snapshot_at(metrics, split=72)
+    newer = _snapshot_at(metrics, split=73)
+
+    class RacingStore(ScannerStateStore):
+        def __init__(self, root, replacement):
+            super().__init__(root)
+            self._replacement = replacement
+            self._raced = False
+
+        def load_with_revision(self, symbol, timeframe):
+            state, revision = super().load_with_revision(symbol, timeframe)
+            if not self._raced:
+                self._raced = True
+                super().save(self._replacement)
+            return state, revision
+
+    store = RacingStore(tmp_path, newer)
+    store.save(original)
+    diagnostics: list[str] = []
+    recovery_events = []
+
+    with pytest.raises(
+        ScannerStateConflictError,
+        match="changed since it was loaded",
+    ):
+        scan_latest_candidate_production(
+            metrics,
+            symbol="TEST",
+            timeframe="1wk",
+            state_store=store,
+            fallback_diagnostics=diagnostics,
+            recovery_events=recovery_events,
+        )
+
+    assert diagnostics == []
+    assert len(recovery_events) == 1
+    event = recovery_events[0]
+    assert event.code == CHECKPOINT_WRITE_CONFLICT
+    assert event.phase is ScannerRecoveryPhase.PERSIST
+    assert event.fallback_used is False
+    assert event.exception_type == "ScannerStateConflictError"
+    assert store.load("TEST", "1wk") == newer

@@ -9,6 +9,7 @@ from engine.columns import COL_WEEK
 from historical_scanner import HistoricalScannerRunner
 from logger import Log
 from scanner import ScannerCandidate, ScannerEngine
+from scanner_exceptions import ScannerStateConflictError
 from scanner_recovery import ScannerRecoveryEvent, ScannerRecoveryPhase
 from scanner_state import (
     ScannerState,
@@ -28,6 +29,7 @@ CHECKPOINT_DATA_MISMATCH = "CHECKPOINT_DATA_MISMATCH"
 CHECKPOINT_CORRUPT = "CHECKPOINT_CORRUPT"
 ENGINE_DIVERGENCE = "ENGINE_DIVERGENCE"
 CHECKPOINT_WRITE_FAILED = "CHECKPOINT_WRITE_FAILED"
+CHECKPOINT_WRITE_CONFLICT = "CHECKPOINT_WRITE_CONFLICT"
 
 
 def _target_index(metrics: pd.DataFrame) -> int | None:
@@ -101,10 +103,27 @@ def _persist_state(
     *,
     state: ScannerState,
     store: ScannerStateStore,
+    expected_revision: str | None,
     recovery_events: MutableSequence[ScannerRecoveryEvent] | None,
 ) -> None:
     try:
-        store.save(state)
+        store.save_if_revision(
+            state,
+            expected_revision=expected_revision,
+        )
+    except ScannerStateConflictError as exc:
+        _record_fallback(
+            None,
+            recovery_events=recovery_events,
+            phase=ScannerRecoveryPhase.PERSIST,
+            symbol=state.symbol,
+            timeframe=state.timeframe,
+            code=CHECKPOINT_WRITE_CONFLICT,
+            reason="persisted scanner state changed before checkpoint write",
+            exception=exc,
+            fallback_used=False,
+        )
+        raise
     except OSError as exc:
         _record_fallback(
             None,
@@ -127,6 +146,7 @@ def _snapshot_latest(
     timeframe: str,
     store: ScannerStateStore,
     snapshot: ScannerTransitionSnapshotAdapter,
+    expected_revision: str | None,
     recovery_events: MutableSequence[ScannerRecoveryEvent] | None = None,
 ) -> None:
     target_index = _target_index(metrics)
@@ -142,6 +162,7 @@ def _snapshot_latest(
     _persist_state(
         state=state,
         store=store,
+        expected_revision=expected_revision,
         recovery_events=recovery_events,
     )
 
@@ -262,9 +283,10 @@ def scan_latest_candidate_production(
     transition_snapshot = ScannerTransitionSnapshotAdapter()
     needs_snapshot_refresh = True
     replay_snapshot: ScannerState | None = None
+    expected_revision: str | None = None
 
     try:
-        state = store.load(symbol, timeframe)
+        state, expected_revision = store.load_with_revision(symbol, timeframe)
         validate_scanner_state_fingerprints(state, metrics)
         needs_snapshot_refresh = not _state_matches_target(
             state,
@@ -273,6 +295,7 @@ def scan_latest_candidate_production(
         )
     except FileNotFoundError:
         state = None
+        expected_revision = None
     except ScannerStateFingerprintMismatch as exc:
         if not allow_full_replay_fallback:
             raise
@@ -289,6 +312,7 @@ def scan_latest_candidate_production(
         )
         state = None
     except ValueError as exc:
+        expected_revision = getattr(exc, "state_revision", None)
         if not allow_full_replay_fallback:
             raise
         _record_fallback(
@@ -359,6 +383,7 @@ def scan_latest_candidate_production(
             _persist_state(
                 state=replay_snapshot,
                 store=store,
+                expected_revision=expected_revision,
                 recovery_events=recovery_events,
             )
         else:
@@ -368,6 +393,7 @@ def scan_latest_candidate_production(
                 timeframe=timeframe,
                 store=store,
                 snapshot=transition_snapshot,
+                expected_revision=expected_revision,
                 recovery_events=recovery_events,
             )
     return candidate
@@ -405,6 +431,7 @@ __all__ = [
     "CHECKPOINT_CORRUPT",
     "CHECKPOINT_DATA_MISMATCH",
     "CHECKPOINT_WRITE_FAILED",
+    "CHECKPOINT_WRITE_CONFLICT",
     "CHECKPOINT_MISSING",
     "CHECKPOINT_STALE",
     "DEFAULT_TIMEFRAME",

@@ -14,6 +14,7 @@ from models import Evidence, EvidenceCategory, EvidenceCode, EvidenceDirection, 
 from scanner_exceptions import (
     ScannerResumeCheckpointMissingError,
     ScannerResumeMetricsError,
+    ScannerStateConflictError,
     ScannerStateCorruptError,
     ScannerStateIdentityError,
     ScannerStateSchemaError,
@@ -312,3 +313,81 @@ def test_state_store_rejects_corrupt_checkpoint_without_fallback(tmp_path: Path)
 
     with pytest.raises(ScannerStateCorruptError, match="Invalid ScannerState file"):
         store.load(state.symbol, state.timeframe)
+
+
+def test_state_store_revision_cas_rejects_stale_writer(tmp_path: Path) -> None:
+    original = _state()
+    store = ScannerStateStore(tmp_path)
+    store.save(original)
+
+    loaded, revision = store.load_with_revision(
+        original.symbol,
+        original.timeframe,
+    )
+    assert loaded == original
+
+    newer = ScannerState.from_dict(
+        {
+            **original.to_dict(),
+            "last_closed_bar": "2026-09-04",
+        }
+    )
+    store.save(newer)
+
+    stale_write = ScannerState.from_dict(
+        {
+            **original.to_dict(),
+            "last_closed_bar": "2026-09-11",
+        }
+    )
+    with pytest.raises(ScannerStateConflictError, match="changed since it was loaded"):
+        store.save_if_revision(
+            stale_write,
+            expected_revision=revision,
+        )
+
+    assert store.load(original.symbol, original.timeframe) == newer
+
+
+def test_state_store_revision_cas_protects_first_writer_bootstrap(tmp_path: Path) -> None:
+    original = _state()
+    store = ScannerStateStore(tmp_path)
+
+    with pytest.raises(FileNotFoundError):
+        store.load_with_revision(original.symbol, original.timeframe)
+
+    concurrent = ScannerState.from_dict(
+        {
+            **original.to_dict(),
+            "last_closed_bar": "2026-09-04",
+        }
+    )
+    store.save(concurrent)
+
+    with pytest.raises(ScannerStateConflictError, match="changed since it was loaded"):
+        store.save_if_revision(
+            original,
+            expected_revision=None,
+        )
+
+    assert store.load(original.symbol, original.timeframe) == concurrent
+
+
+def test_corrupt_state_exposes_revision_for_safe_replacement(tmp_path: Path) -> None:
+    state = _state()
+    store = ScannerStateStore(tmp_path)
+    path = store.path_for(state.symbol, state.timeframe)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not-json", encoding="utf-8")
+
+    with pytest.raises(ScannerStateCorruptError) as exc_info:
+        store.load_with_revision(state.symbol, state.timeframe)
+
+    revision = getattr(exc_info.value, "state_revision", None)
+    assert revision
+
+    store.save_if_revision(
+        state,
+        expected_revision=revision,
+    )
+    assert store.load(state.symbol, state.timeframe) == state

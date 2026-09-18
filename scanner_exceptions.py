@@ -53,12 +53,17 @@ class ScannerStateWriteError(OSError):
     """Persisted scanner state could not be written atomically."""
 
 
+class ScannerStateConflictError(ScannerStateWriteError):
+    """Persisted scanner state changed since the caller loaded it."""
+
+
 __all__ = [
     "ScannerDomainError",
     "ScannerResumeCheckpointBeyondMetricsError",
     "ScannerResumeCheckpointMissingError",
     "ScannerResumeError",
     "ScannerResumeMetricsError",
+    "ScannerStateConflictError",
     "ScannerStateCorruptError",
     "ScannerStateError",
     "ScannerStateIdentityError",
