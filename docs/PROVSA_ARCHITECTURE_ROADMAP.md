@@ -823,7 +823,8 @@ score, ranking rule, or mandatory textbook sequence.
 
 ### PR-K1 — Read-Only Daily Behavior Sequence Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #298
 
 The existing DailyBehaviorSnapshot aggregates supported dimensions inside a bounded
 recent window. K1 adds a separate temporal audit that preserves the exact bars on
@@ -855,6 +856,50 @@ production actionability
 ```
 
 See `docs/DAILY_BEHAVIOR_SEQUENCE_AUDIT.md`.
+
+### PR-K2 — Daily Behavior Sequence Outcome Study
+
+**Status:** IN PROGRESS
+
+K2 reuses the existing analysis-only `audit.outcomes` next-bar execution
+contract to measure fresh K1 sequence observations without changing production.
+
+Causal rule:
+
+```text
+fresh sequence observed on bar N
+        ↓
+execution starts on bar N + 1
+        ↓
+forward horizon / MFE / MAE
+```
+
+A bounded sequence is scored only when at least one supported sequence step is
+present on its current `end_bar_index`. If the latest supported step is older
+than the target bar, K2 emits no outcome observation for that stale snapshot.
+This prevents retrospectively scoring returns that began before the sequence was
+known at the requested target.
+
+Exact sequence cohorts use relative offsets from the signal bar, preserving order
+and spacing while avoiding calendar/index identity leakage.
+
+Latest observations with no next bar are retained with unavailable outcomes.
+Descriptive return summaries use fully completed horizons only.
+
+Safety boundary:
+
+```text
+sequence outcome statistics
+!=
+sequence ranking
+!=
+trigger promotion
+!=
+production actionability
+```
+
+See `docs/DAILY_BEHAVIOR_SEQUENCE_OUTCOME_STUDY.md`.
+
 
 ---
 
@@ -911,7 +956,8 @@ Avoid:
 | 21 | PR-I2 / #292 | P2 | Cache/metadata generation consistency | VALIDATED |
 | 22 | PR-I3 / #293 | P2 | Historical revision/corporate-action audit policy | VALIDATED |
 | 23 | PR-J1 / #294-#297 | P2 | Ruff/type/coverage gates | VALIDATED |
-| 24 | PR-K1 | P1 | Read-only daily behavior sequence audit | IN PROGRESS |
+| 24 | PR-K1 / #298 | P1 | Read-only daily behavior sequence audit | VALIDATED |
+| 25 | PR-K2 | P1 | Analysis-only daily behavior sequence outcome study | IN PROGRESS |
 
 ---
 
@@ -987,33 +1033,36 @@ measurable benchmark improvement
 | 2026-09-18 | #295 | M10 | VALIDATED | Strict mypy gate validated for scanner exceptions/recovery/policy and WeeklySetup public domain boundaries. |
 | 2026-09-18 | #296 | M10 | VALIDATED | Strict mypy expanded to WeeklySetup materialization plus daily behavior/entry domain with no runtime changes. |
 | 2026-09-18 | #297 | M10 | VALIDATED | 70% aggregate core coverage floor validated at 73.87%; full suite 1018 passed / 1 skipped. |
-| 2026-09-18 | PR-K1 | M11 | IN PROGRESS | Preserve temporal order of existing daily behavior dimensions as read-only shadow audit evidence. |
+| 2026-09-18 | #298 | M11 | VALIDATED | Read-only daily behavior sequence audit preserves temporal ordering without changing F3 trigger/replay behavior. |
+| 2026-09-18 | PR-K2 | M11 | IN PROGRESS | Attach causal next-bar forward outcomes to fresh sequence observations for descriptive research only. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K1 — Daily Behavior Sequence Audit
+## NEXT: PR-K2 — Daily Behavior Sequence Outcome Study
 
 Checklist:
 
-- [x] Close J1 / M10 after #297 coverage-floor validation.
-- [x] Keep existing DailyBehaviorDimension mappings unchanged.
-- [x] Add immutable read-only DailyBehaviorSequence and step models.
-- [x] Evaluate each bar independently with the existing behavior mapping.
-- [x] Preserve exact bar ordering for observed dimensions.
-- [x] Expose first/last/repeated occurrence audit helpers.
-- [x] Exclude stale evidence outside the bounded window.
-- [x] Exclude future evidence after the target bar.
-- [x] Keep opposing-direction evidence from becoming positive aligned behavior.
-- [x] Keep sequence output explicitly non-actionable.
-- [x] Add bullish/bearish synthetic sequence tests.
-- [x] Add the new domain module to Ruff and strict mypy gates.
-- [ ] Run sequence + existing daily behavior/entry/replay tests.
-- [ ] Run Ruff and mypy locally.
-- [ ] Confirm F3 trigger/replay behavior is unchanged.
+- [x] Merge and validate #298 sequence audit.
+- [x] Reuse audit.outcomes instead of creating a second outcome engine.
+- [x] Preserve signal bar != execution bar.
+- [x] Require fresh supported behavior on sequence.end_bar_index.
+- [x] Return no outcomes for stale sequence snapshots.
+- [x] Retain latest observations when no execution bar exists.
+- [x] Preserve incomplete-horizon state from ForwardOutcome.
+- [x] Build sequence signatures from relative offsets and behavior dimensions.
+- [x] Keep bullish/bearish outcomes direction-relative to WeeklySetup.
+- [x] Aggregate only descriptive exact-signature cohort metrics.
+- [x] Use complete outcomes only for return/MFE/MAE summary values.
+- [x] Keep all outcome study objects explicitly non-actionable.
+- [x] Add synthetic causal and no-look-ahead tests.
+- [x] Add the analysis module to Ruff.
+- [ ] Run K2 outcome tests plus K1/F3 regression tests.
+- [ ] Run Ruff.
+- [ ] Confirm no production import path consumes the K2 audit module.
 - [ ] Merge after manual validation.
-- [ ] Then use replay/audit evidence to decide which multi-bar relationships deserve outcome study; do not promote a sequence by assumption.
+- [ ] Then build a reproducible multi-symbol historical runner before interpreting any sequence relationship.
 
 ---
 
@@ -1072,4 +1121,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K1 — Daily Behavior Sequence Audit
+**Current PR:** PR-K2 — Daily Behavior Sequence Outcome Study
