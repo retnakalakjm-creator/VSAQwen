@@ -7,6 +7,11 @@ import pandas as pd
 from background.qualification import PatternQualificationEngine
 from engine.columns import COL_WEEK
 from scanner import ScannerCandidate, ScannerEngine
+from scanner_exceptions import (
+    ScannerResumeCheckpointBeyondMetricsError,
+    ScannerResumeCheckpointMissingError,
+    ScannerResumeMetricsError,
+)
 from scanner_state import ScannerState
 from scanner_transition import ScanState, ScannerTransitionEngine
 
@@ -43,11 +48,15 @@ class ScannerTransitionResumeAdapter:
     @staticmethod
     def _index_by_week(metrics: pd.DataFrame) -> dict[str, int]:
         if COL_WEEK not in metrics.columns:
-            raise ValueError("metrics must include week_beginning for transition resume")
+            raise ScannerResumeMetricsError(
+                "metrics must include week_beginning for transition resume"
+            )
 
         weeks = [str(value) for value in metrics[COL_WEEK]]
         if len(weeks) != len(set(weeks)):
-            raise ValueError("current metrics contain duplicate checkpoint bar identities")
+            raise ScannerResumeMetricsError(
+                "current metrics contain duplicate checkpoint bar identities"
+            )
         return {week: index for index, week in enumerate(weeks)}
 
     @classmethod
@@ -55,7 +64,7 @@ class ScannerTransitionResumeAdapter:
         index_by_week = cls._index_by_week(metrics)
         checkpoint_index = index_by_week.get(state.last_closed_bar)
         if checkpoint_index is None:
-            raise ValueError(
+            raise ScannerResumeCheckpointMissingError(
                 f"ScannerState checkpoint bar is not present in current metrics: {state.last_closed_bar}"
             )
         return checkpoint_index
@@ -116,7 +125,9 @@ class ScannerTransitionResumeAdapter:
 
         checkpoint_index = self._checkpoint_index(metrics, state)
         if checkpoint_index > target_index:
-            raise ValueError("ScannerState checkpoint is beyond current metrics")
+            raise ScannerResumeCheckpointBeyondMetricsError(
+                "ScannerState checkpoint is beyond current metrics"
+            )
 
         transition_state = self.transition_state_from_scanner_state(metrics, state)
         if checkpoint_index == target_index:

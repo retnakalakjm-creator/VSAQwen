@@ -12,6 +12,13 @@ from typing import Any
 
 import pandas as pd
 
+from scanner_exceptions import (
+    ScannerStateCorruptError,
+    ScannerStateError,
+    ScannerStateIdentityError,
+    ScannerStateSchemaError,
+)
+
 from models import (
     Evidence,
     EvidenceCategory,
@@ -33,7 +40,7 @@ SCANNER_STATE_DATA_FINGERPRINT_COLUMNS = (
 )
 
 
-class ScannerStateFingerprintMismatch(ValueError):
+class ScannerStateFingerprintMismatch(ScannerStateError):
     """Saved scanner state does not match the current runtime or data prefix."""
 
 
@@ -388,7 +395,7 @@ class ScannerStateStore:
 
     def save(self, state: ScannerState) -> Path:
         if state.schema_version != SCANNER_STATE_SCHEMA_VERSION:
-            raise ValueError(
+            raise ScannerStateSchemaError(
                 f"Unsupported ScannerState schema version: {state.schema_version}"
             )
 
@@ -430,14 +437,16 @@ class ScannerStateStore:
             with path.open("r", encoding="utf-8") as handle:
                 state = ScannerState.from_dict(json.load(handle))
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid ScannerState file: {path}") from exc
+            raise ScannerStateCorruptError(f"Invalid ScannerState file: {path}") from exc
 
         if state.schema_version != SCANNER_STATE_SCHEMA_VERSION:
-            raise ValueError(
+            raise ScannerStateSchemaError(
                 f"Unsupported ScannerState schema version: {state.schema_version}"
             )
         if state.symbol != symbol or state.timeframe != timeframe:
-            raise ValueError("ScannerState identity does not match requested state")
+            raise ScannerStateIdentityError(
+                "ScannerState identity does not match requested state"
+            )
         return state
 
     def delete(self, symbol: str, timeframe: str) -> None:

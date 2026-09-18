@@ -16,6 +16,7 @@ from engine.columns import (
 )
 from metrics_engine import MetricsEngine
 from scanner import ScannerCandidate, ScannerEngine
+from scanner_exceptions import ScannerTransitionSequenceError
 from scanner_transition import ScanState, ScannerTransitionEngine
 
 
@@ -170,7 +171,7 @@ def test_transition_rejects_non_sequential_steps() -> None:
         metrics=metrics,
     )
 
-    with pytest.raises(ValueError, match="sequential"):
+    with pytest.raises(ScannerTransitionSequenceError, match="sequential"):
         transition.step(
             state,
             transition.bar_for(metrics, first_index + 2),

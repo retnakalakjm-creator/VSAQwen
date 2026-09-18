@@ -18,6 +18,10 @@ from incremental_scanner import IncrementalScannerEngine
 from metrics_engine import MetricsEngine
 from production_transition_shadow import default_candidate_signature
 from scanner import ScannerEngine
+from scanner_exceptions import (
+    ScannerResumeCheckpointMissingError,
+    ScannerResumeMetricsError,
+)
 from scanner_transition_resume import ScannerTransitionResumeAdapter
 
 
@@ -172,7 +176,7 @@ def test_transition_resume_rejects_duplicate_bar_identities() -> None:
     duplicated.loc[12, COL_WEEK] = duplicated.loc[11, COL_WEEK]
 
     with pytest.raises(
-        ValueError,
+        ScannerResumeMetricsError,
         match="duplicate checkpoint bar identities",
     ):
         ScannerTransitionResumeAdapter().resume_latest(duplicated, checkpoint_state)
@@ -189,7 +193,7 @@ def test_transition_resume_rejects_missing_checkpoint_identity() -> None:
     missing_checkpoint = metrics[metrics[COL_WEEK] != checkpoint_state.last_closed_bar].copy()
 
     with pytest.raises(
-        ValueError,
+        ScannerResumeCheckpointMissingError,
         match="checkpoint bar is not present",
     ):
         ScannerTransitionResumeAdapter().resume_latest(

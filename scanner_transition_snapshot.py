@@ -6,6 +6,10 @@ import pandas as pd
 
 from market_structure.swing_engine import SwingEngine
 from scanner import ScannerEngine
+from scanner_exceptions import (
+    ScannerTransitionError,
+    ScannerTransitionStateMismatchError,
+)
 from scanner_state import (
     SCANNER_STATE_SCHEMA_VERSION,
     ScannerState,
@@ -51,7 +55,7 @@ class ScannerTransitionSnapshotAdapter:
         target_index: int,
     ) -> None:
         if target_index < self._scanner.MIN_REPLAY_BARS:
-            raise ValueError(
+            raise ScannerTransitionError(
                 f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}"
             )
         if target_index >= len(metrics):
@@ -75,7 +79,9 @@ class ScannerTransitionSnapshotAdapter:
 
         self._validate_target_index(metrics, target_index)
         if transition_state.last_bar_index != target_index:
-            raise ValueError("transition state must end at target_index")
+            raise ScannerTransitionStateMismatchError(
+                "transition state must end at target_index"
+            )
 
         prefix = metrics.iloc[: target_index + 1].copy()
         if transition_state.swing_state is None:

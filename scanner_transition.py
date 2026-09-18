@@ -16,6 +16,11 @@ from models import Evidence, StructuralSwing
 from scanner import ScannerCandidate, ScannerEngine
 from market_structure.structure_filter import StructureFilter
 from market_structure.swing_engine import SwingEngine
+from scanner_exceptions import (
+    ScannerTransitionError,
+    ScannerTransitionSequenceError,
+    ScannerTransitionStateMismatchError,
+)
 from scanner_state import ScannerState, StructuralEventState
 from scanner_state_evaluation import evaluate_from_qualification_state
 from trend import TrendAnalyzer, TrendResult
@@ -150,25 +155,31 @@ class ScannerTransitionEngine:
         """Advance the scanner by exactly one bar."""
 
         if bar.index < self._scanner.MIN_REPLAY_BARS:
-            raise ValueError(
+            raise ScannerTransitionError(
                 f"bar index must be >= {self._scanner.MIN_REPLAY_BARS}"
             )
         if bar.index >= len(metrics):
             raise IndexError("bar index is outside metrics")
         if state.last_bar_index is not None and bar.index != state.last_bar_index + 1:
-            raise ValueError("scanner transition steps must be sequential")
+            raise ScannerTransitionSequenceError(
+                "scanner transition steps must be sequential"
+            )
         if len(features.metrics_prefix) != bar.index + 1:
-            raise ValueError("bar features must contain the point-in-time metrics prefix")
+            raise ScannerTransitionStateMismatchError(
+                "bar features must contain the point-in-time metrics prefix"
+            )
 
         swing_engine = SwingEngine()
         if state.swing_state is None:
             swings = swing_engine.calculate(features.metrics_prefix)
         else:
             if state.last_bar_index is None:
-                raise ValueError("swing state requires last_bar_index")
+                raise ScannerTransitionStateMismatchError(
+                    "swing state requires last_bar_index"
+                )
             expected_week = self.bar_for(metrics, state.last_bar_index).week
             if str(state.swing_state.last_closed_bar) != str(expected_week):
-                raise ValueError(
+                raise ScannerTransitionStateMismatchError(
                     "scanner transition swing state does not match last_bar_index"
                 )
             swings = swing_engine.calculate_from_state(
@@ -263,7 +274,7 @@ class ScannerTransitionEngine:
         """Run sequential steps through `target_index` without production wiring."""
 
         if target_index < self._scanner.MIN_REPLAY_BARS:
-            raise ValueError(
+            raise ScannerTransitionError(
                 f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}"
             )
         if target_index >= len(metrics):
@@ -306,9 +317,11 @@ class ScannerTransitionEngine:
         previous: int | None = None
         for target_index in targets:
             if previous is not None and target_index <= previous:
-                raise ValueError("target_indices must be strictly increasing")
+                raise ScannerTransitionSequenceError(
+                    "target_indices must be strictly increasing"
+                )
             if target_index < self._scanner.MIN_REPLAY_BARS:
-                raise ValueError(
+                raise ScannerTransitionError(
                     f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}"
                 )
             if target_index >= len(metrics):

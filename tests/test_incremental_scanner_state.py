@@ -11,6 +11,13 @@ from incremental_scanner import IncrementalScannerEngine
 from market_structure.swing_engine import SwingEngine
 from metrics_engine import MetricsEngine
 from models import Evidence, EvidenceCategory, EvidenceCode, EvidenceDirection, SwingSearchState, SwingType
+from scanner_exceptions import (
+    ScannerResumeCheckpointMissingError,
+    ScannerResumeMetricsError,
+    ScannerStateCorruptError,
+    ScannerStateIdentityError,
+    ScannerStateSchemaError,
+)
 from scanner_state import (
     CandidateState,
     ConfirmedSwingState,
@@ -131,7 +138,10 @@ def test_incremental_scanner_rejects_missing_checkpoint_bar() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="checkpoint bar is not present"):
+    with pytest.raises(
+        ScannerResumeCheckpointMissingError,
+        match="checkpoint bar is not present",
+    ):
         IncrementalScannerEngine().resume_latest(metrics, stale)
 
 
@@ -146,7 +156,10 @@ def test_incremental_scanner_rejects_duplicate_checkpoint_bar_identities() -> No
     duplicate = metrics.copy()
     duplicate.loc[21, "week_beginning"] = duplicate.loc[20, "week_beginning"]
 
-    with pytest.raises(ValueError, match="duplicate checkpoint bar identities"):
+    with pytest.raises(
+        ScannerResumeMetricsError,
+        match="duplicate checkpoint bar identities",
+    ):
         IncrementalScannerEngine().resume_latest(duplicate, state)
 
 
@@ -210,7 +223,10 @@ def test_state_store_rejects_wrong_schema(tmp_path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="Unsupported ScannerState schema version"):
+    with pytest.raises(
+        ScannerStateSchemaError,
+        match="Unsupported ScannerState schema version",
+    ):
         store.load(state.symbol, state.timeframe)
 
 
@@ -224,7 +240,7 @@ def test_state_store_rejects_identity_mismatch(tmp_path: Path) -> None:
     payload["symbol"] = "RELIANCE.NS"
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="identity"):
+    with pytest.raises(ScannerStateIdentityError, match="identity"):
         store.load(state.symbol, state.timeframe)
 
 
@@ -275,7 +291,7 @@ def test_state_store_rejects_truncated_checkpoint_without_fallback(tmp_path: Pat
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{\"schema_version\": 3,", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="Invalid ScannerState file"):
+    with pytest.raises(ScannerStateCorruptError, match="Invalid ScannerState file"):
         store.load(state.symbol, state.timeframe)
 
 
@@ -288,5 +304,5 @@ def test_state_store_rejects_corrupt_checkpoint_without_fallback(tmp_path: Path)
     payload["candidate"] = {"bar_key": "2026-08-28"}
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="Invalid ScannerState file"):
+    with pytest.raises(ScannerStateCorruptError, match="Invalid ScannerState file"):
         store.load(state.symbol, state.timeframe)

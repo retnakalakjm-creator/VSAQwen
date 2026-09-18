@@ -534,7 +534,7 @@ separate measured task rather than extending G1 by assumption.
 # M8 — Module Boundary & Python Quality Cleanup
 
 **Priority:** P2  
-**Status:** IN PROGRESS
+**Status:** VALIDATED
 
 ### PR-H1 — Public Professional-Scoring Batch API
 
@@ -563,7 +563,8 @@ Benchmark tooling should also use public scoring boundaries where practical.
 
 ### PR-H2 — Domain Exceptions / Policy Boundaries
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PRs:** #287, #288
 
 H2 is split into behavior-preserving cuts.
 
@@ -582,15 +583,35 @@ CandidateExecutionPolicy     → next-bar availability/pending semantics
 The existing ScannerEngine constants and candidate properties remain compatibility
 facades. No threshold or decision rule changes in this extraction.
 
-A later H2 cut may introduce semantic transition/recovery exception types after
-the policy boundary is validated.
+Second cut: introduce semantic transition/resume/persisted-state exception types
+as subclasses of the existing ValueError contract:
+
+```text
+ScannerTransitionError
+├── ScannerTransitionSequenceError
+└── ScannerTransitionStateMismatchError
+
+ScannerResumeError
+├── ScannerResumeMetricsError
+├── ScannerResumeCheckpointMissingError
+└── ScannerResumeCheckpointBeyondMetricsError
+
+ScannerStateError
+├── ScannerStateCorruptError
+├── ScannerStateSchemaError
+└── ScannerStateIdentityError
+```
+
+Existing callers that catch `ValueError` remain compatible. This cut does not
+change fallback codes, replay policy, or recovery behavior; more granular runtime
+telemetry belongs in M9.
 
 ---
 
 # M9 — State, Cache & Operational Robustness
 
 **Priority:** P2  
-**Status:** PLANNED
+**Status:** IN PROGRESS
 
 Planned work:
 
@@ -604,7 +625,29 @@ corporate-action/history-revision policy
 
 ### PR-I1 — Recovery Telemetry + Persistence Hardening
 
-**Status:** PLANNED
+**Status:** IN PROGRESS
+
+First cut: preserve the existing human-readable `fallback_diagnostics` channel
+while adding structured `ScannerRecoveryEvent` telemetry.
+
+Each fallback event records:
+
+```text
+code
+phase (LOAD_VALIDATE or RESUME)
+reason
+symbol
+timeframe
+exception_type
+fallback_used
+```
+
+The event's rendered message must remain byte-for-byte equivalent to the existing
+diagnostic string so current operators/consumers do not break.
+
+This cut does not change fallback codes, fallback eligibility, scanner decisions,
+or persisted-state schema. Persistence-write hardening remains a later I1 step
+after structured recovery telemetry is validated.
 
 ---
 
@@ -677,8 +720,8 @@ Avoid:
 | 16 | PR-G1 / #282-#284 | P1 | Feature precompute/hot-loop reduction | VALIDATED |
 | 17 | PR-G2 / #285 | P1 | Benchmark/cleanup | VALIDATED |
 | 18 | PR-H1 / #286 | P2 | Public professional-scoring batch API | VALIDATED |
-| 19 | PR-H2 | P2 | Domain exceptions/policy boundaries | IN PROGRESS |
-| 20 | PR-I1 | P2 | Recovery telemetry/persistence hardening | PLANNED |
+| 19 | PR-H2 / #287-#288 | P2 | Domain exceptions/policy boundaries | VALIDATED |
+| 20 | PR-I1 | P2 | Recovery telemetry/persistence hardening | IN PROGRESS |
 | 21 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
 
 ---
@@ -744,29 +787,32 @@ measurable benchmark improvement
 | 2026-09-18 | #284 | M7 | VALIDATED | Stable structural swing evaluations are cached; only bounded history is rescored on new swing confirmation. |
 | 2026-09-18 | #285 | M7 | VALIDATED | Deterministic benchmark retained: full replay 1.042x faster; one-new-bar update 6.228 ms / 222.653x vs legacy full replay; durable resume 7.672 ms. |
 | 2026-09-18 | #286 | M8 | VALIDATED | StructureFilter now consumes the public lazy ProfessionalScorer batch API while preserving exact pre-H1 batched production semantics. |
-| 2026-09-18 | PR-H2 | M8 | IN PROGRESS | Extract scanner freshness, actionability, ranking, and execution rules into explicit behavior-preserving policy objects. |
+| 2026-09-18 | #287 | M8 | VALIDATED | Scanner freshness, actionability, ranking, and execution rules extracted into explicit behavior-preserving policy objects. |
+| 2026-09-18 | #288 | M8 | VALIDATED | Semantic transition/resume/persisted-state exceptions merged with ValueError compatibility and unchanged production fallback behavior. |
+| 2026-09-18 | PR-I1 | M9 | IN PROGRESS | Add structured recovery telemetry alongside the existing fallback diagnostic strings; no recovery-policy change. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-H2 — Scanner Policy Boundaries
+## NEXT: PR-I1 — Structured Recovery Telemetry
 
 Checklist:
 
-- [x] Keep PatternQualificationEngine as the existing qualification authority.
-- [x] Extract VSA freshness limits into an explicit policy.
-- [x] Extract final candidate actionability into an explicit policy.
-- [x] Extract directional ranking semantics into an explicit policy.
-- [x] Extract execution availability/pending messaging into an explicit policy.
-- [x] Preserve ScannerEngine constants and ScannerCandidate properties as compatibility facades.
-- [x] Reuse the same freshness policy in legacy and state-driven evaluation.
-- [x] Add direct policy boundary tests.
-- [ ] Run scanner decision/freshness/ranking/execution tests.
-- [ ] Run transition/resume/incremental equivalence tests.
-- [ ] Confirm candidate signatures are unchanged.
+- [x] Close M8 after validated H1/H2 boundary cleanup.
+- [x] Add immutable structured recovery event model.
+- [x] Classify recovery phase as LOAD_VALIDATE or RESUME.
+- [x] Preserve existing fallback codes and human-readable diagnostic strings.
+- [x] Capture originating exception type without parsing log text.
+- [x] Keep normal first-run bootstrap silent.
+- [x] Forward structured recovery events through actionable production scans.
+- [x] Add tests proving structured event messages match legacy diagnostics.
+- [ ] Run fallback diagnostics / production scanner tests.
+- [ ] Run scanner state fingerprint and semantic exception tests.
+- [ ] Run full-vs-resume / transition parity tests.
+- [ ] Confirm candidate and persisted-state semantics are unchanged.
 - [ ] Merge after manual validation.
-- [ ] Then evaluate semantic transition/recovery exception extraction as the remaining H2 cut.
+- [ ] Then harden persistence-write failure observability/concurrency only where measured operational gaps remain.
 
 ---
 
@@ -824,5 +870,5 @@ ProVSA should ultimately demonstrate:
 ---
 
 **Document owner:** ProVSA project  
-**Current milestone:** M8 — Module Boundary & Python Quality Cleanup  
-**Current PR:** PR-H2 — Scanner Policy Boundaries
+**Current milestone:** M9 — State, Cache & Operational Robustness  
+**Current PR:** PR-I1 — Structured Recovery Telemetry

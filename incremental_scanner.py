@@ -12,6 +12,10 @@ from market_structure.progression import calculate_professional_progression
 from market_structure.swing_engine import SwingEngine
 from models import Evidence, EvidenceCode, EvidenceCategory, EvidenceDirection
 from scanner import ScannerCandidate, ScannerEngine
+from scanner_exceptions import (
+    ScannerResumeCheckpointMissingError,
+    ScannerResumeMetricsError,
+)
 from scanner_state import (
     SCANNER_STATE_SCHEMA_VERSION,
     ScannerState,
@@ -114,11 +118,13 @@ class IncrementalScannerEngine:
     def resume_latest(self, metrics: pd.DataFrame, state: ScannerState) -> ScannerCandidate:
         weeks = [str(value) for value in metrics["week_beginning"]]
         if len(weeks) != len(set(weeks)):
-            raise ValueError("current metrics contain duplicate checkpoint bar identities")
+            raise ScannerResumeMetricsError(
+                "current metrics contain duplicate checkpoint bar identities"
+            )
         index_by_week = {week: i for i, week in enumerate(weeks)}
         checkpoint_index = index_by_week.get(state.last_closed_bar)
         if checkpoint_index is None:
-            raise ValueError(
+            raise ScannerResumeCheckpointMissingError(
                 f"ScannerState checkpoint bar is not present in current metrics: {state.last_closed_bar}"
             )
 
