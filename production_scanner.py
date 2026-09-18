@@ -99,6 +99,37 @@ def _full_replay_candidate_and_snapshot(
     )
 
 
+def _load_state_with_revision(
+    store: ScannerStateStore,
+    symbol: str,
+    timeframe: str,
+) -> tuple[ScannerState, str | None]:
+    """Load state with revision when supported, preserving legacy store doubles."""
+
+    load_with_revision = getattr(store, "load_with_revision", None)
+    if callable(load_with_revision):
+        return load_with_revision(symbol, timeframe)
+    return store.load(symbol, timeframe), None
+
+
+def _save_state_with_revision(
+    store: ScannerStateStore,
+    state: ScannerState,
+    *,
+    expected_revision: str | None,
+) -> None:
+    """Use revision CAS when supported, otherwise preserve the legacy save API."""
+
+    save_if_revision = getattr(store, "save_if_revision", None)
+    if callable(save_if_revision):
+        save_if_revision(
+            state,
+            expected_revision=expected_revision,
+        )
+        return
+    store.save(state)
+
+
 def _persist_state(
     *,
     state: ScannerState,
@@ -107,7 +138,8 @@ def _persist_state(
     recovery_events: MutableSequence[ScannerRecoveryEvent] | None,
 ) -> None:
     try:
-        store.save_if_revision(
+        _save_state_with_revision(
+            store,
             state,
             expected_revision=expected_revision,
         )
@@ -286,7 +318,11 @@ def scan_latest_candidate_production(
     expected_revision: str | None = None
 
     try:
-        state, expected_revision = store.load_with_revision(symbol, timeframe)
+        state, expected_revision = _load_state_with_revision(
+            store,
+            symbol,
+            timeframe,
+        )
         validate_scanner_state_fingerprints(state, metrics)
         needs_snapshot_refresh = not _state_matches_target(
             state,

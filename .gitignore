@@ -16,3 +16,8 @@ benchmarks/results/
 *.log
 vsa.log
 
+
+# Python quality/coverage artifacts
+.coverage
+coverage.xml
+htmlcov/

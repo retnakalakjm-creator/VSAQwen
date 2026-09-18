@@ -611,7 +611,7 @@ telemetry belongs in M9.
 # M9 — State, Cache & Operational Robustness
 
 **Priority:** P2  
-**Status:** IN PROGRESS
+**Status:** VALIDATED
 
 Planned work:
 
@@ -710,7 +710,8 @@ scanner decision input
 
 ### PR-I3 — Historical Revision / Corporate-Action Audit Policy
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #293
 
 Routine production refresh remains incremental, so provider corrections older than
 the recent merge window require an explicit audit path.
@@ -752,7 +753,7 @@ the existing replay fallback rebuilds state.
 # M10 — Modernization & CI Quality Gates
 
 **Priority:** P2  
-**Status:** PLANNED
+**Status:** IN PROGRESS
 
 Candidate tooling:
 
@@ -766,7 +767,32 @@ typing.Protocol boundaries
 
 ### PR-J1 — Ruff / Type / Coverage Gates
 
-**Status:** PLANNED
+**Status:** IN PROGRESS  
+**Baseline cut:** #294 VALIDATED
+
+J1 is staged to avoid a repository-wide non-semantic rewrite.
+
+First cut:
+
+- install Python CI tooling from `requirements-ci.txt`,
+- gate active production/test code with high-signal Ruff correctness rules only,
+- run the existing pytest suite with a measured core coverage report,
+- do not enforce an arbitrary coverage percentage before observing the baseline,
+- do not enable repository-wide static typing before stable public boundaries are
+  inventoried.
+
+See `docs/PYTHON_QUALITY_GATES.md`.
+
+Validated first-cut baseline on Windows / Python 3.13.15:
+
+```text
+Ruff: all checks passed
+pytest: 1018 passed, 1 skipped
+coverage: 74% (5500 statements / 1437 missed)
+```
+
+Later J1 cuts may add targeted typing and a justified coverage floor from this
+measured baseline.
 
 ---
 
@@ -821,8 +847,8 @@ Avoid:
 | 19 | PR-H2 / #287-#288 | P2 | Domain exceptions/policy boundaries | VALIDATED |
 | 20 | PR-I1 / #289-#291 | P2 | Recovery telemetry/persistence hardening | VALIDATED |
 | 21 | PR-I2 / #292 | P2 | Cache/metadata generation consistency | VALIDATED |
-| 22 | PR-I3 | P2 | Historical revision/corporate-action audit policy | IN PROGRESS |
-| 23 | PR-J1 | P2 | Ruff/type/coverage gates | PLANNED |
+| 22 | PR-I3 / #293 | P2 | Historical revision/corporate-action audit policy | VALIDATED |
+| 23 | PR-J1 | P2 | Ruff/type/coverage gates | IN PROGRESS |
 
 ---
 
@@ -893,33 +919,34 @@ measurable benchmark improvement
 | 2026-09-18 | #290 | M9 | VALIDATED | Atomic persistence write failures are observable through PERSIST telemetry and fail closed while preserving last-good state. |
 | 2026-09-18 | #291 | M9 | VALIDATED | Cross-process checkpoint lock + revision CAS prevents stale production writers from replacing newer state. |
 | 2026-09-18 | #292 | M9 | VALIDATED | Cache metadata is bound to exact file generations; same-symbol cache/metadata writes are serialized and mismatch remains diagnostic-only. |
-| 2026-09-18 | PR-I3 | M9 | IN PROGRESS | Add explicit read-only audit for provider revisions outside the incremental refresh window without inferring corporate-action cause. |
+| 2026-09-18 | #293 | M9 | VALIDATED | Read-only raw-history revision audit detects older provider corrections without mutating cache or inferring corporate-action cause. |
+| 2026-09-18 | #294 | M10 | VALIDATED | Ruff correctness gate passes; full suite 1018 passed / 1 skipped; measured core coverage baseline is 74% on Windows Python 3.13.15. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-I3 — Historical Revision / Corporate-Action Audit Policy
+## NEXT: PR-J1 — Python Quality Baseline
 
 Checklist:
 
-- [x] Mark I2 / #292 validated.
-- [x] Keep production market data raw with auto_adjust=False.
-- [x] Add read-only history revision audit against a fresh production-window download.
-- [x] Compare overlapping daily identities plus OHLCV.
-- [x] Treat append-only new provider bars as normal, not a historical revision.
-- [x] Detect revisions older than the incremental refresh window.
-- [x] Detect historical inserted/removed dates.
-- [x] Use a tiny numerical tolerance only for floating representation noise.
-- [x] Never infer corporate-action type from OHLCV revision alone.
-- [x] Never rewrite cache or scanner state from the audit.
-- [x] Document existing ScannerState data fingerprint as the downstream stale-state gate after an explicit rebuild.
-- [ ] Run history revision audit tests.
-- [ ] Run data-cache / provider / resilience tests.
-- [ ] Run scanner state fingerprint tests.
-- [ ] Confirm audit is read-only and production scan semantics are unchanged.
-- [ ] Merge after manual validation.
-- [ ] If validated, close M9 unless another concrete operational defect remains.
+- [x] Close M9 after validated I1/I2/I3 operational hardening.
+- [x] Add dedicated requirements-ci.txt.
+- [x] Add Python 3.11 Ruff configuration.
+- [x] Restrict the first Ruff gate to syntax/control-flow/undefined-name correctness rules.
+- [x] Apply the same Ruff gate in hosted and Windows self-hosted CI.
+- [x] Add pytest-cov to both backend CI paths.
+- [x] Measure core scanner/data/domain package coverage.
+- [x] Generate coverage.xml without enforcing an arbitrary percentage.
+- [x] Ignore generated coverage artifacts.
+- [x] Document staged type-checking and coverage-floor policy.
+- [x] Run Ruff locally on Windows.
+- [x] Run the full pytest suite with the coverage command.
+- [x] Record the observed 74% coverage baseline.
+- [x] Preserve legacy injected-state-store compatibility while retaining real-store CAS.
+- [x] Confirm the full suite passes: 1018 passed, 1 skipped.
+- [ ] Merge #294.
+- [ ] Then select a narrow public-boundary type-checking scope from measured issues.
 
 ---
 
@@ -977,5 +1004,5 @@ ProVSA should ultimately demonstrate:
 ---
 
 **Document owner:** ProVSA project  
-**Current milestone:** M9 — State, Cache & Operational Robustness  
-**Current PR:** PR-I3 — Historical Revision / Corporate-Action Audit Policy
+**Current milestone:** M10 — Modernization & CI Quality Gates  
+**Current PR:** PR-J1 — Python Quality Baseline

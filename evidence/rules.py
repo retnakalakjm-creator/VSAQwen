@@ -455,8 +455,4 @@ __all__ = [
     "is_healthy_trend",
     "is_developing_trend",
     "is_correcting_trend",
-
-    "closes_higher",
-    "closes_lower",
-
-]    
+]
