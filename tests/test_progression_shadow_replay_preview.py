@@ -23,7 +23,9 @@ def test_route_boundary_is_dev_only_offline_and_closed_to_production() -> None:
         'route: "/replay/progression-semantic"',
         "devOnlyOfflinePreview: true",
         "enabledInProductionByDefault: false",
-        "usesSyntheticFixtureOnly: true",
+        "usesOfflineLocalArtifactOnly: true",
+        "syntheticFallbackAllowed: true",
+        "networkUploadAllowed: false",
         "liveApiFetchAllowed: false",
         "productionSignalAllowed: false",
         "scoringAllowed: false",
@@ -43,7 +45,9 @@ def test_preview_gate_defaults_closed_and_rejects_production_requests() -> None:
     text = _text(GATE)
     for snippet in (
         "enabledByDefault: false",
-        "offlineSyntheticFixtureOnly: true",
+        "offlineLocalArtifactOnly: true",
+        "syntheticFallbackAllowed: true",
+        "networkUploadAllowed: false",
         "liveApiFetchAllowed: false",
         "productionSignalAllowed: false",
         "actionabilityAllowed: false",

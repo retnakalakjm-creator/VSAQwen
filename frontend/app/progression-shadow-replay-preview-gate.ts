@@ -2,7 +2,9 @@ export const PROGRESSION_SHADOW_REPLAY_PREVIEW_GATE = {
   previewEntrypointOnly: true,
   enabledByDefault: false,
   requiresExplicitPreviewEnablement: true,
-  offlineSyntheticFixtureOnly: true,
+  offlineLocalArtifactOnly: true,
+  syntheticFallbackAllowed: true,
+  networkUploadAllowed: false,
   liveApiFetchAllowed: false,
   productionSignalAllowed: false,
   scoringAllowed: false,
@@ -20,24 +22,27 @@ export type ProgressionShadowReplayPreviewGateInput = {
   allowLiveApiFetch?: boolean;
   allowProductionSignals?: boolean;
   allowQualificationMutation?: boolean;
+  allowNetworkUpload?: boolean;
 };
 
 export type ProgressionShadowReplayPreviewGateDecision = {
   enabled: boolean;
   reason:
     | "disabled_by_default"
-    | "enabled_for_offline_synthetic_preview"
+    | "enabled_for_offline_preview"
     | "blocked_for_production_boundary";
   canRenderPreview: boolean;
   production_change_allowed: false;
   live_api_fetch_allowed: false;
   qualification_mutation_allowed: false;
+  network_upload_allowed: false;
 };
 
 const CLOSED_GATE = {
   production_change_allowed: false,
   live_api_fetch_allowed: false,
   qualification_mutation_allowed: false,
+  network_upload_allowed: false,
 } as const;
 
 export function evaluateProgressionShadowReplayPreviewGate(
@@ -46,7 +51,8 @@ export function evaluateProgressionShadowReplayPreviewGate(
   if (
     input.allowLiveApiFetch === true ||
     input.allowProductionSignals === true ||
-    input.allowQualificationMutation === true
+    input.allowQualificationMutation === true ||
+    input.allowNetworkUpload === true
   ) {
     return {
       ...CLOSED_GATE,
@@ -60,7 +66,7 @@ export function evaluateProgressionShadowReplayPreviewGate(
     return {
       ...CLOSED_GATE,
       enabled: true,
-      reason: "enabled_for_offline_synthetic_preview",
+      reason: "enabled_for_offline_preview",
       canRenderPreview: true,
     };
   }

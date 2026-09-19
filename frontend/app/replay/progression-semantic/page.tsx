@@ -34,6 +34,8 @@ export default function ProgressionShadowReplayRoute() {
       data-route-purpose={PROGRESSION_SHADOW_REPLAY_ROUTE_BOUNDARY.routePurpose}
       data-dev-only-offline-preview="true"
       data-offline-preview-enabled={enableOfflinePreview ? "true" : "false"}
+      data-local-artifact-only="true"
+      data-network-upload-allowed="false"
       data-live-api-fetch-allowed="false"
       data-production-change-allowed="false"
     >
@@ -41,9 +43,9 @@ export default function ProgressionShadowReplayRoute() {
         <span className="section-kicker">DEV-ONLY OFFLINE REPLAY</span>
         <h1>Progression shadow semantic replay</h1>
         <p>
-          This route visualizes synthetic K24-style shadow semantic markers.
-          It never fetches live API data and cannot modify qualification,
-          scoring, actionability, persistence, alerts, or orders.
+          This route can visualize built-in synthetic cases or an explicitly
+          selected frozen K26 replay JSON file. Local files stay in browser
+          memory; no network upload or live API fetch is allowed.
         </p>
         <dl>
           <div>

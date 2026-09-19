@@ -29,6 +29,15 @@ export type ProgressionShadowReplaySequence = {
   title: string;
   description: string;
   event_bar_index: number;
+  source?: "synthetic-k25-fixture" | "k26-offline-dataset";
+  symbol?: string;
+  event_week?: string;
+  source_event_bar_index?: number;
+  resolved_event_bar_index?: number;
+  event_direction?: "bullish" | "bearish";
+  trend_alignment?: "opposed" | "aligned" | "neutral" | "unknown";
+  semantic_role?: ProgressionShadowSemanticRole;
+  projected_transition_direction?: "bullish" | "bearish" | null;
   frames: ProgressionShadowReplayFrame[];
 };
 

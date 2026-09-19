@@ -1557,7 +1557,8 @@ See `docs/PROGRESSION_SHADOW_SEMANTIC_REPLAY_PREVIEW.md`.
 
 ### PR-K26 — Progression Shadow Replay Dataset
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #323
 
 K26 builds replay-ready weekly windows from the validated K24 projection.
 
@@ -1576,6 +1577,22 @@ Each sequence contains exactly one shadow semantic marker and remains
 non-actionable.
 
 See `docs/PROGRESSION_SHADOW_REPLAY_DATASET.md`.
+
+### PR-K27 — Offline Replay Dataset UI Adapter
+
+**Status:** IN PROGRESS
+
+K27 lets the existing dev-only replay route consume an explicitly selected
+frozen K26 JSON dataset directly in browser memory.
+
+The adapter validates the exact K26 audit id, ready status, counts, event-frame
+identity, semantic marker placement, and every production safety flag before
+rendering any imported sequence.
+
+No file upload, API request, browser persistence, scanner path, qualification,
+scoring, actionability, alert, or order path is introduced.
+
+See `docs/PROGRESSION_SHADOW_REPLAY_DATASET_UI_ADAPTER.md`.
 
 
 ---
@@ -1658,7 +1675,8 @@ Avoid:
 | 46 | PR-K23 / #320 | P1 | Measure opposed-progression reversal onset and persistence | VALIDATED |
 | 47 | PR-K24 / #321 | P1 | Add read-only shadow progression semantic projection | VALIDATED |
 | 48 | PR-K25 / #322 | P1 | Expose progression shadow semantics in dev-only offline replay | VALIDATED |
-| 49 | PR-K26 | P1 | Build frozen K24 progression shadow replay dataset | IN PROGRESS |
+| 49 | PR-K26 / #323 | P1 | Build frozen K24 progression shadow replay dataset | VALIDATED |
+| 50 | PR-K27 | P1 | Adapt frozen K26 replay JSON into dev-only offline replay UI | IN PROGRESS |
 
 ---
 
@@ -1759,40 +1777,46 @@ measurable benchmark improvement
 | 2026-09-19 | #320 | M11 | VALIDATED | K23 classified all 250 trend-opposed trajectories. Bullish-opposed events reversed by 3 weeks in 77.5% of cases but only 47.4% of observed reversals persisted through all later usable horizons; bearish-opposed persistence was 39.9%. Progression therefore supports event-scoped transition warning semantics rather than durable reversal confirmation. |
 | 2026-09-19 | #321 | M11 | VALIDATED | K24 projected all 591 frozen K14 progression events one-to-one: 250 transition warnings, 217 aligned observations, 124 neutral observations, and zero unknown-context rows. Every projection remained non-actionable with qualification/scoring/persistence claims disabled. |
 | 2026-09-19 | #322 | M11 | VALIDATED | K25 added a dev-only synthetic progression replay route with causal cursor visibility. Manual review confirmed future semantic markers remain hidden before the event bar and production boundaries stay closed. |
-| 2026-09-19 | PR-K26 | M11 | IN PROGRESS | Build replay-ready weekly windows for all frozen K24 semantic events using stable event-week resolution and frozen local market-data cache, without scanner replay or frontend integration. |
+| 2026-09-19 | #323 | M11 | VALIDATED | K26 built 591 replay sequences from all 591 frozen K24 events with zero symbol failures and 5,316 frames. Event identity is resolved by event_week rather than source index; cross-machine cache-length differences were observed and handled correctly. Every sequence contains exactly one marker and all safety flags remain false. |
+| 2026-09-19 | PR-K27 | M11 | IN PROGRESS | Add strict browser-local K26 JSON validation and adaptation into the existing dev-only replay UI, retaining synthetic fallback and prohibiting network upload, live API access, browser persistence, and production side effects. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K26 — Progression Shadow Replay Dataset
+## NEXT: PR-K27 — Offline Replay Dataset UI Adapter
 
 Checklist:
 
-- [x] Mark #322 / K25 validated and merged.
-- [x] Consume frozen K24 summary + semantic rows.
-- [x] Preserve K24 source event count.
-- [x] Resolve events by exact event_week, not source row index.
-- [x] Keep source event_bar_index as provenance only.
-- [x] Reuse completed daily -> completed weekly causal data path.
-- [x] Freeze existing local cache unless --refresh is explicit.
-- [x] Build default 4-before / event / 4-after weekly windows.
-- [x] Require exactly one semantic marker per replay sequence.
-- [x] Keep non-event frames free of semantic role/direction.
-- [x] Preserve K24 reversal_confirmed=false.
-- [x] Preserve persistent_direction_claim=false.
-- [x] Preserve affects_qualification=false.
-- [x] Preserve affects_scoring=false.
-- [x] Preserve is_actionable=false.
-- [x] Add source-count and duplicate-sequence invariants.
-- [x] Add K26 module/CLI to Ruff.
-- [ ] Run Ruff locally.
-- [ ] Run focused K26 + K24 tests.
-- [ ] Run full 30-symbol K26 dataset at fixed 2026-09-18 cutoff.
-- [ ] Confirm 591 replay sequences and zero symbol failures.
-- [ ] Inspect sequence windows for stable event-week resolution.
-- [ ] Verify every sequence contains exactly one marker.
-- [ ] Decide whether K27 should adapt dataset JSON into K25 replay UI.
+- [x] Mark #323 / K26 validated and merged.
+- [x] Keep the existing dev-only /replay/progression-semantic route.
+- [x] Keep the route disabled in production by default.
+- [x] Add explicit local JSON file selection.
+- [x] Read selected files with File.text() in browser memory only.
+- [x] Add no fetch/XMLHttpRequest path.
+- [x] Add no network upload path.
+- [x] Add no localStorage/sessionStorage persistence.
+- [x] Validate exact K26 audit id and ready status.
+- [x] Require failed_symbol_count = 0.
+- [x] Validate source/sequence/frame counts.
+- [x] Reject duplicate sequence ids.
+- [x] Require exactly one event frame per sequence.
+- [x] Require event_week and resolved index to match event frame.
+- [x] Require sequence role/direction to match event frame.
+- [x] Reject non-event semantic leakage.
+- [x] Reject any true production safety flag.
+- [x] Preserve synthetic K25 fixtures as fallback.
+- [x] Replace 591-button rendering with sequence dropdown.
+- [x] Keep causal cursor visibility unchanged.
+- [x] Update K25 route/gate tests for local-artifact boundary.
+- [ ] Run Ruff on K25/K27 guardrail tests.
+- [ ] Run focused K25/K27 backend guardrail tests.
+- [ ] Run frontend production build.
+- [ ] Load the full 591-sequence K26 JSON manually.
+- [ ] Verify dataset metadata shows 591 sequences / 5,316 frames.
+- [ ] Verify an SRF case resolves/rendered by event week despite source-index drift.
+- [ ] Verify Reset/bar stepping still hides future event markers.
+- [ ] Verify invalid/modified JSON is rejected closed.
 - [ ] Merge after manual validation.
 
 ---
@@ -1852,4 +1876,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K26 — Progression Shadow Replay Dataset
+**Current PR:** PR-K27 — Offline Replay Dataset UI Adapter

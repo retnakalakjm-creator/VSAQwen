@@ -1,7 +1,12 @@
 "use client";
 
+import type { ChangeEvent } from "react";
 import { useState } from "react";
 
+import {
+  type AdaptedProgressionShadowReplayDataset,
+  adaptProgressionShadowReplayDataset,
+} from "./progression-shadow-replay-dataset-adapter";
 import {
   PROGRESSION_SHADOW_REPLAY_FIXTURE_BOUNDARY,
   progressionShadowReplaySequences,
@@ -21,6 +26,9 @@ export function ProgressionShadowReplayPreviewEntrypoint({
   const gate = evaluateProgressionShadowReplayPreviewGate({
     enableOfflinePreview,
   });
+  const [loadedDataset, setLoadedDataset] =
+    useState<AdaptedProgressionShadowReplayDataset | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [sequenceIndex, setSequenceIndex] = useState(0);
   const [cursor, setCursor] = useState(0);
 
@@ -40,12 +48,53 @@ export function ProgressionShadowReplayPreviewEntrypoint({
     );
   }
 
-  const sequence = progressionShadowReplaySequences[sequenceIndex];
+  const sequences =
+    loadedDataset?.sequences ?? progressionShadowReplaySequences;
+  const sequence = sequences[sequenceIndex];
   const frame = sequence.frames[cursor];
   const visibleFrames = sequence.frames.slice(0, cursor + 1);
+  const sourceLabel =
+    loadedDataset?.sourceLabel ??
+    PROGRESSION_SHADOW_REPLAY_FIXTURE_BOUNDARY.source;
 
   function selectSequence(index: number) {
     setSequenceIndex(index);
+    setCursor(0);
+  }
+
+  async function loadLocalDataset(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const adapted = adaptProgressionShadowReplayDataset(parsed);
+      setLoadedDataset(adapted);
+      setLoadError(null);
+      setSequenceIndex(0);
+      setCursor(0);
+    } catch (error) {
+      setLoadedDataset(null);
+      setSequenceIndex(0);
+      setCursor(0);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Unable to read K26 replay dataset",
+      );
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function useSyntheticFallback() {
+    setLoadedDataset(null);
+    setLoadError(null);
+    setSequenceIndex(0);
     setCursor(0);
   }
 
@@ -53,7 +102,8 @@ export function ProgressionShadowReplayPreviewEntrypoint({
     <section
       className="panel progression-shadow-replay-preview"
       data-preview-gate="enabled"
-      data-synthetic-fixture-only="true"
+      data-offline-local-artifact-only="true"
+      data-network-upload-allowed="false"
       data-live-api-fetch-allowed="false"
       data-production-change-allowed="false"
       data-qualification-mutation-allowed="false"
@@ -70,24 +120,74 @@ export function ProgressionShadowReplayPreviewEntrypoint({
       </div>
 
       <p>
-        Synthetic weekly bars only. Semantic markers become visible only when
-        the replay reaches their event bar. No future marker is exposed early.
+        Use the built-in synthetic fixtures or explicitly select a frozen K26
+        JSON file. Local files are read in browser memory only and are never
+        uploaded. Future semantic markers stay hidden until their event bar.
       </p>
 
-      <div className="replay-preview-controls" aria-label="Replay sequence selection">
-        {progressionShadowReplaySequences.map((item, index) => (
-          <button
-            key={item.sequence_id}
-            type="button"
-            onClick={() => selectSequence(index)}
-            aria-pressed={sequenceIndex === index}
-          >
-            {item.title}
-          </button>
-        ))}
+      <div
+        className="replay-preview-controls"
+        aria-label="Offline replay dataset controls"
+      >
+        <label>
+          Load frozen K26 JSON
+          <input
+            type="file"
+            accept=".json,application/json"
+            onChange={loadLocalDataset}
+          />
+        </label>
+        <button type="button" onClick={useSyntheticFallback}>
+          Use synthetic fixtures
+        </button>
       </div>
 
-      <div className="replay-preview-controls" aria-label="Replay bar controls">
+      {loadError ? (
+        <p role="alert">Dataset rejected: {loadError}</p>
+      ) : null}
+
+      {loadedDataset ? (
+        <dl>
+          <div>
+            <dt>Basket</dt>
+            <dd>{loadedDataset.basketName}</dd>
+          </div>
+          <div>
+            <dt>Sequences</dt>
+            <dd>{loadedDataset.sequenceCount}</dd>
+          </div>
+          <div>
+            <dt>Total frames</dt>
+            <dd>{loadedDataset.totalFrameCount}</dd>
+          </div>
+        </dl>
+      ) : null}
+
+      <div
+        className="replay-preview-controls"
+        aria-label="Replay sequence selection"
+      >
+        <label>
+          Sequence
+          <select
+            value={sequenceIndex}
+            onChange={(event) =>
+              selectSequence(Number(event.target.value))
+            }
+          >
+            {sequences.map((item, index) => (
+              <option key={item.sequence_id} value={index}>
+                {item.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div
+        className="replay-preview-controls"
+        aria-label="Replay bar controls"
+      >
         <button
           type="button"
           onClick={() => setCursor((value) => Math.max(0, value - 1))}
@@ -114,6 +214,22 @@ export function ProgressionShadowReplayPreviewEntrypoint({
       <section aria-label="Current replay frame">
         <h3>{sequence.title}</h3>
         <p>{sequence.description}</p>
+        {sequence.source === "k26-offline-dataset" ? (
+          <dl>
+            <div>
+              <dt>Source event index</dt>
+              <dd>{sequence.source_event_bar_index}</dd>
+            </div>
+            <div>
+              <dt>Resolved local weekly index</dt>
+              <dd>{sequence.resolved_event_bar_index}</dd>
+            </div>
+            <div>
+              <dt>Event week identity</dt>
+              <dd>{sequence.event_week}</dd>
+            </div>
+          </dl>
+        ) : null}
         <dl>
           <div>
             <dt>Week</dt>
@@ -165,8 +281,8 @@ export function ProgressionShadowReplayPreviewEntrypoint({
 
       <dl>
         <div>
-          <dt>Fixture source</dt>
-          <dd>{PROGRESSION_SHADOW_REPLAY_FIXTURE_BOUNDARY.source}</dd>
+          <dt>Replay source</dt>
+          <dd>{sourceLabel}</dd>
         </div>
         <div>
           <dt>Preview gate default</dt>
