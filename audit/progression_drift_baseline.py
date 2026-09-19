@@ -346,7 +346,7 @@ def load_frozen_progression_outcomes(
     )
 
 
-def _resolve_event_bar_index(
+def resolve_frozen_progression_event_bar_index(
     *,
     weekly: pd.DataFrame,
     observation: FrozenProgressionOutcomeObservation,
@@ -454,7 +454,7 @@ def build_symbol_progression_drift_baseline(
         unique_event_rows.setdefault(key, item)
 
     resolved_event_indices = {
-        key: _resolve_event_bar_index(
+        key: resolve_frozen_progression_event_bar_index(
             weekly=weekly,
             observation=item,
         )
@@ -843,6 +843,7 @@ __all__ = [
     "build_progression_drift_baseline_audit",
     "build_symbol_progression_drift_baseline",
     "load_frozen_progression_outcomes",
+    "resolve_frozen_progression_event_bar_index",
     "summarize_progression_drift_lift",
     "write_progression_drift_baseline_audit",
 ]

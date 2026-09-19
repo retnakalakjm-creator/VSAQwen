@@ -1364,7 +1364,8 @@ reproducible after this production change.
 
 ### PR-K18 — Progression Symbol-Normalized Drift Baseline Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #315
 
 K18 tests whether K15's bullish/bearish forward-return asymmetry adds information
 beyond ordinary same-symbol directional drift.
@@ -1386,6 +1387,29 @@ K18 reports both event-weighted lift and equal-weighted per-symbol lift so names
 with many progression events cannot dominate the conclusion.
 
 See `docs/PROGRESSION_DRIFT_BASELINE_AUDIT.md`.
+
+### PR-K19 — Progression Causal Pre-Event Drift Baseline Audit
+
+**Status:** IN PROGRESS
+
+K19 tests whether K18's incremental progression lift survives when every control
+outcome was fully known before the event itself.
+
+For each event/horizon, eligible controls must satisfy:
+
+```text
+same symbol
++ same side
++ same horizon
++ non-progression signal week
++ complete control exit strictly before event bar
++ no progression event anywhere inside the control holding window
+```
+
+K19 evaluates the most recent 26 / 52 / 104 eligible controls and reports both
+event-weighted and equal-weighted per-symbol lift.
+
+See `docs/PROGRESSION_CAUSAL_DRIFT_BASELINE_AUDIT.md`.
 
 
 ---
@@ -1460,7 +1484,8 @@ Avoid:
 | 38 | PR-K15 / #312 | P1 | Measure causal forward weekly outcomes of progression direction labels | VALIDATED |
 | 39 | PR-K16 / #313 | P0 | Audit current qualification spacing against strict pairwise spacing | VALIDATED |
 | 40 | PR-K17 / #314 | P0 | Enforce true pairwise structural-event spacing in production qualification | VALIDATED |
-| 41 | PR-K18 | P1 | Measure progression directional lift versus same-symbol non-event drift | IN PROGRESS |
+| 41 | PR-K18 / #315 | P1 | Measure progression directional lift versus same-symbol non-event drift | VALIDATED |
+| 42 | PR-K19 | P1 | Test progression lift against causal pre-event drift controls | IN PROGRESS |
 
 ---
 
@@ -1553,44 +1578,41 @@ measurable benchmark improvement
 | 2026-09-19 | #312 | M11 | VALIDATED | Full 30-symbol outcome audit completed with 591 events × five horizons = 2,955 observations and zero failures. Aggregate directional hit rate stayed near chance and fell to 45.8% at 15 weeks; bullish labels were positive from 3-15 weeks while bearish labels were consistently negative in their favored direction. |
 | 2026-09-19 | #313 | M11 | VALIDATED | K16 reproduced all 591 frozen K14 qualification states exactly and found 7 spacing divergences across 6 symbols / 7 of 175 campaigns. Two campaigns qualify only under the pre-fix selector; five others qualify 4-127 weekly bars earlier than strict pairwise spacing. |
 | 2026-09-19 | #314 | M11 | VALIDATED | Pairwise qualification spacing fix merged after local Ruff and focused scanner/qualification parity validation. Production now measures each older qualifying event from the last accepted event; K16 retains the frozen pre-fix comparator. |
-| 2026-09-19 | PR-K18 | M11 | IN PROGRESS | Normalize K15 progression outcomes against same-symbol, same-side, same-horizon non-event weekly controls to separate genuine progression lift from ordinary equity drift. |
+| 2026-09-19 | #315 | M11 | VALIDATED | K18 completed 30/30 symbols, 591 events and 2,955 observations with zero failures. After same-symbol drift normalization, bullish progression retained positive incremental lift at 3/5/10 weeks, strongest at 5 weeks; bearish progression remained negative on an equal-weighted symbol basis at every horizon. |
+| 2026-09-19 | PR-K19 | M11 | IN PROGRESS | Replace K18's through-cutoff descriptive baseline with causal pre-event controls whose complete outcomes ended before each event; evaluate 26/52/104-control sensitivity. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K18 — Progression Symbol-Normalized Drift Baseline Audit
+## NEXT: PR-K19 — Progression Causal Pre-Event Drift Baseline Audit
 
 Checklist:
 
-- [x] Mark #314 / K17 validated and merged.
-- [x] Preserve K16 pre-fix spacing comparator independently of production.
-- [x] Consume frozen K15 summary + observation artifacts.
-- [x] Require zero failed symbols in the frozen K15 source.
-- [x] Verify K15 event and observation counts/horizon identities.
-- [x] Reuse completed weekly bars without scanner replay.
-- [x] Freeze existing cache unless --refresh is explicitly requested.
-- [x] Use same-symbol, same-side, same-horizon controls.
-- [x] Exclude every progression-event week from controls.
-- [x] Start each directional control window at that direction's first event.
-- [x] End control windows at the same fixed audit cutoff.
-- [x] Preserve N -> N+1 execution semantics for control outcomes.
-- [x] Use complete control horizons only.
-- [x] Compute event favorable-return lift over control mean.
+- [x] Mark #315 / K18 validated and merged.
+- [x] Record K18 full result: 30/30 symbols, 591 events, zero failures.
+- [x] Reuse frozen K15 event metadata without scanner replay.
+- [x] Resolve every event by stable event_week, not source row index.
+- [x] Recompute event outcomes from the same local weekly history as controls.
+- [x] Require control signal week to be a non-progression week.
+- [x] Require each control outcome to be complete.
+- [x] Require each control exit to occur strictly before the event bar.
+- [x] Exclude controls whose holding window contains any progression event.
+- [x] Preserve event/control N -> N+1 execution semantics.
+- [x] Evaluate most recent 26 / 52 / 104 eligible controls.
+- [x] Record actual control count when fewer controls exist.
 - [x] Report event-weighted and equal-weighted per-symbol lift.
-- [x] Split lift by event direction and trend alignment.
-- [x] Retain zero-event symbols without market-data work.
-- [x] Isolate symbol failures and preserve source/processed counts.
-- [x] Keep all output explicitly non-actionable.
-- [x] Add K18 module/CLI to Ruff.
+- [x] Split by direction, trend alignment, horizon, and control window.
+- [x] Keep output explicitly non-actionable.
+- [x] Add K19 module/CLI to Ruff.
 - [ ] Run Ruff locally.
-- [ ] Run focused K18 + K15 outcome tests.
-- [ ] Run full 30-symbol K18 audit at the fixed 2026-09-18 cutoff.
-- [ ] Compare bullish lift versus same-symbol long drift.
-- [ ] Compare bearish lift versus same-symbol short drift.
-- [ ] Review equal-weighted symbol lift to avoid event-count concentration.
-- [ ] Review aligned versus opposed trend-context lift.
-- [ ] Decide whether progression polarity has incremental directional value.
+- [ ] Run focused K19 + K18/K15 outcome tests.
+- [ ] Run full 30-symbol K19 audit at the fixed 2026-09-18 cutoff.
+- [ ] Compare bullish lift stability across 26/52/104 controls.
+- [ ] Compare bearish lift stability across 26/52/104 controls.
+- [ ] Review trend-aligned versus trend-opposed causal lift.
+- [ ] Review control-count coverage for early events.
+- [ ] Decide whether progression polarity has causal incremental value.
 - [ ] Merge after manual validation.
 
 ---
@@ -1650,4 +1672,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K18 — Progression Symbol-Normalized Drift Baseline Audit
+**Current PR:** PR-K19 — Progression Causal Pre-Event Drift Baseline Audit
