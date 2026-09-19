@@ -1669,7 +1669,8 @@ exists.
 
 ### PR-L1 — Daily Event Inventory & Point-in-Time Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #327
 
 L1 freezes the current EvidenceCode vocabulary and measures four boundaries:
 
@@ -1696,12 +1697,41 @@ Outputs remain read-only and non-actionable.
 
 See `docs/DAILY_EVENT_INVENTORY_AUDIT.md`.
 
-Planned follow-on cuts after L1 evidence review:
+### PR-L2 — Daily Event Frequency, Co-Firing & Gate Semantics Audit
+
+**Status:** IN PROGRESS
+
+L2 consumes the frozen L1 emission ledger rather than rerunning market data.
+
+It measures:
 
 ```text
-L2  Daily event frequency / clustering / concentration audit
+per-event frequency and symbol concentration
+pairwise co-firing / Jaccard overlap
+identical firing sets
+strict subset / nested firing sets
+multi-event cluster signatures
+mandatory vs confirmation detector gates
+```
+
+Frequency/co-firing uses unique:
+
+```text
+symbol + bar_index + session + code
+```
+
+so L1 duplicate wiring remains visible in raw counts but cannot inflate overlap
+statistics.
+
+L2 changes no detector semantics.
+
+See `docs/DAILY_EVENT_COFIRING_AUDIT.md`.
+
+Planned follow-on cuts after L2 evidence review:
+
+```text
 L3  Causal daily event outcome audit
-L4  Named VSA detector semantics audit
+L4  Named VSA detector semantics / correctness fixes where justified
 L5  Daily Effort/Result semantics audit
 L6  Daily Absorption semantics audit
 L7  Daily structural-confirmation audit
@@ -1795,7 +1825,8 @@ Avoid:
 | 50 | PR-K27 / #324 | P1 | Adapt frozen K26 replay JSON into dev-only offline replay UI | VALIDATED |
 | 51 | PR-K28 / #325 | P1 | Add causal candlestick/volume progression replay visualization | VALIDATED |
 | 52 | PR-K29 / #326 | P1 | Add causal play/pause/speed/scrubber replay transport | VALIDATED |
-| 53 | PR-L1 | P1 | Inventory daily events and point-in-time detector reachability | IN PROGRESS |
+| 53 | PR-L1 / #327 | P1 | Inventory daily events and point-in-time detector reachability | VALIDATED |
+| 54 | PR-L2 | P1 | Audit daily event frequency, co-firing, clustering, and confirmation-gate semantics | IN PROGRESS |
 
 ---
 
@@ -1900,44 +1931,45 @@ measurable benchmark improvement
 | 2026-09-19 | #324 | M11 | VALIDATED | K27 loaded the validated 591-sequence K26 JSON entirely in browser memory, preserved source/resolved event identity, retained causal stepping, rejected unsafe JSON closed, and added no network/API/persistence path. |
 | 2026-09-19 | #325 | M11 | VALIDATED | K28 added weekly candlesticks, volume, and semantic event markers driven only by the causal visibleFrames slice. Manual validation confirmed candles/volume advance one bar at a time, markers remain hidden before the event bar, and sequence switching resets the cursor. |
 | 2026-09-19 | #326 | M11 | VALIDATED | K29 added causal replay transport controls over the existing cursor. Local guardrails/build/manual replay validation passed after updating the stale K25 control-location assertion; no production semantics changed. |
-| 2026-09-19 | PR-L1 | M12 | IN PROGRESS | Inventory the existing daily Evidence vocabulary, active collector reachability, DailyBehavior mappings, direction compatibility, point-in-time emissions, and same-bar duplicate emissions before any detector or entry-rule change. |
+| 2026-09-19 | #327 | M12 | VALIDATED | L1 completed 30/30 symbols across 106,125 evaluated daily bars with 83,475 raw emissions and zero failures. All 20 active codes were observed. It exposed 2,947 duplicate ABSORPTION groups, 10 behavior-mapped inactive codes, 3 direction-incompatible behavior mappings, and detector-overlap questions for L2. |
+| 2026-09-19 | PR-L2 | M12 | IN PROGRESS | Consume frozen L1 emissions to measure unique-event frequency, symbol concentration, pairwise co-firing, identical/nested firing sets, cluster signatures, and whether detector confirmation clauses currently gate emission. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-L1 — Daily Event Inventory & Point-in-Time Audit
+## NEXT: PR-L2 — Daily Event Frequency, Co-Firing & Gate Semantics Audit
 
 Checklist:
 
-- [x] Close #326 / K29 as validated.
-- [x] Close M11 as the validated sequence/audit/replay toolchain.
-- [x] Explicitly state that M11 did not complete daily detector validation.
-- [x] Start M12 daily event validation.
-- [x] Freeze every EvidenceCode in the inventory.
-- [x] Record modern profile-registry coverage.
-- [x] Record legacy registry coverage.
-- [x] Freeze active EvidenceEngine collector reachability.
-- [x] Expose read-only DailyBehavior code mappings.
-- [x] Record bullish/bearish behavior dimensions by code.
-- [x] Audit declared-direction compatibility with behavior mappings.
-- [x] Reuse K5 prefix-only daily Evidence generation.
-- [x] Retain target-bar evidence only.
-- [x] Record per-event symbol/session/code/direction/strength/weight/quality.
-- [x] Detect same symbol/bar/code duplicate emissions.
-- [x] Preserve duplicate emissions rather than silently deduplicating them.
-- [x] Write inventory/emission/duplicate/failure ledgers.
-- [x] Keep all L1 outputs non-actionable.
-- [x] Add L1 module/script to Ruff CI gate.
-- [ ] Run Ruff and focused L1/K5/daily-behavior tests locally.
-- [ ] Run a small real-symbol point-in-time smoke audit.
-- [ ] Run the standard 30-symbol basket at a fixed cutoff.
-- [ ] Review active-but-never-observed codes.
-- [ ] Review behavior-mapped-but-inactive codes.
-- [ ] Review behavior direction mismatches.
-- [ ] Review duplicate-emission groups, especially ABSORPTION.
-- [ ] Use L1 evidence to define L2 frequency/clustering cohorts.
-- [ ] Merge only after local validation.
+- [x] Mark #327 / L1 validated and merged.
+- [x] Consume frozen L1 summary + emission ledger only.
+- [x] Require zero-failure, non-actionable L1 source.
+- [x] Preserve raw emission counts.
+- [x] Deduplicate symbol/bar/session/code only for overlap statistics.
+- [x] Measure unique per-code event frequency.
+- [x] Measure per-code symbol concentration.
+- [x] Build all emitted-code pairwise overlaps.
+- [x] Compute directional containment percentages.
+- [x] Compute Jaccard overlap.
+- [x] Classify identical firing sets.
+- [x] Classify strict subset / nested firing sets.
+- [x] Classify partial overlap and disjoint pairs.
+- [x] Build recurring unique-code cluster signatures.
+- [x] Introspect mandatory detector requirements.
+- [x] Introspect confirmation requirements.
+- [x] Audit whether shared confirmations currently gate emission.
+- [x] Keep every L2 output read-only and non-actionable.
+- [x] Add no market-data access or detector mutation.
+- [x] Add L2 module/script to Ruff CI gate.
+- [ ] Run Ruff and focused L2/L1 tests locally.
+- [ ] Run L2 against the frozen 30-symbol L1 artifacts.
+- [ ] Confirm BUYING_CLIMAX / UPTHRUST relationship.
+- [ ] Confirm ABSORPTION raw-vs-unique counts.
+- [ ] Review all strict subset relationships.
+- [ ] Review confirmation-sensitive detector gate statuses.
+- [ ] Decide whether L3 is outcomes or a P0/P1 detector correctness fix.
+- [ ] Merge only after manual validation.
 
 ---
 
@@ -1996,4 +2028,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M12 — Daily Event Validation & Enrichment  
-**Current PR:** PR-L1 — Daily Event Inventory & Point-in-Time Audit
+**Current PR:** PR-L2 — Daily Event Frequency, Co-Firing & Gate Semantics Audit
