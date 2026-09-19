@@ -8,6 +8,9 @@ import {
   adaptProgressionShadowReplayDataset,
 } from "./progression-shadow-replay-dataset-adapter";
 import {
+  ProgressionShadowReplayChart,
+} from "./progression-shadow-replay-chart";
+import {
   PROGRESSION_SHADOW_REPLAY_FIXTURE_BOUNDARY,
   progressionShadowReplaySequences,
 } from "./progression-shadow-replay-fixtures";
@@ -210,6 +213,8 @@ export function ProgressionShadowReplayPreviewEntrypoint({
           Reset
         </button>
       </div>
+
+      <ProgressionShadowReplayChart frames={visibleFrames} />
 
       <section aria-label="Current replay frame">
         <h3>{sequence.title}</h3>

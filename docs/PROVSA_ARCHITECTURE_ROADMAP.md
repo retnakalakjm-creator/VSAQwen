@@ -1580,7 +1580,8 @@ See `docs/PROGRESSION_SHADOW_REPLAY_DATASET.md`.
 
 ### PR-K27 — Offline Replay Dataset UI Adapter
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #324
 
 K27 lets the existing dev-only replay route consume an explicitly selected
 frozen K26 JSON dataset directly in browser memory.
@@ -1593,6 +1594,22 @@ No file upload, API request, browser persistence, scanner path, qualification,
 scoring, actionability, alert, or order path is introduced.
 
 See `docs/PROGRESSION_SHADOW_REPLAY_DATASET_UI_ADAPTER.md`.
+
+### PR-K28 — Progression Shadow Candlestick Replay
+
+**Status:** IN PROGRESS
+
+K28 adds a candlestick + volume visual layer to the existing dev-only replay.
+
+The chart receives only the already-causal visibleFrames slice:
+
+```text
+sequence.frames.slice(0, cursor + 1)
+```
+
+so future bars and future semantic markers are never passed to the chart.
+
+See `docs/PROGRESSION_SHADOW_CANDLESTICK_REPLAY.md`.
 
 
 ---
@@ -1676,7 +1693,8 @@ Avoid:
 | 47 | PR-K24 / #321 | P1 | Add read-only shadow progression semantic projection | VALIDATED |
 | 48 | PR-K25 / #322 | P1 | Expose progression shadow semantics in dev-only offline replay | VALIDATED |
 | 49 | PR-K26 / #323 | P1 | Build frozen K24 progression shadow replay dataset | VALIDATED |
-| 50 | PR-K27 | P1 | Adapt frozen K26 replay JSON into dev-only offline replay UI | IN PROGRESS |
+| 50 | PR-K27 / #324 | P1 | Adapt frozen K26 replay JSON into dev-only offline replay UI | VALIDATED |
+| 51 | PR-K28 | P1 | Add causal candlestick/volume progression replay visualization | IN PROGRESS |
 
 ---
 
@@ -1778,45 +1796,39 @@ measurable benchmark improvement
 | 2026-09-19 | #321 | M11 | VALIDATED | K24 projected all 591 frozen K14 progression events one-to-one: 250 transition warnings, 217 aligned observations, 124 neutral observations, and zero unknown-context rows. Every projection remained non-actionable with qualification/scoring/persistence claims disabled. |
 | 2026-09-19 | #322 | M11 | VALIDATED | K25 added a dev-only synthetic progression replay route with causal cursor visibility. Manual review confirmed future semantic markers remain hidden before the event bar and production boundaries stay closed. |
 | 2026-09-19 | #323 | M11 | VALIDATED | K26 built 591 replay sequences from all 591 frozen K24 events with zero symbol failures and 5,316 frames. Event identity is resolved by event_week rather than source index; cross-machine cache-length differences were observed and handled correctly. Every sequence contains exactly one marker and all safety flags remain false. |
-| 2026-09-19 | PR-K27 | M11 | IN PROGRESS | Add strict browser-local K26 JSON validation and adaptation into the existing dev-only replay UI, retaining synthetic fallback and prohibiting network upload, live API access, browser persistence, and production side effects. |
+| 2026-09-19 | #324 | M11 | VALIDATED | K27 loaded the validated 591-sequence K26 JSON entirely in browser memory, preserved source/resolved event identity, retained causal stepping, rejected unsafe JSON closed, and added no network/API/persistence path. |
+| 2026-09-19 | PR-K28 | M11 | IN PROGRESS | Render the existing causal replay slice as weekly candlesticks plus volume and semantic event markers using lightweight-charts, without changing the offline dataset or production boundaries. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K27 — Offline Replay Dataset UI Adapter
+## NEXT: PR-K28 — Progression Shadow Candlestick Replay
 
 Checklist:
 
-- [x] Mark #323 / K26 validated and merged.
-- [x] Keep the existing dev-only /replay/progression-semantic route.
-- [x] Keep the route disabled in production by default.
-- [x] Add explicit local JSON file selection.
-- [x] Read selected files with File.text() in browser memory only.
-- [x] Add no fetch/XMLHttpRequest path.
-- [x] Add no network upload path.
-- [x] Add no localStorage/sessionStorage persistence.
-- [x] Validate exact K26 audit id and ready status.
-- [x] Require failed_symbol_count = 0.
-- [x] Validate source/sequence/frame counts.
-- [x] Reject duplicate sequence ids.
-- [x] Require exactly one event frame per sequence.
-- [x] Require event_week and resolved index to match event frame.
-- [x] Require sequence role/direction to match event frame.
-- [x] Reject non-event semantic leakage.
-- [x] Reject any true production safety flag.
-- [x] Preserve synthetic K25 fixtures as fallback.
-- [x] Replace 591-button rendering with sequence dropdown.
-- [x] Keep causal cursor visibility unchanged.
-- [x] Update K25 route/gate tests for local-artifact boundary.
-- [ ] Run Ruff on K25/K27 guardrail tests.
-- [ ] Run focused K25/K27 backend guardrail tests.
+- [x] Mark #324 / K27 validated and merged.
+- [x] Reuse existing lightweight-charts frontend dependency.
+- [x] Add weekly candlestick rendering.
+- [x] Add weekly volume rendering.
+- [x] Render transition-warning event markers.
+- [x] Render aligned/neutral semantic markers.
+- [x] Feed chart only visibleFrames, never the full future sequence.
+- [x] Keep table replay as an audit-friendly companion view.
+- [x] Keep K27 local JSON adapter unchanged.
+- [x] Keep route disabled in production by default.
+- [x] Add no fetch/API/browser-persistence path.
+- [x] Add no scanner/qualification/scoring/actionability path.
+- [x] Add source-level causality regression test.
+- [ ] Run Ruff on K28 guardrail test.
+- [ ] Run focused K25/K27/K28 guardrail tests.
 - [ ] Run frontend production build.
-- [ ] Load the full 591-sequence K26 JSON manually.
-- [ ] Verify dataset metadata shows 591 sequences / 5,316 frames.
-- [ ] Verify an SRF case resolves/rendered by event week despite source-index drift.
-- [ ] Verify Reset/bar stepping still hides future event markers.
-- [ ] Verify invalid/modified JSON is rejected closed.
+- [ ] Load full K26 JSON in dev replay.
+- [ ] Verify candlesticks advance one bar at a time.
+- [ ] Verify event marker is absent before event bar.
+- [ ] Verify event marker appears exactly on event bar.
+- [ ] Verify volume advances with the same cursor.
+- [ ] Verify sequence switching resets replay cursor.
 - [ ] Merge after manual validation.
 
 ---
@@ -1876,4 +1888,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K27 — Offline Replay Dataset UI Adapter
+**Current PR:** PR-K28 — Progression Shadow Candlestick Replay
