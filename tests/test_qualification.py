@@ -42,6 +42,30 @@ def test_three_close_events_are_not_persistent():
     assert result.is_actionable_evidence is False
 
 
+def test_newest_anchor_spacing_does_not_bypass_adjacent_gap():
+    result = PatternQualificationEngine().evaluate([
+        _result(3, EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING, EvidenceDirection.BULLISH),
+        _result(5, EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING, EvidenceDirection.BULLISH),
+        _result(9, EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING, EvidenceDirection.BULLISH),
+    ])
+
+    assert result.qualification == PatternQualification.UNQUALIFIED
+    assert result.is_actionable_evidence is False
+    assert result.evidence_bar_indices == ()
+
+
+def test_pairwise_four_bar_spacing_qualifies():
+    result = PatternQualificationEngine().evaluate([
+        _result(1, EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING, EvidenceDirection.BULLISH),
+        _result(5, EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING, EvidenceDirection.BULLISH),
+        _result(9, EvidenceCode.STRUCTURAL_PROGRESSION_IMPROVING, EvidenceDirection.BULLISH),
+    ])
+
+    assert result.qualification == PatternQualification.PERSISTENT_BULLISH
+    assert result.is_actionable_evidence is True
+    assert result.evidence_bar_indices == (1, 5, 9)
+
+
 def test_three_chronological_events_qualify_persistent_bearish():
     result = PatternQualificationEngine().evaluate([
         _result(99, EvidenceCode.STRUCTURAL_PROGRESSION_WEAKENING, EvidenceDirection.BEARISH),

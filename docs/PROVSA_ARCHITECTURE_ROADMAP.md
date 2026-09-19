@@ -1292,7 +1292,8 @@ See `docs/PROGRESSION_DIRECTIONALITY_SEMANTICS_AUDIT.md`.
 
 ### PR-K15 — Progression Directional Forward-Outcome Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #312
 
 K15 tests the question K14 cannot answer from same-bar context alone:
 
@@ -1319,6 +1320,46 @@ This distinguishes a genuinely useful early-warning/reversal label from a
 non-directional swing-quality change.
 
 See `docs/PROGRESSION_DIRECTIONAL_OUTCOME_AUDIT.md`.
+
+### PR-K16 — Qualification Spacing Counterfactual Audit
+
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #313
+
+K16 isolates a production qualification-loop inconsistency discovered during
+the K15 loop review.
+
+The current selector compares every older candidate event to the newest event.
+The counterfactual selector instead compares each older candidate to the last
+accepted event, enforcing true pairwise spacing.
+
+K16 consumes the frozen K14 event stream only and does not modify
+PatternQualificationEngine.
+
+See `docs/QUALIFICATION_SPACING_IMPACT_AUDIT.md`.
+
+### PR-K17 — Pairwise Qualification Spacing Correctness Fix
+
+**Status:** IN PROGRESS
+
+K17 applies the production correction validated by K16.
+
+The selector changes only the spacing anchor:
+
+```text
+pre-fix:
+older event compared with newest event
+
+fixed:
+older event compared with last accepted event
+```
+
+Campaign reset semantics, event identity, minimum spacing, minimum event count,
+qualification direction, VSA gates, scanner ranking, WeeklySetup materialization,
+and downstream daily behavior remain unchanged.
+
+K16 retains an explicit frozen pre-fix comparator so historical impact remains
+reproducible after this production change.
 
 
 ---
@@ -1390,7 +1431,9 @@ Avoid:
 | 35 | PR-K12 / #309 | P1 | Audit raw weekly structural-progression events feeding qualification | VALIDATED |
 | 36 | PR-K13 / #310 | P1 | Decompose structural-swing score inputs behind progression events | VALIDATED |
 | 37 | PR-K14 / #311 | P1 | Audit progression event direction versus same-bar trend/pattern across standard basket | VALIDATED |
-| 38 | PR-K15 | P1 | Measure causal forward weekly outcomes of progression direction labels | IN PROGRESS |
+| 38 | PR-K15 / #312 | P1 | Measure causal forward weekly outcomes of progression direction labels | VALIDATED |
+| 39 | PR-K16 / #313 | P0 | Audit current qualification spacing against strict pairwise spacing | VALIDATED |
+| 40 | PR-K17 | P0 | Enforce true pairwise structural-event spacing in production qualification | IN PROGRESS |
 
 ---
 
@@ -1480,45 +1523,36 @@ measurable benchmark improvement
 | 2026-09-18 | #309 | M11 | VALIDATED | LT.NS progression audit found 7 events: 1 improving on 2024-03-11 and 6 weakening. The bullish campaign was reset by the next bearish event; three bearish events at bars 137/146/156 satisfied spacing and created persistent-bearish on 2024-09-02. |
 | 2026-09-18 | #310 | M11 | VALIDATED | LT.NS score-input audit reconstructed all 7 production progression deltas exactly. Across the six weakening events, the mean professional decline is structurally dominated; early qualifying bearish events are driven mainly by price/structural-size/duration percentile declines, while later events shift toward volume/spread and Smart Money declines. |
 | 2026-09-18 | #311 | M11 | VALIDATED | Full 30-symbol directionality audit completed with 591 progression events and zero symbol failures. Among directionally comparable trend cases, 250/467 (53.5%) were opposed; explicit improving/weakening pattern cases were 79/138 (57.2%) opposed. Event direction therefore shows only weak same-bar directional association, not a simple inversion. |
-| 2026-09-18 | PR-K15 | M11 | IN PROGRESS | Measure causal next-week and 1/3/5/10/15-week forward outcomes of progression direction labels. K15 was hardened after loop review to consume frozen K14 events, avoid redundant full scanner replay, freeze cache unless explicitly refreshed, and fail closed on event/horizon aggregation mismatches. |
+| 2026-09-19 | #312 | M11 | VALIDATED | Full 30-symbol outcome audit completed with 591 events × five horizons = 2,955 observations and zero failures. Aggregate directional hit rate stayed near chance and fell to 45.8% at 15 weeks; bullish labels were positive from 3-15 weeks while bearish labels were consistently negative in their favored direction. |
+| 2026-09-19 | #313 | M11 | VALIDATED | K16 reproduced all 591 frozen K14 qualification states exactly and found 7 spacing divergences across 6 symbols / 7 of 175 campaigns. Two campaigns qualify only under the pre-fix selector; five others qualify 4-127 weekly bars earlier than strict pairwise spacing. |
+| 2026-09-19 | PR-K17 | M11 | IN PROGRESS | Correct PatternQualificationEngine to measure spacing from the last accepted event rather than the newest event; preserve all other qualification semantics and freeze K16's legacy comparator for reproducibility. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K15 — Progression Directional Forward-Outcome Audit
+## NEXT: PR-K17 — Pairwise Qualification Spacing Correctness Fix
 
 Checklist:
 
-- [x] Mark #311 / K14 validated and merged.
-- [x] Record K14 full-basket result: 591 events, 30/30 symbols successful, zero failures.
-- [x] Record that same-bar trend/pattern opposition is moderate, not a simple semantic inversion.
-- [x] Reuse the validated K14 event/symbol artifacts rather than replaying scanner history.
-- [x] Freeze existing market-data cache unless --refresh is explicitly requested.
-- [x] Reuse the existing audit ForwardOutcome next-bar execution contract.
-- [x] Prevent same-bar outcome scoring.
-- [x] Validate event week identity against the exact completed-weekly row.
-- [x] Evaluate 1/3/5/10/15-week horizons.
-- [x] Convert bullish labels to long-side favorable returns.
-- [x] Convert bearish labels to short-side favorable returns.
-- [x] Record favorable return, MFE, MAE, completion, execution and exit indices.
-- [x] Summarize all events plus event-direction cohorts.
-- [x] Summarize aligned/opposed/neutral trend cohorts.
-- [x] Summarize aligned/opposed/ambiguous structural-pattern cohorts.
-- [x] Isolate per-symbol failures.
-- [x] Enforce event-group/horizon loop invariants and duplicate-observation rejection.
-- [x] Keep all output explicitly non-actionable.
-- [x] Add K15 module/CLI to Ruff.
-- [ ] Run focused K15 + K14 + forward-outcome tests locally.
+- [x] Mark #313 / K16 validated and merged.
+- [x] Record K16 impact: 591/591 current-state reproduction, 7 divergences.
+- [x] Record 6 affected symbols and 7/175 affected campaigns.
+- [x] Change production spacing anchor from newest event to last accepted event.
+- [x] Preserve opposing-event campaign reset behavior.
+- [x] Preserve MIN_EVENT_SPACING_BARS = 4.
+- [x] Preserve MIN_QUALIFYING_EVENTS = 3.
+- [x] Add explicit 3/5/9 regression: must remain unqualified.
+- [x] Add explicit 1/5/9 regression: must qualify.
+- [x] Update first-class state regression to select 1/5/9 rather than 3/5/9.
+- [x] Freeze K16's pre-fix comparator independently of production code.
 - [ ] Run Ruff locally.
-- [ ] Run staged 5-symbol outcome basket.
-- [ ] Run full 30-symbol outcome basket at the fixed 2026-09-18 cutoff.
-- [ ] Compare favorable hit rate and mean/median favorable return by horizon.
-- [ ] Compare trend-aligned versus trend-opposed event outcomes.
-- [ ] Compare bullish versus bearish progression outcomes.
-- [ ] If labels lack directional forward value, design a counterfactual non-directional progression-quality audit.
-- [ ] If labels show useful forward direction despite same-bar opposition, retain semantics and document reversal/early-warning behavior.
-- [ ] Merge after manual validation.
+- [ ] Run qualification + qualification-state tests.
+- [ ] Run scanner transition/replay equivalence tests.
+- [ ] Run K16 regression tests after the production fix.
+- [ ] Run focused WeeklySetup/materializer boundary tests.
+- [ ] Review any intentionally changed historical qualification assertions.
+- [ ] Merge only after local validation passes.
 
 ---
 
@@ -1577,4 +1611,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K15 — Progression Directional Forward-Outcome Audit
+**Current PR:** PR-K17 — Pairwise Qualification Spacing Correctness Fix

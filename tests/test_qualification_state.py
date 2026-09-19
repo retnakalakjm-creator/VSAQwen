@@ -109,10 +109,10 @@ def test_state_preserves_spacing_semantics_and_ignores_duplicates() -> None:
     result = engine.evaluate_state(state)
 
     assert result.qualification is PatternQualification.PERSISTENT_BULLISH
-    # Preserve the current legacy qualification algorithm exactly. It walks
-    # backward from the newest event and stops once three spaced events are
-    # found, so the current selected sequence is 3, 5, 9 rather than 1, 5, 9.
-    assert result.evidence_bar_indices == (3, 5, 9)
+    # Pairwise spacing is measured from the last accepted event, so bar 3 is
+    # rejected because it is only two bars before bar 5. Bars 1, 5, and 9
+    # remain a valid four-bar-spaced persistent sequence.
+    assert result.evidence_bar_indices == (1, 5, 9)
     assert tuple(item.bar_index for item in state.active_events) == (1, 3, 5, 9)
 
 

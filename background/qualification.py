@@ -274,7 +274,7 @@ class PatternQualificationEngine:
 
         for event in reversed(selected[:-1]):
             if (
-                qualifying[0].bar_index - event.bar_index
+                qualifying[-1].bar_index - event.bar_index
                 < self.MIN_EVENT_SPACING_BARS
             ):
                 continue
