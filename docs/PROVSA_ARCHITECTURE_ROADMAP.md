@@ -1414,7 +1414,8 @@ See `docs/PROGRESSION_CAUSAL_DRIFT_BASELINE_AUDIT.md`.
 
 ### PR-K20 — Progression Role Classification Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #317
 
 K20 converts K19's causal lift into explicit semantic roles.
 
@@ -1438,6 +1439,25 @@ K20 consumes frozen K19 artifacts only. No market-data access or scanner replay 
 required.
 
 See `docs/PROGRESSION_ROLE_CLASSIFICATION_AUDIT.md`.
+
+### PR-K21 — Progression Role Window-Consensus Audit
+
+**Status:** IN PROGRESS
+
+K21 collapses K20's repeated 26/52/104 control-window classifications into one
+event x horizon consensus row.
+
+Expected reduction:
+
+```text
+8,865 K20 role rows
+-> 2,955 event x horizon consensus rows
+```
+
+Baseline-dependent deceleration/continuation roles require a majority of control
+windows. Actual reversal and realized continuation remain window-independent.
+
+See `docs/PROGRESSION_ROLE_CONSENSUS_AUDIT.md`.
 
 
 ---
@@ -1514,7 +1534,8 @@ Avoid:
 | 40 | PR-K17 / #314 | P0 | Enforce true pairwise structural-event spacing in production qualification | VALIDATED |
 | 41 | PR-K18 / #315 | P1 | Measure progression directional lift versus same-symbol non-event drift | VALIDATED |
 | 42 | PR-K19 / #316 | P1 | Test progression lift against causal pre-event drift controls | VALIDATED |
-| 43 | PR-K20 | P1 | Classify progression as transition/deceleration vs continuation evidence | IN PROGRESS |
+| 43 | PR-K20 / #317 | P1 | Classify progression as transition/deceleration vs continuation evidence | VALIDATED |
+| 44 | PR-K21 | P1 | Collapse progression roles into event-level control-window consensus | IN PROGRESS |
 
 ---
 
@@ -1609,35 +1630,40 @@ measurable benchmark improvement
 | 2026-09-19 | #314 | M11 | VALIDATED | Pairwise qualification spacing fix merged after local Ruff and focused scanner/qualification parity validation. Production now measures each older qualifying event from the last accepted event; K16 retains the frozen pre-fix comparator. |
 | 2026-09-19 | #315 | M11 | VALIDATED | K18 completed 30/30 symbols, 591 events and 2,955 observations with zero failures. After same-symbol drift normalization, bullish progression retained positive incremental lift at 3/5/10 weeks, strongest at 5 weeks; bearish progression remained negative on an equal-weighted symbol basis at every horizon. |
 | 2026-09-19 | #316 | M11 | VALIDATED | K19 completed 30/30 symbols and 8,865 causal comparisons with zero failures. Trend-opposed progression showed positive causal lift, while trend-aligned progression broadly underperformed its prior continuation baseline. Bullish absolute returns remained positive at several horizons but did not outperform causal prior long baselines; bearish labels remained negative in absolute short-side return while often improving versus prior short baselines. |
-| 2026-09-19 | PR-K20 | M11 | IN PROGRESS | Classify K19 outcomes into actual reversal, deceleration-only, failed counter-trend warning, continuation outperform, continuation weaker, and continuation failure roles to test progression as transition evidence rather than symmetric directional continuation evidence. |
+| 2026-09-19 | #317 | M11 | VALIDATED | K20 classified all 8,865 K19 rows. Bullish trend-opposed events showed materially higher actual-reversal and transition-improvement rates than bullish trend-aligned continuation-outperformance. Bearish trend-opposed events were more often transition/deceleration evidence than reliable absolute bearish continuation, while bearish aligned continuation degraded sharply at longer horizons. |
+| 2026-09-19 | PR-K21 | M11 | IN PROGRESS | Collapse K20's 26/52/104-window sensitivity rows into one event x horizon consensus role so repeated window views cannot be mistaken for independent evidence. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K20 — Progression Role Classification Audit
+## NEXT: PR-K21 — Progression Role Window-Consensus Audit
 
 Checklist:
 
-- [x] Mark #316 / K19 validated and merged.
-- [x] Record K19 full result: 30/30 symbols, 8,865 comparisons, zero failures.
-- [x] Consume frozen K19 summary + comparison rows only.
-- [x] Preserve K19 source event/observation/comparison counts.
-- [x] Reject duplicate K19 event/horizon/window rows.
-- [x] Classify trend-opposed events as reversal / deceleration / failed warning.
-- [x] Classify trend-aligned events as continuation outperform / weaker / failed.
-- [x] Keep neutral trend context descriptive.
-- [x] Report direction x trend alignment x horizon x control-window roles.
-- [x] Preserve bullish/bearish asymmetry instead of collapsing it.
+- [x] Mark #317 / K20 validated and merged.
+- [x] Record K20 full result: 8,865 classified K19 comparison rows.
+- [x] Consume frozen K20 summary + role rows only.
+- [x] Preserve K20 source event/observation/comparison counts.
+- [x] Require exact 26/52/104 control-window identity per event/horizon.
+- [x] Require event return / realized-state invariants across windows.
+- [x] Collapse 8,865 window rows into 2,955 event x horizon rows.
+- [x] Use 2-of-3 majority for baseline-dependent deceleration roles.
+- [x] Use 2-of-3 majority for baseline-dependent continuation outperform roles.
+- [x] Preserve actual reversal as window-independent.
+- [x] Preserve continuation failure as window-independent.
+- [x] Mark unanimous/baseline-independent roles robust across windows.
+- [x] Mark one-window and majority-only roles window-sensitive.
 - [x] Keep all output explicitly non-actionable.
-- [x] Add K20 module/CLI to Ruff.
+- [x] Add K21 module/CLI to Ruff.
 - [ ] Run Ruff locally.
-- [ ] Run focused K20 + K19/K18 loader tests.
-- [ ] Run K20 against the full frozen K19 artifact set.
-- [ ] Compare actual-reversal rate for bullish-opposed vs bearish-opposed.
-- [ ] Compare deceleration-only rate for bearish-opposed.
-- [ ] Compare continuation-outperform rate for aligned progression.
-- [ ] Decide whether progression should remain directional or become transition-role evidence.
+- [ ] Run focused K21 + K20 role tests.
+- [ ] Run K21 against the full frozen K20 artifact set.
+- [ ] Confirm exactly 2,955 consensus rows.
+- [ ] Compare bullish-opposed reversal/consensus-deceleration rates.
+- [ ] Compare bearish-opposed transition consensus rates.
+- [ ] Compare aligned continuation consensus rates.
+- [ ] Review robust-across-window rates before semantic promotion.
 - [ ] Merge after manual validation.
 
 ---
@@ -1697,4 +1723,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K20 — Progression Role Classification Audit
+**Current PR:** PR-K21 — Progression Role Window-Consensus Audit
