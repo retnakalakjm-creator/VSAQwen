@@ -1506,7 +1506,8 @@ See `docs/PROGRESSION_TRANSITION_ONSET_AUDIT.md`.
 
 ### PR-K24 — Shadow Progression Semantic Projection
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #321
 
 K24 introduces a stateless, read-only semantic projection for already-emitted
 progression evidence.
@@ -1531,6 +1532,27 @@ is_actionable = false
 ```
 
 See `docs/PROGRESSION_SHADOW_SEMANTIC_PROJECTION.md`.
+
+### PR-K25 — Dev-Only Progression Shadow Replay Preview
+
+**Status:** IN PROGRESS
+
+K25 exposes the K24 semantic vocabulary through a dev-only offline replay
+surface using synthetic weekly fixtures.
+
+Route:
+
+```text
+/replay/progression-semantic
+```
+
+The replay is causal at the UI layer: only bars up to the current cursor are
+rendered, so a semantic marker cannot appear before its event bar.
+
+No live API, production scanner, qualification, scoring, persistence, alerts, or
+orders are used.
+
+See `docs/PROGRESSION_SHADOW_SEMANTIC_REPLAY_PREVIEW.md`.
 
 
 ---
@@ -1611,7 +1633,8 @@ Avoid:
 | 44 | PR-K21 / #318 | P1 | Collapse progression roles into event-level control-window consensus | VALIDATED |
 | 45 | PR-K22 / #319 | P1 | Collapse event-horizon roles into progression role trajectories | VALIDATED |
 | 46 | PR-K23 / #320 | P1 | Measure opposed-progression reversal onset and persistence | VALIDATED |
-| 47 | PR-K24 | P1 | Add read-only shadow progression semantic projection | IN PROGRESS |
+| 47 | PR-K24 / #321 | P1 | Add read-only shadow progression semantic projection | VALIDATED |
+| 48 | PR-K25 | P1 | Expose progression shadow semantics in dev-only offline replay | IN PROGRESS |
 
 ---
 
@@ -1710,39 +1733,42 @@ measurable benchmark improvement
 | 2026-09-19 | #318 | M11 | VALIDATED | K21 collapsed 8,865 K20 window-specific rows into exactly 2,955 event x horizon consensus rows. Across 2,928 usable rows, 2,691 (91.9%) were robust across control windows. Bullish trend-opposed events retained the strongest reversal profile: 67.5% actual reversal at 5 weeks with 95% role robustness; aligned continuation remained materially weaker. |
 | 2026-09-19 | #319 | M11 | VALIDATED | K22 collapsed 2,955 K21 event-horizon rows into exactly 591 event trajectories. Bullish trend-opposed events showed 95% any-reversal, 65% three-of-five majority reversal, and 77.5% majority transition support; bearish trend-opposed events were materially weaker at 70.5% any-reversal, 41.0% majority reversal, and 60.5% majority transition support. |
 | 2026-09-19 | #320 | M11 | VALIDATED | K23 classified all 250 trend-opposed trajectories. Bullish-opposed events reversed by 3 weeks in 77.5% of cases but only 47.4% of observed reversals persisted through all later usable horizons; bearish-opposed persistence was 39.9%. Progression therefore supports event-scoped transition warning semantics rather than durable reversal confirmation. |
-| 2026-09-19 | PR-K24 | M11 | IN PROGRESS | Add a stateless read-only semantic projection from validated progression event plus same-bar trend alignment into transition-warning/aligned/neutral/unknown shadow roles, with no qualification, scoring, actionability, or persistent-state effect. |
+| 2026-09-19 | #321 | M11 | VALIDATED | K24 projected all 591 frozen K14 progression events one-to-one: 250 transition warnings, 217 aligned observations, 124 neutral observations, and zero unknown-context rows. Every projection remained non-actionable with qualification/scoring/persistence claims disabled. |
+| 2026-09-19 | PR-K25 | M11 | IN PROGRESS | Expose K24 semantics in a dev-only synthetic replay route that reveals markers only when the replay cursor reaches the event bar and keeps all production boundaries closed. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K24 — Shadow Progression Semantic Projection
+## NEXT: PR-K25 — Dev-Only Progression Shadow Replay Preview
 
 Checklist:
 
-- [x] Mark #320 / K23 validated and merged.
-- [x] Record K23 persistence result and reject durable reversal semantics.
-- [x] Reuse validated K14 directionality artifacts as projection input.
-- [x] Keep one projection row per existing progression event.
-- [x] Map trend-opposed progression to TRANSITION_WARNING.
-- [x] Map aligned progression to descriptive aligned observation only.
-- [x] Keep neutral/unknown trend context descriptive.
-- [x] Preserve original progression direction only as warning direction.
-- [x] Explicitly set reversal_confirmed=false.
-- [x] Explicitly set persistent_direction_claim=false.
-- [x] Explicitly set affects_qualification=false.
-- [x] Explicitly set affects_scoring=false.
-- [x] Explicitly set is_actionable=false.
-- [x] Create no durable semantic state.
-- [x] Use no market-data access and no scanner replay.
-- [x] Add K24 module/CLI to Ruff.
-- [ ] Run Ruff locally.
-- [ ] Run focused K24 + K14 loader tests.
-- [ ] Run K24 against the full frozen K14 artifact set.
-- [ ] Confirm exactly 591 projection rows.
-- [ ] Verify transition-warning count matches K14 opposed count.
-- [ ] Verify no projected row claims reversal confirmation or actionability.
-- [ ] Decide whether to expose the projection through a shadow API/replay surface.
+- [x] Mark #321 / K24 validated and merged.
+- [x] Keep projection exposure outside the production analysis API.
+- [x] Add dev-only route /replay/progression-semantic.
+- [x] Disable the route in production by default.
+- [x] Use synthetic committed weekly fixtures only.
+- [x] Add bullish-opposed TRANSITION_WARNING fixture.
+- [x] Add aligned descriptive observation fixture.
+- [x] Add neutral descriptive observation fixture.
+- [x] Reveal semantic markers only when replay reaches event bar.
+- [x] Render only bars at or before current replay cursor.
+- [x] Add Previous / Next / Reset replay controls.
+- [x] Keep live API fetch disabled.
+- [x] Keep qualification mutation disabled.
+- [x] Keep scoring/ranking/actionability disabled.
+- [x] Keep scanner-state/persistence disabled.
+- [x] Keep alerts/orders disabled.
+- [x] Keep K24 reversal_confirmed=false semantics.
+- [x] Add source-level production-boundary regression tests.
+- [ ] Run Ruff on K25 guardrail test.
+- [ ] Run focused K25 + K24 tests.
+- [ ] Run frontend production build.
+- [ ] Manually open /replay/progression-semantic in dev mode.
+- [ ] Verify future markers are hidden until event bar.
+- [ ] Verify production mode keeps preview route disabled.
+- [ ] Decide whether next cut should adapt frozen K24 JSON into replay.
 - [ ] Merge after manual validation.
 
 ---
@@ -1802,4 +1828,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K24 — Shadow Progression Semantic Projection
+**Current PR:** PR-K25 — Dev-Only Progression Shadow Replay Preview
