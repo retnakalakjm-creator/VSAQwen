@@ -3,7 +3,7 @@
 **Status:** Active / Living Document  
 **Primary product direction:** Weekly-timeframe VSA background/qualification followed by daily-timeframe entry timing.  
 **Update policy:** Update this document whenever a roadmap PR is started, merged, validated, superseded, or materially redesigned.  
-**Last updated:** 2026-09-18
+**Last updated:** 2026-09-19
 
 ---
 
@@ -816,10 +816,15 @@ coverage in individual modules is solved by the aggregate percentage.
 # M11 — Daily Evidence Enrichment & Sequence Audit
 
 **Priority:** P1  
-**Status:** IN PROGRESS
+**Status:** VALIDATED
 
-Objective: enrich shadow daily evidence without creating a new production trigger,
-score, ranking rule, or mandatory textbook sequence.
+Objective: establish the causal daily-evidence study, sequence-audit, and visual
+replay toolchain without creating a new production trigger, score, ranking rule,
+or mandatory textbook sequence.
+
+M11 validation does **not** mean the daily event detector vocabulary itself is
+complete or fully validated. Detector-level correctness, reachability, duplicate
+emissions, event frequency, and event semantics move to M12.
 
 ### PR-K1 — Read-Only Daily Behavior Sequence Audit
 
@@ -1614,7 +1619,8 @@ See `docs/PROGRESSION_SHADOW_CANDLESTICK_REPLAY.md`.
 
 ### PR-K29 — Progression Shadow Replay Transport
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #326
 
 K29 adds TradingView-style transport controls to the dev-only candlestick replay:
 
@@ -1630,6 +1636,79 @@ cursor scrubber
 Playback advances one causal replay frame per timer tick and stops at the end.
 
 See `docs/PROGRESSION_SHADOW_REPLAY_TRANSPORT.md`.
+
+
+---
+
+# M12 — Daily Event Validation & Enrichment
+
+**Priority:** P1  
+**Status:** IN PROGRESS
+
+Objective: validate the daily Evidence vocabulary itself before any daily entry
+promotion.
+
+M12 distinguishes:
+
+```text
+defined event
+!=
+registered event
+!=
+active detector
+!=
+point-in-time emitted event
+!=
+DailyBehavior-mapped event
+!=
+validated useful event
+```
+
+No detector should be promoted or rewritten merely because a named VSA code
+exists.
+
+### PR-L1 — Daily Event Inventory & Point-in-Time Audit
+
+**Status:** IN PROGRESS
+
+L1 freezes the current EvidenceCode vocabulary and measures four boundaries:
+
+```text
+static definition / registry coverage
+active EvidenceEngine collector reachability
+DailyBehavior mapping reachability
+point-in-time daily emissions from the K5 prefix replay
+```
+
+It also audits same-bar duplicate emissions and behavior-map direction
+compatibility.
+
+Known questions that L1 must measure rather than silently fix include:
+
+- codes defined but not reachable through EvidenceEngine.collect();
+- codes mapped into DailyBehavior but not actively emitted;
+- behavior mappings whose declared EvidenceDirection cannot pass the
+  weekly-aligned direction filter;
+- same symbol/bar/code emitted more than once through multiple active collector
+  paths.
+
+Outputs remain read-only and non-actionable.
+
+See `docs/DAILY_EVENT_INVENTORY_AUDIT.md`.
+
+Planned follow-on cuts after L1 evidence review:
+
+```text
+L2  Daily event frequency / clustering / concentration audit
+L3  Causal daily event outcome audit
+L4  Named VSA detector semantics audit
+L5  Daily Effort/Result semantics audit
+L6  Daily Absorption semantics audit
+L7  Daily structural-confirmation audit
+L8  Behavior-dimension recalibration
+L9  Multi-bar daily event/sequence semantics
+L10 Daily entry promotion study, only if evidence supports it
+```
 
 
 ---
@@ -1715,7 +1794,8 @@ Avoid:
 | 49 | PR-K26 / #323 | P1 | Build frozen K24 progression shadow replay dataset | VALIDATED |
 | 50 | PR-K27 / #324 | P1 | Adapt frozen K26 replay JSON into dev-only offline replay UI | VALIDATED |
 | 51 | PR-K28 / #325 | P1 | Add causal candlestick/volume progression replay visualization | VALIDATED |
-| 52 | PR-K29 | P1 | Add causal play/pause/speed/scrubber replay transport | IN PROGRESS |
+| 52 | PR-K29 / #326 | P1 | Add causal play/pause/speed/scrubber replay transport | VALIDATED |
+| 53 | PR-L1 | P1 | Inventory daily events and point-in-time detector reachability | IN PROGRESS |
 
 ---
 
@@ -1819,45 +1899,45 @@ measurable benchmark improvement
 | 2026-09-19 | #323 | M11 | VALIDATED | K26 built 591 replay sequences from all 591 frozen K24 events with zero symbol failures and 5,316 frames. Event identity is resolved by event_week rather than source index; cross-machine cache-length differences were observed and handled correctly. Every sequence contains exactly one marker and all safety flags remain false. |
 | 2026-09-19 | #324 | M11 | VALIDATED | K27 loaded the validated 591-sequence K26 JSON entirely in browser memory, preserved source/resolved event identity, retained causal stepping, rejected unsafe JSON closed, and added no network/API/persistence path. |
 | 2026-09-19 | #325 | M11 | VALIDATED | K28 added weekly candlesticks, volume, and semantic event markers driven only by the causal visibleFrames slice. Manual validation confirmed candles/volume advance one bar at a time, markers remain hidden before the event bar, and sequence switching resets the cursor. |
-| 2026-09-19 | PR-K29 | M11 | IN PROGRESS | Add TradingView-style play/pause, previous/next, reset, speed selection, and cursor scrubbing over the same causal replay cursor, without changing data or production boundaries. |
+| 2026-09-19 | #326 | M11 | VALIDATED | K29 added causal replay transport controls over the existing cursor. Local guardrails/build/manual replay validation passed after updating the stale K25 control-location assertion; no production semantics changed. |
+| 2026-09-19 | PR-L1 | M12 | IN PROGRESS | Inventory the existing daily Evidence vocabulary, active collector reachability, DailyBehavior mappings, direction compatibility, point-in-time emissions, and same-bar duplicate emissions before any detector or entry-rule change. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K29 — Progression Shadow Replay Transport
+## NEXT: PR-L1 — Daily Event Inventory & Point-in-Time Audit
 
 Checklist:
 
-- [x] Mark #325 / K28 validated and merged.
-- [x] Add Reset replay control.
-- [x] Add previous-bar control.
-- [x] Add Play / Pause control.
-- [x] Add next-bar control.
-- [x] Add replay-position scrubber.
-- [x] Add 0.5x / 1x / 2x playback speeds.
-- [x] Advance exactly one replay frame per timer tick.
-- [x] Stop autoplay at final replay frame.
-- [x] Replay-from-end restarts at first frame.
-- [x] Manual stepping stops autoplay.
-- [x] Manual scrubbing stops autoplay.
-- [x] Sequence switching stops autoplay and resets cursor.
-- [x] Dataset loading stops autoplay and resets cursor.
-- [x] Synthetic fallback stops autoplay and resets cursor.
-- [x] Preserve visibleFrames as the only chart/table input.
-- [x] Add no fetch/API/storage/production path.
-- [x] Add source-level transport causality guardrail tests.
-- [ ] Run Ruff on K29 guardrail test.
-- [ ] Run focused K25/K27/K28/K29 guardrail tests.
-- [ ] Run frontend production build.
-- [ ] Load full K26 JSON in dev replay.
-- [ ] Verify Play advances one candle per tick.
-- [ ] Verify Pause freezes cursor exactly.
-- [ ] Verify speed selection changes cadence only.
-- [ ] Verify scrubber never displays bars beyond selected cursor.
-- [ ] Verify autoplay stops at final frame.
-- [ ] Verify sequence switching stops playback and resets to first bar.
-- [ ] Merge after manual validation.
+- [x] Close #326 / K29 as validated.
+- [x] Close M11 as the validated sequence/audit/replay toolchain.
+- [x] Explicitly state that M11 did not complete daily detector validation.
+- [x] Start M12 daily event validation.
+- [x] Freeze every EvidenceCode in the inventory.
+- [x] Record modern profile-registry coverage.
+- [x] Record legacy registry coverage.
+- [x] Freeze active EvidenceEngine collector reachability.
+- [x] Expose read-only DailyBehavior code mappings.
+- [x] Record bullish/bearish behavior dimensions by code.
+- [x] Audit declared-direction compatibility with behavior mappings.
+- [x] Reuse K5 prefix-only daily Evidence generation.
+- [x] Retain target-bar evidence only.
+- [x] Record per-event symbol/session/code/direction/strength/weight/quality.
+- [x] Detect same symbol/bar/code duplicate emissions.
+- [x] Preserve duplicate emissions rather than silently deduplicating them.
+- [x] Write inventory/emission/duplicate/failure ledgers.
+- [x] Keep all L1 outputs non-actionable.
+- [x] Add L1 module/script to Ruff CI gate.
+- [ ] Run Ruff and focused L1/K5/daily-behavior tests locally.
+- [ ] Run a small real-symbol point-in-time smoke audit.
+- [ ] Run the standard 30-symbol basket at a fixed cutoff.
+- [ ] Review active-but-never-observed codes.
+- [ ] Review behavior-mapped-but-inactive codes.
+- [ ] Review behavior direction mismatches.
+- [ ] Review duplicate-emission groups, especially ABSORPTION.
+- [ ] Use L1 evidence to define L2 frequency/clustering cohorts.
+- [ ] Merge only after local validation.
 
 ---
 
@@ -1915,5 +1995,5 @@ ProVSA should ultimately demonstrate:
 ---
 
 **Document owner:** ProVSA project  
-**Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K29 — Progression Shadow Replay Transport
+**Current milestone:** M12 — Daily Event Validation & Enrichment  
+**Current PR:** PR-L1 — Daily Event Inventory & Point-in-Time Audit

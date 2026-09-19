@@ -151,6 +151,31 @@ _BEARISH_CODES: dict[DailyBehaviorDimension, frozenset[EvidenceCode]] = {
 }
 
 
+def daily_behavior_dimensions_for_code(
+    code: EvidenceCode,
+) -> tuple[
+    tuple[WeeklySetupDirection, DailyBehaviorDimension],
+    ...,
+]:
+    """Return every direction-relative behavior mapping for one evidence code.
+
+    This is a read-only introspection helper for audit/reporting. It does not
+    evaluate evidence, change detector behavior, or create actionability.
+    """
+
+    mappings: list[
+        tuple[WeeklySetupDirection, DailyBehaviorDimension]
+    ] = []
+    for weekly_direction, code_map in (
+        (WeeklySetupDirection.BULLISH, _BULLISH_CODES),
+        (WeeklySetupDirection.BEARISH, _BEARISH_CODES),
+    ):
+        for dimension in DailyBehaviorDimension:
+            if code in code_map[dimension]:
+                mappings.append((weekly_direction, dimension))
+    return tuple(mappings)
+
+
 def evaluate_daily_behavior(
     *,
     weekly_direction: WeeklySetupDirection,
@@ -223,5 +248,6 @@ __all__ = [
     "DailyBehaviorDimension",
     "DailyBehaviorObservation",
     "DailyBehaviorSnapshot",
+    "daily_behavior_dimensions_for_code",
     "evaluate_daily_behavior",
 ]
