@@ -1340,7 +1340,8 @@ See `docs/QUALIFICATION_SPACING_IMPACT_AUDIT.md`.
 
 ### PR-K17 — Pairwise Qualification Spacing Correctness Fix
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #314
 
 K17 applies the production correction validated by K16.
 
@@ -1360,6 +1361,31 @@ and downstream daily behavior remain unchanged.
 
 K16 retains an explicit frozen pre-fix comparator so historical impact remains
 reproducible after this production change.
+
+### PR-K18 — Progression Symbol-Normalized Drift Baseline Audit
+
+**Status:** IN PROGRESS
+
+K18 tests whether K15's bullish/bearish forward-return asymmetry adds information
+beyond ordinary same-symbol directional drift.
+
+It consumes frozen K15 observations and compares each complete progression-event
+outcome with non-progression weekly controls using:
+
+```text
+same symbol
++ same side
++ same horizon
++ first same-direction event -> fixed audit cutoff
++ progression-event weeks excluded
+```
+
+Every control preserves the K15 N -> N+1 execution contract.
+
+K18 reports both event-weighted lift and equal-weighted per-symbol lift so names
+with many progression events cannot dominate the conclusion.
+
+See `docs/PROGRESSION_DRIFT_BASELINE_AUDIT.md`.
 
 
 ---
@@ -1433,7 +1459,8 @@ Avoid:
 | 37 | PR-K14 / #311 | P1 | Audit progression event direction versus same-bar trend/pattern across standard basket | VALIDATED |
 | 38 | PR-K15 / #312 | P1 | Measure causal forward weekly outcomes of progression direction labels | VALIDATED |
 | 39 | PR-K16 / #313 | P0 | Audit current qualification spacing against strict pairwise spacing | VALIDATED |
-| 40 | PR-K17 | P0 | Enforce true pairwise structural-event spacing in production qualification | IN PROGRESS |
+| 40 | PR-K17 / #314 | P0 | Enforce true pairwise structural-event spacing in production qualification | VALIDATED |
+| 41 | PR-K18 | P1 | Measure progression directional lift versus same-symbol non-event drift | IN PROGRESS |
 
 ---
 
@@ -1525,34 +1552,46 @@ measurable benchmark improvement
 | 2026-09-18 | #311 | M11 | VALIDATED | Full 30-symbol directionality audit completed with 591 progression events and zero symbol failures. Among directionally comparable trend cases, 250/467 (53.5%) were opposed; explicit improving/weakening pattern cases were 79/138 (57.2%) opposed. Event direction therefore shows only weak same-bar directional association, not a simple inversion. |
 | 2026-09-19 | #312 | M11 | VALIDATED | Full 30-symbol outcome audit completed with 591 events × five horizons = 2,955 observations and zero failures. Aggregate directional hit rate stayed near chance and fell to 45.8% at 15 weeks; bullish labels were positive from 3-15 weeks while bearish labels were consistently negative in their favored direction. |
 | 2026-09-19 | #313 | M11 | VALIDATED | K16 reproduced all 591 frozen K14 qualification states exactly and found 7 spacing divergences across 6 symbols / 7 of 175 campaigns. Two campaigns qualify only under the pre-fix selector; five others qualify 4-127 weekly bars earlier than strict pairwise spacing. |
-| 2026-09-19 | PR-K17 | M11 | IN PROGRESS | Correct PatternQualificationEngine to measure spacing from the last accepted event rather than the newest event; preserve all other qualification semantics and freeze K16's legacy comparator for reproducibility. |
+| 2026-09-19 | #314 | M11 | VALIDATED | Pairwise qualification spacing fix merged after local Ruff and focused scanner/qualification parity validation. Production now measures each older qualifying event from the last accepted event; K16 retains the frozen pre-fix comparator. |
+| 2026-09-19 | PR-K18 | M11 | IN PROGRESS | Normalize K15 progression outcomes against same-symbol, same-side, same-horizon non-event weekly controls to separate genuine progression lift from ordinary equity drift. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K17 — Pairwise Qualification Spacing Correctness Fix
+## NEXT: PR-K18 — Progression Symbol-Normalized Drift Baseline Audit
 
 Checklist:
 
-- [x] Mark #313 / K16 validated and merged.
-- [x] Record K16 impact: 591/591 current-state reproduction, 7 divergences.
-- [x] Record 6 affected symbols and 7/175 affected campaigns.
-- [x] Change production spacing anchor from newest event to last accepted event.
-- [x] Preserve opposing-event campaign reset behavior.
-- [x] Preserve MIN_EVENT_SPACING_BARS = 4.
-- [x] Preserve MIN_QUALIFYING_EVENTS = 3.
-- [x] Add explicit 3/5/9 regression: must remain unqualified.
-- [x] Add explicit 1/5/9 regression: must qualify.
-- [x] Update first-class state regression to select 1/5/9 rather than 3/5/9.
-- [x] Freeze K16's pre-fix comparator independently of production code.
+- [x] Mark #314 / K17 validated and merged.
+- [x] Preserve K16 pre-fix spacing comparator independently of production.
+- [x] Consume frozen K15 summary + observation artifacts.
+- [x] Require zero failed symbols in the frozen K15 source.
+- [x] Verify K15 event and observation counts/horizon identities.
+- [x] Reuse completed weekly bars without scanner replay.
+- [x] Freeze existing cache unless --refresh is explicitly requested.
+- [x] Use same-symbol, same-side, same-horizon controls.
+- [x] Exclude every progression-event week from controls.
+- [x] Start each directional control window at that direction's first event.
+- [x] End control windows at the same fixed audit cutoff.
+- [x] Preserve N -> N+1 execution semantics for control outcomes.
+- [x] Use complete control horizons only.
+- [x] Compute event favorable-return lift over control mean.
+- [x] Report event-weighted and equal-weighted per-symbol lift.
+- [x] Split lift by event direction and trend alignment.
+- [x] Retain zero-event symbols without market-data work.
+- [x] Isolate symbol failures and preserve source/processed counts.
+- [x] Keep all output explicitly non-actionable.
+- [x] Add K18 module/CLI to Ruff.
 - [ ] Run Ruff locally.
-- [ ] Run qualification + qualification-state tests.
-- [ ] Run scanner transition/replay equivalence tests.
-- [ ] Run K16 regression tests after the production fix.
-- [ ] Run focused WeeklySetup/materializer boundary tests.
-- [ ] Review any intentionally changed historical qualification assertions.
-- [ ] Merge only after local validation passes.
+- [ ] Run focused K18 + K15 outcome tests.
+- [ ] Run full 30-symbol K18 audit at the fixed 2026-09-18 cutoff.
+- [ ] Compare bullish lift versus same-symbol long drift.
+- [ ] Compare bearish lift versus same-symbol short drift.
+- [ ] Review equal-weighted symbol lift to avoid event-count concentration.
+- [ ] Review aligned versus opposed trend-context lift.
+- [ ] Decide whether progression polarity has incremental directional value.
+- [ ] Merge after manual validation.
 
 ---
 
@@ -1611,4 +1650,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K17 — Pairwise Qualification Spacing Correctness Fix
+**Current PR:** PR-K18 — Progression Symbol-Normalized Drift Baseline Audit
