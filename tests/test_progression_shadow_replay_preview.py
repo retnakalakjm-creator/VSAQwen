@@ -85,9 +85,8 @@ def test_preview_is_causal_and_hides_future_frames() -> None:
     text = _text(ENTRYPOINT)
     assert "sequence.frames.slice(0, cursor + 1)" in text
     assert "semantic_role ??" in text
-    assert "Next bar" in text
-    assert "Previous bar" in text
-    assert "Reset" in text
+    assert "<ProgressionShadowReplayTransport" in text
+    assert "frames={visibleFrames}" in text
 
 
 def test_route_and_preview_have_no_live_api_or_production_side_effects() -> None:

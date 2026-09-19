@@ -11,6 +11,9 @@ import {
   ProgressionShadowReplayChart,
 } from "./progression-shadow-replay-chart";
 import {
+  ProgressionShadowReplayTransport,
+} from "./progression-shadow-replay-transport";
+import {
   PROGRESSION_SHADOW_REPLAY_FIXTURE_BOUNDARY,
   progressionShadowReplaySequences,
 } from "./progression-shadow-replay-fixtures";
@@ -34,6 +37,8 @@ export function ProgressionShadowReplayPreviewEntrypoint({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sequenceIndex, setSequenceIndex] = useState(0);
   const [cursor, setCursor] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [speedMs, setSpeedMs] = useState(700);
 
   if (!gate.enabled || !gate.canRenderPreview) {
     return (
@@ -61,6 +66,7 @@ export function ProgressionShadowReplayPreviewEntrypoint({
     PROGRESSION_SHADOW_REPLAY_FIXTURE_BOUNDARY.source;
 
   function selectSequence(index: number) {
+    setIsPlaying(false);
     setSequenceIndex(index);
     setCursor(0);
   }
@@ -76,11 +82,13 @@ export function ProgressionShadowReplayPreviewEntrypoint({
     try {
       const parsed: unknown = JSON.parse(await file.text());
       const adapted = adaptProgressionShadowReplayDataset(parsed);
+      setIsPlaying(false);
       setLoadedDataset(adapted);
       setLoadError(null);
       setSequenceIndex(0);
       setCursor(0);
     } catch (error) {
+      setIsPlaying(false);
       setLoadedDataset(null);
       setSequenceIndex(0);
       setCursor(0);
@@ -95,6 +103,7 @@ export function ProgressionShadowReplayPreviewEntrypoint({
   }
 
   function useSyntheticFallback() {
+    setIsPlaying(false);
     setLoadedDataset(null);
     setLoadError(null);
     setSequenceIndex(0);
@@ -187,32 +196,15 @@ export function ProgressionShadowReplayPreviewEntrypoint({
         </label>
       </div>
 
-      <div
-        className="replay-preview-controls"
-        aria-label="Replay bar controls"
-      >
-        <button
-          type="button"
-          onClick={() => setCursor((value) => Math.max(0, value - 1))}
-          disabled={cursor === 0}
-        >
-          Previous bar
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            setCursor((value) =>
-              Math.min(sequence.frames.length - 1, value + 1),
-            )
-          }
-          disabled={cursor === sequence.frames.length - 1}
-        >
-          Next bar
-        </button>
-        <button type="button" onClick={() => setCursor(0)}>
-          Reset
-        </button>
-      </div>
+      <ProgressionShadowReplayTransport
+        cursor={cursor}
+        frameCount={sequence.frames.length}
+        isPlaying={isPlaying}
+        speedMs={speedMs}
+        onCursorChange={setCursor}
+        onPlayingChange={setIsPlaying}
+        onSpeedChange={setSpeedMs}
+      />
 
       <ProgressionShadowReplayChart frames={visibleFrames} />
 

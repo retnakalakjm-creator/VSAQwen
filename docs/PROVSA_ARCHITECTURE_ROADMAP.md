@@ -1597,7 +1597,8 @@ See `docs/PROGRESSION_SHADOW_REPLAY_DATASET_UI_ADAPTER.md`.
 
 ### PR-K28 — Progression Shadow Candlestick Replay
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #325
 
 K28 adds a candlestick + volume visual layer to the existing dev-only replay.
 
@@ -1610,6 +1611,25 @@ sequence.frames.slice(0, cursor + 1)
 so future bars and future semantic markers are never passed to the chart.
 
 See `docs/PROGRESSION_SHADOW_CANDLESTICK_REPLAY.md`.
+
+### PR-K29 — Progression Shadow Replay Transport
+
+**Status:** IN PROGRESS
+
+K29 adds TradingView-style transport controls to the dev-only candlestick replay:
+
+```text
+Reset
+Previous
+Play / Pause
+Next
+cursor scrubber
+0.5x / 1x / 2x speed
+```
+
+Playback advances one causal replay frame per timer tick and stops at the end.
+
+See `docs/PROGRESSION_SHADOW_REPLAY_TRANSPORT.md`.
 
 
 ---
@@ -1694,7 +1714,8 @@ Avoid:
 | 48 | PR-K25 / #322 | P1 | Expose progression shadow semantics in dev-only offline replay | VALIDATED |
 | 49 | PR-K26 / #323 | P1 | Build frozen K24 progression shadow replay dataset | VALIDATED |
 | 50 | PR-K27 / #324 | P1 | Adapt frozen K26 replay JSON into dev-only offline replay UI | VALIDATED |
-| 51 | PR-K28 | P1 | Add causal candlestick/volume progression replay visualization | IN PROGRESS |
+| 51 | PR-K28 / #325 | P1 | Add causal candlestick/volume progression replay visualization | VALIDATED |
+| 52 | PR-K29 | P1 | Add causal play/pause/speed/scrubber replay transport | IN PROGRESS |
 
 ---
 
@@ -1797,38 +1818,45 @@ measurable benchmark improvement
 | 2026-09-19 | #322 | M11 | VALIDATED | K25 added a dev-only synthetic progression replay route with causal cursor visibility. Manual review confirmed future semantic markers remain hidden before the event bar and production boundaries stay closed. |
 | 2026-09-19 | #323 | M11 | VALIDATED | K26 built 591 replay sequences from all 591 frozen K24 events with zero symbol failures and 5,316 frames. Event identity is resolved by event_week rather than source index; cross-machine cache-length differences were observed and handled correctly. Every sequence contains exactly one marker and all safety flags remain false. |
 | 2026-09-19 | #324 | M11 | VALIDATED | K27 loaded the validated 591-sequence K26 JSON entirely in browser memory, preserved source/resolved event identity, retained causal stepping, rejected unsafe JSON closed, and added no network/API/persistence path. |
-| 2026-09-19 | PR-K28 | M11 | IN PROGRESS | Render the existing causal replay slice as weekly candlesticks plus volume and semantic event markers using lightweight-charts, without changing the offline dataset or production boundaries. |
+| 2026-09-19 | #325 | M11 | VALIDATED | K28 added weekly candlesticks, volume, and semantic event markers driven only by the causal visibleFrames slice. Manual validation confirmed candles/volume advance one bar at a time, markers remain hidden before the event bar, and sequence switching resets the cursor. |
+| 2026-09-19 | PR-K29 | M11 | IN PROGRESS | Add TradingView-style play/pause, previous/next, reset, speed selection, and cursor scrubbing over the same causal replay cursor, without changing data or production boundaries. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K28 — Progression Shadow Candlestick Replay
+## NEXT: PR-K29 — Progression Shadow Replay Transport
 
 Checklist:
 
-- [x] Mark #324 / K27 validated and merged.
-- [x] Reuse existing lightweight-charts frontend dependency.
-- [x] Add weekly candlestick rendering.
-- [x] Add weekly volume rendering.
-- [x] Render transition-warning event markers.
-- [x] Render aligned/neutral semantic markers.
-- [x] Feed chart only visibleFrames, never the full future sequence.
-- [x] Keep table replay as an audit-friendly companion view.
-- [x] Keep K27 local JSON adapter unchanged.
-- [x] Keep route disabled in production by default.
-- [x] Add no fetch/API/browser-persistence path.
-- [x] Add no scanner/qualification/scoring/actionability path.
-- [x] Add source-level causality regression test.
-- [ ] Run Ruff on K28 guardrail test.
-- [ ] Run focused K25/K27/K28 guardrail tests.
+- [x] Mark #325 / K28 validated and merged.
+- [x] Add Reset replay control.
+- [x] Add previous-bar control.
+- [x] Add Play / Pause control.
+- [x] Add next-bar control.
+- [x] Add replay-position scrubber.
+- [x] Add 0.5x / 1x / 2x playback speeds.
+- [x] Advance exactly one replay frame per timer tick.
+- [x] Stop autoplay at final replay frame.
+- [x] Replay-from-end restarts at first frame.
+- [x] Manual stepping stops autoplay.
+- [x] Manual scrubbing stops autoplay.
+- [x] Sequence switching stops autoplay and resets cursor.
+- [x] Dataset loading stops autoplay and resets cursor.
+- [x] Synthetic fallback stops autoplay and resets cursor.
+- [x] Preserve visibleFrames as the only chart/table input.
+- [x] Add no fetch/API/storage/production path.
+- [x] Add source-level transport causality guardrail tests.
+- [ ] Run Ruff on K29 guardrail test.
+- [ ] Run focused K25/K27/K28/K29 guardrail tests.
 - [ ] Run frontend production build.
 - [ ] Load full K26 JSON in dev replay.
-- [ ] Verify candlesticks advance one bar at a time.
-- [ ] Verify event marker is absent before event bar.
-- [ ] Verify event marker appears exactly on event bar.
-- [ ] Verify volume advances with the same cursor.
-- [ ] Verify sequence switching resets replay cursor.
+- [ ] Verify Play advances one candle per tick.
+- [ ] Verify Pause freezes cursor exactly.
+- [ ] Verify speed selection changes cadence only.
+- [ ] Verify scrubber never displays bars beyond selected cursor.
+- [ ] Verify autoplay stops at final frame.
+- [ ] Verify sequence switching stops playback and resets to first bar.
 - [ ] Merge after manual validation.
 
 ---
@@ -1888,4 +1916,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K28 — Progression Shadow Candlestick Replay
+**Current PR:** PR-K29 — Progression Shadow Replay Transport
