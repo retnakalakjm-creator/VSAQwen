@@ -1483,7 +1483,8 @@ See `docs/PROGRESSION_ROLE_HORIZON_TRAJECTORY_AUDIT.md`.
 
 ### PR-K23 — Progression Transition Onset Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED  
+**PR:** #320
 
 K23 focuses on K22 trend-opposed trajectories and measures when an actual
 reversal first appears and whether reversal/transition support persists.
@@ -1502,6 +1503,34 @@ NO_REVERSAL_NO_SUPPORT
 K23 consumes frozen K22 trajectory artifacts only.
 
 See `docs/PROGRESSION_TRANSITION_ONSET_AUDIT.md`.
+
+### PR-K24 — Shadow Progression Semantic Projection
+
+**Status:** IN PROGRESS
+
+K24 introduces a stateless, read-only semantic projection for already-emitted
+progression evidence.
+
+Projection:
+
+```text
+trend-opposed -> TRANSITION_WARNING
+trend-aligned -> ALIGNED_PROGRESSION_OBSERVATION
+trend-neutral -> NEUTRAL_PROGRESSION_OBSERVATION
+trend-unknown -> UNKNOWN_TREND_CONTEXT_OBSERVATION
+```
+
+Every projected row explicitly declares:
+
+```text
+reversal_confirmed = false
+persistent_direction_claim = false
+affects_qualification = false
+affects_scoring = false
+is_actionable = false
+```
+
+See `docs/PROGRESSION_SHADOW_SEMANTIC_PROJECTION.md`.
 
 
 ---
@@ -1581,7 +1610,8 @@ Avoid:
 | 43 | PR-K20 / #317 | P1 | Classify progression as transition/deceleration vs continuation evidence | VALIDATED |
 | 44 | PR-K21 / #318 | P1 | Collapse progression roles into event-level control-window consensus | VALIDATED |
 | 45 | PR-K22 / #319 | P1 | Collapse event-horizon roles into progression role trajectories | VALIDATED |
-| 46 | PR-K23 | P1 | Measure opposed-progression reversal onset and persistence | IN PROGRESS |
+| 46 | PR-K23 / #320 | P1 | Measure opposed-progression reversal onset and persistence | VALIDATED |
+| 47 | PR-K24 | P1 | Add read-only shadow progression semantic projection | IN PROGRESS |
 
 ---
 
@@ -1679,38 +1709,40 @@ measurable benchmark improvement
 | 2026-09-19 | #317 | M11 | VALIDATED | K20 classified all 8,865 K19 rows. Bullish trend-opposed events showed materially higher actual-reversal and transition-improvement rates than bullish trend-aligned continuation-outperformance. Bearish trend-opposed events were more often transition/deceleration evidence than reliable absolute bearish continuation, while bearish aligned continuation degraded sharply at longer horizons. |
 | 2026-09-19 | #318 | M11 | VALIDATED | K21 collapsed 8,865 K20 window-specific rows into exactly 2,955 event x horizon consensus rows. Across 2,928 usable rows, 2,691 (91.9%) were robust across control windows. Bullish trend-opposed events retained the strongest reversal profile: 67.5% actual reversal at 5 weeks with 95% role robustness; aligned continuation remained materially weaker. |
 | 2026-09-19 | #319 | M11 | VALIDATED | K22 collapsed 2,955 K21 event-horizon rows into exactly 591 event trajectories. Bullish trend-opposed events showed 95% any-reversal, 65% three-of-five majority reversal, and 77.5% majority transition support; bearish trend-opposed events were materially weaker at 70.5% any-reversal, 41.0% majority reversal, and 60.5% majority transition support. |
-| 2026-09-19 | PR-K23 | M11 | IN PROGRESS | Measure first actual-reversal horizon and persistence for the 250 trend-opposed K22 trajectories before introducing any shadow semantic projection. |
+| 2026-09-19 | #320 | M11 | VALIDATED | K23 classified all 250 trend-opposed trajectories. Bullish-opposed events reversed by 3 weeks in 77.5% of cases but only 47.4% of observed reversals persisted through all later usable horizons; bearish-opposed persistence was 39.9%. Progression therefore supports event-scoped transition warning semantics rather than durable reversal confirmation. |
+| 2026-09-19 | PR-K24 | M11 | IN PROGRESS | Add a stateless read-only semantic projection from validated progression event plus same-bar trend alignment into transition-warning/aligned/neutral/unknown shadow roles, with no qualification, scoring, actionability, or persistent-state effect. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-K23 — Progression Transition Onset Audit
+## NEXT: PR-K24 — Shadow Progression Semantic Projection
 
 Checklist:
 
-- [x] Mark #319 / K22 validated and merged.
-- [x] Record K22 result: 591 event-level role trajectories.
-- [x] Consume frozen K22 summary + trajectory rows only.
-- [x] Restrict classification to trend-opposed events.
-- [x] Preserve K22 event identity and exact role signatures.
-- [x] Verify reversal and transition-support counts against signatures.
-- [x] Classify first reversal as 1w / 3w / 5w / 10-15w / none.
-- [x] Distinguish no-reversal with majority transition support.
-- [x] Measure strict actual-reversal persistence after onset.
-- [x] Measure broader stable transition persistence after onset.
-- [x] Record reversal reversion after onset.
-- [x] Summarize bullish versus bearish opposed events separately.
-- [x] Keep all output explicitly non-actionable.
-- [x] Add K23 module/CLI to Ruff.
+- [x] Mark #320 / K23 validated and merged.
+- [x] Record K23 persistence result and reject durable reversal semantics.
+- [x] Reuse validated K14 directionality artifacts as projection input.
+- [x] Keep one projection row per existing progression event.
+- [x] Map trend-opposed progression to TRANSITION_WARNING.
+- [x] Map aligned progression to descriptive aligned observation only.
+- [x] Keep neutral/unknown trend context descriptive.
+- [x] Preserve original progression direction only as warning direction.
+- [x] Explicitly set reversal_confirmed=false.
+- [x] Explicitly set persistent_direction_claim=false.
+- [x] Explicitly set affects_qualification=false.
+- [x] Explicitly set affects_scoring=false.
+- [x] Explicitly set is_actionable=false.
+- [x] Create no durable semantic state.
+- [x] Use no market-data access and no scanner replay.
+- [x] Add K24 module/CLI to Ruff.
 - [ ] Run Ruff locally.
-- [ ] Run focused K23 + K22 trajectory tests.
-- [ ] Run K23 against the full frozen K22 artifact set.
-- [ ] Confirm expected 250 opposed-event rows.
-- [ ] Compare bullish versus bearish onset timing.
-- [ ] Compare reversal persistence after onset.
-- [ ] Compare no-reversal transition-support rates.
-- [ ] Decide whether to proceed to a shadow semantic projection layer.
+- [ ] Run focused K24 + K14 loader tests.
+- [ ] Run K24 against the full frozen K14 artifact set.
+- [ ] Confirm exactly 591 projection rows.
+- [ ] Verify transition-warning count matches K14 opposed count.
+- [ ] Verify no projected row claims reversal confirmation or actionability.
+- [ ] Decide whether to expose the projection through a shadow API/replay surface.
 - [ ] Merge after manual validation.
 
 ---
@@ -1770,4 +1802,4 @@ ProVSA should ultimately demonstrate:
 
 **Document owner:** ProVSA project  
 **Current milestone:** M11 — Daily Evidence Enrichment & Sequence Audit  
-**Current PR:** PR-K23 — Progression Transition Onset Audit
+**Current PR:** PR-K24 — Shadow Progression Semantic Projection
