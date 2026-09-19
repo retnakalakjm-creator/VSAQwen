@@ -1480,7 +1480,7 @@ measurable benchmark improvement
 | 2026-09-18 | #309 | M11 | VALIDATED | LT.NS progression audit found 7 events: 1 improving on 2024-03-11 and 6 weakening. The bullish campaign was reset by the next bearish event; three bearish events at bars 137/146/156 satisfied spacing and created persistent-bearish on 2024-09-02. |
 | 2026-09-18 | #310 | M11 | VALIDATED | LT.NS score-input audit reconstructed all 7 production progression deltas exactly. Across the six weakening events, the mean professional decline is structurally dominated; early qualifying bearish events are driven mainly by price/structural-size/duration percentile declines, while later events shift toward volume/spread and Smart Money declines. |
 | 2026-09-18 | #311 | M11 | VALIDATED | Full 30-symbol directionality audit completed with 591 progression events and zero symbol failures. Among directionally comparable trend cases, 250/467 (53.5%) were opposed; explicit improving/weakening pattern cases were 79/138 (57.2%) opposed. Event direction therefore shows only weak same-bar directional association, not a simple inversion. |
-| 2026-09-18 | PR-K15 | M11 | IN PROGRESS | Measure causal next-week and 1/3/5/10/15-week forward outcomes of progression direction labels to determine whether trend-opposed events act as useful early warnings or merely encode non-directional swing-quality change. |
+| 2026-09-18 | PR-K15 | M11 | IN PROGRESS | Measure causal next-week and 1/3/5/10/15-week forward outcomes of progression direction labels. K15 was hardened after loop review to consume frozen K14 events, avoid redundant full scanner replay, freeze cache unless explicitly refreshed, and fail closed on event/horizon aggregation mismatches. |
 
 ---
 
@@ -1493,7 +1493,8 @@ Checklist:
 - [x] Mark #311 / K14 validated and merged.
 - [x] Record K14 full-basket result: 591 events, 30/30 symbols successful, zero failures.
 - [x] Record that same-bar trend/pattern opposition is moderate, not a simple semantic inversion.
-- [x] Reuse the existing completed-weekly production event stream.
+- [x] Reuse the validated K14 event/symbol artifacts rather than replaying scanner history.
+- [x] Freeze existing market-data cache unless --refresh is explicitly requested.
 - [x] Reuse the existing audit ForwardOutcome next-bar execution contract.
 - [x] Prevent same-bar outcome scoring.
 - [x] Validate event week identity against the exact completed-weekly row.
@@ -1505,6 +1506,7 @@ Checklist:
 - [x] Summarize aligned/opposed/neutral trend cohorts.
 - [x] Summarize aligned/opposed/ambiguous structural-pattern cohorts.
 - [x] Isolate per-symbol failures.
+- [x] Enforce event-group/horizon loop invariants and duplicate-observation rejection.
 - [x] Keep all output explicitly non-actionable.
 - [x] Add K15 module/CLI to Ruff.
 - [ ] Run focused K15 + K14 + forward-outcome tests locally.
