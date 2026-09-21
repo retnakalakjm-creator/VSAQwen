@@ -2,12 +2,14 @@
 
 ## Frozen production state
 
+- Detector semantics: **FROZEN / M12 PARKED**
 - Production role: `contextual_supply_exhaustion`
-- Registry/reference weight: `1.00`
+- Evidence direction: `BULLISH`
+- Registry/profile weight: `0.90`
 - Professional supply-map weight: `0.60`
-- Runtime `Evidence.weight`: dynamic emission metadata
+- Runtime `Evidence.weight`: default WeightCalculator path
 - Observed runtime `Evidence.weight`: `1.00`–`1.00`, mean `1.00`
-- Runtime bounds: `0.50`–`2.00`
+- Runtime default: `1.00`
 
 ## Candidate audit
 
@@ -138,7 +140,7 @@ Therefore the evidence supports retaining the event as a contextual supply-exhau
 - Cheap candidates: `547`
 - Production emissions: `225 / 225`
 - Registry entry: present
-- Registry/reference weight: `1.00`
+- Registry/profile weight: `0.90`
 - Professional `SUPPLY_EVIDENCE_WEIGHTS` entry: present
 - Professional scoring-map weight: `0.60`
 - Production role: `contextual_supply_exhaustion`
@@ -154,7 +156,7 @@ Therefore the evidence supports retaining the event as a contextual supply-exhau
 - Production emission authority: `True`
 - Production-path mutation: `False`
 
-The registry/config discrepancy is not itself a failure because `Evidence.weight` is runtime emission metadata while `SUPPLY_EVIDENCE_WEIGHTS` is the separate professional scoring map.
+The profile/scoring/runtime differences are not detector failures. Current source has profile weight `0.90`, professional supply-map weight `0.60`, and the generic/default WeightCalculator path emits `1.00`. These are separate architectural layers.
 
 ## Frozen production decision
 
@@ -178,3 +180,26 @@ Exact interaction population/outcomes: PASS.
 Standalone decision value: PASS technically, with modest positive hit-rate lift and slightly negative mean-return lift.
 Production readiness: PASS.
 Production scoring change: NONE.
+
+
+## M12 detector verdict
+
+The M12 stop-rule review found no production detector correction.
+
+```text
+semantic contract      RETAIN
+distinctness           PASS
+confirmation issue     NONE
+obvious detector fix   NONE
+
+M12 detector status    PARKED
+detector semantics     FROZEN
+production emission    UNCHANGED
+```
+
+`SUPPLY_DRYING_UP` remains the generic bullish/contextual observation of
+low-effort selling. `NO_SUPPLY` is the narrower environment-qualified named
+VSA interpretation of the same bar-pattern core. Their overlap is intentional
+and does not require detector deduplication.
+
+See `docs/DAILY_EVENT_SUPPLY_DRYING_UP_DETECTOR_VERDICT.md`.

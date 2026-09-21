@@ -34,6 +34,7 @@ EXPECTED_EVENT_CODES = {
     "NO_DEMAND",
     "SUPPLY_COMING_IN",
     "INCREASING_SUPPLY",
+    "SUPPLY_DRYING_UP",
     "HIDDEN_SUPPLY",
     "ABSORPTION",
 }
@@ -87,6 +88,10 @@ def test_source_documents_include_existing_audit_records() -> None:
     assert (
         "docs/INCREASING_SUPPLY_AUDIT.md"
         in contracts["INCREASING_SUPPLY"].source_documents
+    )
+    assert (
+        "docs/SUPPLY_DRYING_UP_AUDIT.md"
+        in contracts["SUPPLY_DRYING_UP"].source_documents
     )
 
 
@@ -273,3 +278,25 @@ def test_increasing_supply_contract_matches_current_source() -> None:
     assert "volume_increasing(current, previous)" in source
     assert "spread_increasing(current, previous)" in source
     assert "EvidenceCode.INCREASING_SUPPLY" in source
+
+
+def test_supply_drying_up_contract_matches_current_source() -> None:
+    contract = contracts_by_code()["SUPPLY_DRYING_UP"]
+
+    assert contract.module == "evidence.supply"
+    assert contract.detector == "_collect_supply_drying_up"
+    assert contract.direction == "bullish/contextual"
+    assert contract.recognition_timing == CURRENT_BAR
+    assert contract.diagnostic_confirmations == ()
+    assert contract.uses_future_bars is False
+    assert contract.mandatory_requirements == (
+        "bearish/down bar",
+        "low volume",
+        "narrow spread",
+    )
+
+    source = inspect.getsource(supply._collect_supply_drying_up)
+    assert "is_down_bar(bar)" in source
+    assert "is_low_volume(bar)" in source
+    assert "is_narrow_spread(bar)" in source
+    assert "EvidenceCode.SUPPLY_DRYING_UP" in source

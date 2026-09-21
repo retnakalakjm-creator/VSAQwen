@@ -380,6 +380,32 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         ),
     ),
     VSAEventContract(
+        evidence_code="SUPPLY_DRYING_UP",
+        module="evidence.supply",
+        detector="_collect_supply_drying_up",
+        direction="bullish/contextual",
+        recognition_timing=CURRENT_BAR,
+        emitted_bar="current candidate bar",
+        mandatory_requirements=(
+            "bearish/down bar",
+            "low volume",
+            "narrow spread",
+        ),
+        diagnostic_confirmations=(),
+        uses_future_bars=False,
+        future_bar_policy="No forward bars are required; all predicates use the current bar only.",
+        source_documents=(
+            "docs/SUPPLY_DRYING_UP_AUDIT.md",
+            "docs/DAILY_EVENT_SUPPLY_DRYING_UP_DETECTOR_VERDICT.md",
+            "docs/PRIMARY_VSA_EVENT_MATRIX.md",
+        ),
+        known_review_notes=(
+            "M12 retained and froze the current contextual supply-exhaustion semantics.",
+            "The detector emits directly through add_evidence and has no separate confirmation layer.",
+            "NO_SUPPLY is a narrower environment-qualified interpretation of the same low-effort selling core.",
+        ),
+    ),
+    VSAEventContract(
         evidence_code="HIDDEN_SUPPLY",
         module="evidence.supply",
         detector="_collect_hidden_supply",
