@@ -90,7 +90,7 @@ Shared detector confirmations are diagnostic quality observations unless a futur
 | `SHAKEOUT` | `evidence/demand.py::_collect_shakeout` and `evidence/campaign.py::validate_shakeout` | YES | Production-integrated / validation-complete | Primary reversal / demand | Bullish | Base/reference `0.50` | Recovery-anchored event. Candidate requires selling pressure, bearish/down bar, wide spread, very-high volume, lower low, valid test, and valid recovery. |
 | `NO_SUPPLY` | `evidence/demand.py::_collect_no_supply` | YES | Production-active / audit-complete / contextual-non-scoring | Demand absence / weakness | Bullish | Registry `1.00`; no professional scoring-map entry; dynamic runtime weight | Canonical spec exists. Source requirement label says `Bullish Environment` but production predicate uses `ctx.is_bearish_environment()`. This naming mismatch is documented and unchanged. |
 | `ABSORPTION` | `evidence/absorption.py::collect_absorption` | YES | Production-connected / non-scoring / frozen | Effort/result / absorption | Bullish/contextual | Production scoring weight `0.00`; empirical `0.38` and conflict penalty `0.20` are research-only | Collected through `EvidenceEngine.collect -> collect_demand -> collect_absorption`. It is connected but non-scoring; this replaces older stale no-production-path wording. |
-| `SPRING` | `evidence/spring.py::collect_spring` | YES | Production-integrated / provisional | Primary trap / reversal | Bullish | Base/reference `0.75` | Confirmation-anchored event. Same-bar `UPTHRUST` or `BUYING_CLIMAX` reduces Spring quality instead of rejecting the event. |
+| `SPRING` | `evidence/spring.py::collect_spring` | YES | Detector semantics frozen / M12 causality corrected; scoring provisional | Primary trap / reversal | Bullish | Base/reference `0.75` | Candidate-time structural causality corrected and frozen: support lows must be confirmed by the candidate bar. Frozen 30-symbol replay changed Spring only (254 -> 309; +55), with exact non-Spring parity. Same-bar `UPTHRUST` or `BUYING_CLIMAX` still reduces Spring quality instead of rejecting the event. |
 | `HIDDEN_DEMAND` | No dedicated active production detector | NO | Audit-complete / non-scoring | Supporting demand | Bullish | `0.00` audit conclusion | Current candidate definition was not promoted into production scoring or collection. |
 | `DEMAND_DRYING_UP` | No dedicated active production detector | NO | Audit-complete / contextual-non-scoring | Supporting / exhaustion context | Contextual | `0.00` audit conclusion | Current candidate definition remains contextual/non-scoring and is not promoted into production collection. |
 | `EFFORT_GT_RESULT` | `evidence/effort.py` | Disabled engine invocation | Present / inactive in production collection | Effort/result context | Neutral | None | Separate analytical layer; `EvidenceEngine.collect()` does not currently invoke `_collect_effort()`. |
@@ -148,6 +148,7 @@ An event is not production-approved merely because an audit found a positive emp
 - `docs/specifications/002_shakeout.md`
 - `docs/specifications/003_test.md`
 - `docs/specifications/004_spring.md`
+- `docs/DAILY_EVENT_SPRING_CANDIDATE_CAUSALITY_CORRECTION.md`
 - `docs/specifications/005_no_supply.md`
 - `docs/ABSORPTION_AUDIT.md`
 - `docs/NO_DEMAND_AUDIT.md`

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
@@ -5,9 +7,11 @@ from engine.columns import COL_CLOSE, COL_CLOSE_POSITION, COL_LOW, COL_SPREAD, C
 from evidence.spring import (
     SpringCandidate,
     SpringValidationResult,
+    detect_spring_candidate,
     validate_spring_confirmation,
     validate_spring_test,
 )
+from models import Swing, SwingType
 
 
 def _metrics(rows: list[dict[str, float | int]]) -> pd.DataFrame:
@@ -131,3 +135,94 @@ def test_spring_confirmation_accepts_bullish_follow_through():
 
     assert result.result is SpringValidationResult.CONFIRMED
     assert result.confirmation_index == 2
+
+
+def _structural_low(
+    *,
+    bar_index: int,
+    confirmation_index: int,
+    price: float = 100.0,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        swing=Swing(
+            type=SwingType.LOW,
+            price=price,
+            bar_index=bar_index,
+            confirmation_index=confirmation_index,
+            week_beginning=f"bar-{bar_index}",
+        )
+    )
+
+
+def _candidate_metrics_for_index(candidate_index: int = 5) -> pd.DataFrame:
+    rows = [
+        {
+            COL_LOW: 100.0,
+            COL_SPREAD: 1.0,
+            COL_VOLUME: 100.0,
+            COL_CLOSE_POSITION: 3,
+            COL_CLOSE: 100.0,
+        }
+        for _ in range(candidate_index + 1)
+    ]
+    rows[candidate_index] = {
+        COL_LOW: 99.5,
+        COL_SPREAD: 1.0,
+        COL_VOLUME: 100.0,
+        COL_CLOSE_POSITION: 3,
+        COL_CLOSE: 100.0,
+    }
+    return _metrics(rows)
+
+
+def test_spring_candidate_uses_only_support_lows_confirmed_by_candidate_bar():
+    metrics = _candidate_metrics_for_index()
+    structural_swings = (
+        _structural_low(bar_index=1, confirmation_index=3),
+        _structural_low(bar_index=2, confirmation_index=6),
+    )
+
+    candidate = detect_spring_candidate(
+        metrics,
+        bar_index=5,
+        structural_swings=structural_swings,
+    )
+
+    assert candidate is None
+
+
+def test_spring_candidate_accepts_support_lows_confirmed_by_candidate_bar():
+    metrics = _candidate_metrics_for_index()
+    structural_swings = (
+        _structural_low(bar_index=1, confirmation_index=3),
+        _structural_low(bar_index=2, confirmation_index=4),
+    )
+
+    candidate = detect_spring_candidate(
+        metrics,
+        bar_index=5,
+        structural_swings=structural_swings,
+    )
+
+    assert candidate is not None
+    assert candidate.support == 100.0
+    assert candidate.support_touches == 2
+
+
+def test_spring_candidate_causal_filter_can_reveal_older_valid_support_pair():
+    metrics = _candidate_metrics_for_index()
+    structural_swings = (
+        _structural_low(bar_index=1, confirmation_index=2, price=100.0),
+        _structural_low(bar_index=2, confirmation_index=3, price=100.2),
+        _structural_low(bar_index=3, confirmation_index=6, price=105.0),
+    )
+
+    candidate = detect_spring_candidate(
+        metrics,
+        bar_index=5,
+        structural_swings=structural_swings,
+    )
+
+    assert candidate is not None
+    assert candidate.support == 100.0
+    assert candidate.support_touches == 2

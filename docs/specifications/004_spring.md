@@ -2,7 +2,7 @@
 
 This document records the current production semantics and validation record for the VSA `SPRING` event.
 
-`SPRING` is production-integrated but remains **provisional** because the validated production population is still small. This specification records the frozen working semantics; it does not independently change detector weights, qualification rules, or scanner actionability.
+`SPRING` is production-integrated with **detector semantics frozen after the M12 candidate-time causality correction**. Its `0.75` scoring calibration remains provisional because the validated outcome population is still small. This specification does not independently change qualification rules or scanner actionability.
 
 ## Core principle
 
@@ -38,10 +38,17 @@ The current production candidate filters are:
 
 ```text
 support touches       >= 2
+support swing confirmation_index <= candidate_index
 candidate penetration <= 0.50 spread-normalized
 ```
 
-The candidate is evaluated point-in-time. No future outcome or later confirmation is used to decide whether the historical candidate itself qualifies.
+The candidate is evaluated point-in-time. A structural support pivot is eligible
+only when that swing was already confirmed by the candidate bar. A low whose
+pivot occurred earlier but whose structural confirmation arrived after the
+candidate must not participate in the candidate's historical support definition.
+
+No future outcome or later confirmation is used to decide whether the historical
+candidate itself qualifies.
 
 ## Test validation
 
@@ -113,16 +120,21 @@ The 8-bar outcome classification is an audit measure only. It is not used by the
 Current status:
 
 ```text
-Status: Production-integrated / provisional
+Detector semantics: FROZEN / M12 CAUSALITY CORRECTED
+Scoring calibration: PROVISIONAL
 Base weight: 0.75
 Point-in-time detector: YES
+Candidate-time structural visibility: ENFORCED
 Test validation: YES
 Bullish confirmation: YES
 Focused regression coverage: YES
-Production replay: VERIFIED
+Frozen 30-symbol replay: VERIFIED
+Non-Spring replay parity: EXACT
 ```
 
-The event is usable by the production evidence pipeline, but its status should remain provisional until a larger validation population supports stronger confidence in the calibration.
+The event is usable by the production evidence pipeline. Detector semantics are
+closed under the M12 stopping rule. Only the scoring calibration remains
+provisional pending broader historical validation.
 
 ## What SPRING must not claim
 
@@ -135,3 +147,27 @@ A Spring event alone must not imply:
 - or a guaranteed positive future outcome.
 
 Those conclusions belong to downstream contextual qualification and persistence logic.
+
+
+## M12 candidate-time causality correction
+
+M12 found one implementation-level causality gap in the otherwise retained
+Spring semantics.
+
+Because the completed Spring is emitted on a later confirmation bar, the
+`BackgroundContext` available at that time can contain structural lows confirmed
+after the earlier Spring candidate. Candidate support lookup must therefore
+filter structural lows by both pivot time and confirmation time.
+
+Correct support visibility:
+
+```text
+swing.type == LOW
+swing.bar_index < candidate_index
+swing.confirmation_index <= candidate_index
+```
+
+The correction does not change Spring thresholds, weight, test logic, bullish
+confirmation logic, or same-bar conflict quality policy.
+
+See `docs/DAILY_EVENT_SPRING_CANDIDATE_CAUSALITY_CORRECTION.md`.

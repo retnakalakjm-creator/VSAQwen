@@ -76,8 +76,18 @@ class SpringValidation:
     confirmation: SpringConfirmation
 
 
-def _prior_low_swings(structural_swings: tuple[StructuralSwing, ...], bar_index: int) -> list[StructuralSwing]:
-    return [item for item in structural_swings if item.swing.type is SwingType.LOW and item.swing.bar_index < bar_index]
+def _prior_low_swings(
+    structural_swings: tuple[StructuralSwing, ...],
+    bar_index: int,
+) -> list[StructuralSwing]:
+    """Return structural lows that were already confirmed by bar_index."""
+    return [
+        item
+        for item in structural_swings
+        if item.swing.type is SwingType.LOW
+        and item.swing.bar_index < bar_index
+        and item.swing.confirmation_index <= bar_index
+    ]
 
 
 def _support_from_prior_lows(structural_swings: tuple[StructuralSwing, ...], bar_index: int, spread: float) -> tuple[float, int] | None:

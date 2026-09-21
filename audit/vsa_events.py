@@ -215,7 +215,7 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         recognition_timing=CONFIRMATION_ANCHORED,
         emitted_bar="confirmation/recovery bar, with test_index and recovery_index attached",
         mandatory_requirements=(
-            "prior structural support touches",
+            "prior structural support touches confirmed by the candidate bar",
             "controlled support penetration",
             "candidate recovery back near support",
             "valid low-effort test after candidate",
@@ -225,10 +225,13 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         uses_future_bars=False,
         future_bar_policy=(
             "Validation may inspect bars after the original spring candidate, but production collection slices metrics "
-            "through the current confirmation bar only. The event is therefore delayed-recognition, not candidate-bar look-ahead."
+            "through the current confirmation bar only. Candidate support additionally admits only structural lows whose "
+            "confirmation_index is at or before the candidate bar. The event is therefore delayed-recognition, not "
+            "candidate-bar look-ahead."
         ),
         source_documents=(
             "docs/specifications/004_spring.md",
+            "docs/DAILY_EVENT_SPRING_CANDIDATE_CAUSALITY_CORRECTION.md",
             "docs/PRIMARY_VSA_EVENT_MATRIX.md",
         ),
         known_review_notes=(
@@ -247,6 +250,7 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
             "bullish/up bar",
             "very high volume",
             "above-average spread",
+            "non-strong high-price acceptance (close not UPPER/ON_HIGH)",
         ),
         diagnostic_confirmations=(
             "wide spread",
@@ -257,9 +261,11 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         future_bar_policy="No forward bars are required; all predicates use current and previous/context bars only.",
         source_documents=(
             "docs/BUYING_CLIMAX_AUDIT.md",
+            "docs/DAILY_EVENT_BC_UPTHRUST_PRODUCTION_CORRECTION.md",
             "docs/PRIMARY_VSA_EVENT_MATRIX.md",
         ),
         known_review_notes=(
+            "M12 production semantics were promoted and merged in PR #348.",
             "Confirmations are not gating in evaluate_detector; they are diagnostic unless promoted in a later PR.",
         ),
     ),
@@ -271,23 +277,28 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         recognition_timing=CURRENT_BAR,
         emitted_bar="current candidate bar",
         mandatory_requirements=(
-            "buying campaign",
-            "bullish/up bar",
+            "latest causally confirmed structural high exists",
+            "current high probes above the structural high",
+            "current close returns to or below the structural high",
+        ),
+        diagnostic_confirmations=(
+            "weak close",
             "very high volume",
             "above-average spread",
         ),
-        diagnostic_confirmations=(
-            "wide spread",
-            "weak close",
-            "lower close than previous bar",
-        ),
         uses_future_bars=False,
-        future_bar_policy="No forward bars are required; all predicates use current and previous/context bars only.",
+        future_bar_policy=(
+            "No forward bars are required; the structural high must have confirmation_index at or before the current "
+            "bar and a pivot bar_index strictly before the current bar."
+        ),
         source_documents=(
             "docs/UPTHRUST_AUDIT.md",
+            "docs/DAILY_EVENT_BC_UPTHRUST_PRODUCTION_CORRECTION.md",
             "docs/PRIMARY_VSA_EVENT_MATRIX.md",
         ),
         known_review_notes=(
+            "M12 production semantics were promoted and merged in PR #348.",
+            "The rejected local previous-high hypothesis is not part of production identity.",
             "Confirmations are not gating in evaluate_detector; they are diagnostic unless promoted in a later PR.",
         ),
     ),
@@ -364,8 +375,7 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
             "docs/PRIMARY_VSA_EVENT_MATRIX.md",
         ),
         known_review_notes=(
-            "ABSORPTION_AUDIT.md and current code show a production-connected non-scoring detector through collect_demand().",
-            "PRIMARY_VSA_EVENT_MATRIX.md still contains stale no-production-detector wording for ABSORPTION; resolve in a documentation cleanup PR.",
+            "ABSORPTION_AUDIT.md, the Primary VSA Event Matrix, and current code agree on a production-connected non-scoring role.",
         ),
     ),
 )

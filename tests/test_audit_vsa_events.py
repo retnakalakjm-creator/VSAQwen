@@ -102,8 +102,12 @@ def test_spring_is_documented_as_confirmation_anchored_not_candidate_bar_signal(
     assert "current confirmation bar only" in contract.future_bar_policy
 
     source = inspect.getsource(spring.collect_spring)
-    assert "point_in_time = metrics.iloc[: current_index + 1].copy()" in source
+    assert "point_in_time = metrics.iloc[: current_index + 1]" in source
     assert "validation.confirmation.confirmation_index != current_index" in source
+
+    support_source = inspect.getsource(spring._prior_low_swings)
+    assert "item.swing.bar_index < bar_index" in support_source
+    assert "item.swing.confirmation_index <= bar_index" in support_source
 
 
 def test_current_bar_events_are_not_marked_as_using_future_bars() -> None:
@@ -153,6 +157,32 @@ def test_contract_detector_names_exist_in_source_modules() -> None:
             assert f"def {detector_name}" in source
 
 
+def test_promoted_bc_upthrust_contracts_match_production_source() -> None:
+    contracts = contracts_by_code()
+    bc = contracts["BUYING_CLIMAX"]
+    ut = contracts["UPTHRUST"]
+
+    assert "non-strong high-price acceptance" in " ".join(bc.mandatory_requirements)
+    assert "latest causally confirmed structural high exists" in ut.mandatory_requirements
+    assert "current high probes above the structural high" in ut.mandatory_requirements
+    assert "current close returns to or below the structural high" in ut.mandatory_requirements
+
+    bc_source = inspect.getsource(supply._collect_buying_climax)
+    assert 'name="Non-Strong High Acceptance"' in bc_source
+    assert "ClosePosition.UPPER" in bc_source
+    assert "ClosePosition.ON_HIGH" in bc_source
+
+    ut_source = inspect.getsource(supply._collect_upthrust)
+    assert 'name="Confirmed Structural High"' in ut_source
+    assert 'name="Probe Above Structural High"' in ut_source
+    assert 'name="Failed Acceptance Above Structural High"' in ut_source
+    assert "structural_high_price" in ut_source
+
+    high_source = inspect.getsource(supply._latest_confirmed_structural_high)
+    assert "confirmation_index <= ctx.current.bar_index" in high_source
+    assert "bar_index < ctx.current.bar_index" in high_source
+
+
 def test_no_supply_contract_records_source_naming_mismatch() -> None:
     contract = contracts_by_code()["NO_SUPPLY"]
 
@@ -163,13 +193,19 @@ def test_no_supply_contract_records_source_naming_mismatch() -> None:
     assert "ctx.is_bearish_environment()" in source
 
 
-def test_absorption_contract_records_connected_non_scoring_doc_mismatch() -> None:
+def test_absorption_contract_records_connected_non_scoring_alignment() -> None:
     contract = contracts_by_code()["ABSORPTION"]
 
     assert contract.module == "evidence.absorption"
     assert contract.detector == "collect_absorption"
-    assert any("production-connected non-scoring" in note for note in contract.known_review_notes)
-    assert any("PRIMARY_VSA_EVENT_MATRIX.md" in note for note in contract.known_review_notes)
+    assert any(
+        "production-connected non-scoring role" in note
+        for note in contract.known_review_notes
+    )
+    assert not any(
+        "stale" in note.lower() or "mismatch" in note.lower()
+        for note in contract.known_review_notes
+    )
 
     collect_source = inspect.getsource(demand.collect_demand)
     absorption_source = inspect.getsource(absorption.collect_absorption)
