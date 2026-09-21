@@ -77,7 +77,7 @@ Shared detector confirmations are diagnostic quality observations unless a futur
 |---|---|---:|---|---|---|---|---|
 | `BUYING_CLIMAX` | `evidence/supply.py::_collect_buying_climax` | YES | Production-active / promoted semantics | Primary weakness / supply | Bearish | Registry `1.00`; dynamic runtime weight | Promoted contract keeps buying-campaign + bullish-bar + very-high-volume + above-average-spread effort core and requires non-strong high-price acceptance (`close_position` not `UPPER`/`ON_HIGH`). Frozen post-change target: 887 events. |
 | `SUPPLY_COMING_IN` | `evidence/supply.py::_collect_supply_coming_in` | YES | Production-active / audit-complete | Primary weakness / supply | Bearish | Registry `1.00`; dynamic runtime weight | Point-in-time production emissions validated. Interaction with `INCREASING_SUPPLY` is documented as outcome-confirming; no production penalty. |
-| `INCREASING_SUPPLY` | `evidence/supply.py::_collect_increasing_supply` | YES | Active / audit-complete | Primary weakness / supply | Bearish | Registry/reference `0.85`; configured supply map `0.70`; runtime evidence weight `1.00` | Scoring/ranking sensitivity confirmed. No qualification/actionability change and no interaction penalty. |
+| `INCREASING_SUPPLY` | `evidence/supply.py::_collect_increasing_supply` | YES | Detector semantics frozen / M12 PARKED; scoring architecture unchanged | Primary weakness / supply | Bearish | Registry/reference `0.85`; configured supply map `0.70`; runtime evidence weight `1.00` | M12 retained the three-clause relative-expansion identity, confirmed distinctness from `SUPPLY_COMING_IN`, found no confirmation-layer issue, and found no obvious detector correction. Production emission remains unchanged. |
 | `HIDDEN_SUPPLY` | `evidence/supply.py::_collect_hidden_supply` | YES | Detector semantics frozen / M12 PARKED; standalone scoring not promoted | Supporting supply | Bearish | No dedicated professional supply-map weight; supporting evidence remains collected | M12 retained the three-clause current-bar identity (up bar + high volume + lower close), confirmed distinctness from neighboring supply detectors, found no confirmation-layer issue, and found no obvious detector correction. Production emission remains unchanged. |
 | `SUPPLY_DRYING_UP` | `evidence/supply.py::_collect_supply_drying_up` | YES | Active / audit-complete | Supporting / exhaustion context | Contextual | Configured supply-map weight `0.60`; runtime evidence weight observed as context-dependent | Production-valid contextual evidence. No global promotion, interaction penalty, or rejection rule introduced. |
 | `UPTHRUST` | `evidence/supply.py::_collect_upthrust` | YES | Production-active / promoted semantics | Supply / distribution / trap | Bearish | Registry `1.00`; professional supply-map weight `0.90`; dynamic runtime weight | Promoted contract is a probe above the latest causally confirmed structural swing high followed by a close back at/below that high. Old bullish-bar/very-high-volume identity gates are removed; they remain descriptive context. Frozen post-change target: 10,526 events. |
@@ -160,6 +160,8 @@ An event is not production-approved merely because an audit found a positive emp
 - `docs/DAILY_EVENT_INCREASING_DEMAND_DETECTOR_VERDICT.md`
 - `docs/SUPPLY_COMING_IN_AUDIT.md`
 - `docs/DAILY_EVENT_HIDDEN_SUPPLY_DETECTOR_VERDICT.md`
+- `docs/INCREASING_SUPPLY_AUDIT.md`
+- `docs/DAILY_EVENT_INCREASING_SUPPLY_DETECTOR_VERDICT.md`
 
 
 ## BUYING_CLIMAX / UPTHRUST production-correction policy

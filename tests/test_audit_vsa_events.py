@@ -33,6 +33,7 @@ EXPECTED_EVENT_CODES = {
     "UPTHRUST",
     "NO_DEMAND",
     "SUPPLY_COMING_IN",
+    "INCREASING_SUPPLY",
     "HIDDEN_SUPPLY",
     "ABSORPTION",
 }
@@ -82,6 +83,10 @@ def test_source_documents_include_existing_audit_records() -> None:
     assert (
         "docs/DAILY_EVENT_HIDDEN_SUPPLY_DETECTOR_VERDICT.md"
         in contracts["HIDDEN_SUPPLY"].source_documents
+    )
+    assert (
+        "docs/INCREASING_SUPPLY_AUDIT.md"
+        in contracts["INCREASING_SUPPLY"].source_documents
     )
 
 
@@ -247,3 +252,24 @@ def test_hidden_supply_contract_matches_current_source() -> None:
     assert "is_high_volume(bar)" in source
     assert "closes_lower(bar)" in source
     assert "EvidenceCode.HIDDEN_SUPPLY" in source
+
+
+def test_increasing_supply_contract_matches_current_source() -> None:
+    contract = contracts_by_code()["INCREASING_SUPPLY"]
+
+    assert contract.module == "evidence.supply"
+    assert contract.detector == "_collect_increasing_supply"
+    assert contract.recognition_timing == CURRENT_BAR
+    assert contract.diagnostic_confirmations == ()
+    assert contract.uses_future_bars is False
+    assert contract.mandatory_requirements == (
+        "bearish/down bar",
+        "volume increasing versus previous bar",
+        "spread increasing versus previous bar",
+    )
+
+    source = inspect.getsource(supply._collect_increasing_supply)
+    assert "is_down_bar(current)" in source
+    assert "volume_increasing(current, previous)" in source
+    assert "spread_increasing(current, previous)" in source
+    assert "EvidenceCode.INCREASING_SUPPLY" in source

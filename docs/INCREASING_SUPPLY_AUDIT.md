@@ -2,7 +2,7 @@
 
 ## Final status
 
-`INCREASING_SUPPLY` is production-active and audit-complete for the current detector and scoring architecture. Its empirical reference weight is `0.85`, while the current production runtime emits it at `1.00`. That discrepancy is documented and has **not** been treated as a production bug.
+`INCREASING_SUPPLY` is production-active with **detector semantics frozen / M12 PARKED**. Its current scoring architecture remains unchanged. The empirical reference weight is `0.85`, while the current production runtime emits it at `1.00`; that discrepancy is documented and has **not** been treated as a production bug.
 
 ```text
 production path              = YES
@@ -230,10 +230,20 @@ qualification impact          = NONE observed across tested weights
 actionability impact          = NONE observed across tested weights
 ranking / strength impact     = YES
 production weight change      = NONE
-status                        = PRODUCTION-ACTIVE / AUDIT-COMPLETE
+detector status               = FROZEN / M12 PARKED
+scoring status                = PRODUCTION-ACTIVE / UNCHANGED
 ```
 
-The audit campaign does **not** justify changing the production runtime from `1.00` to `0.85` at this time. Keep `0.85` recorded as the empirical calibration reference and preserve `1.00` as the current verified runtime behavior.
+The M12 stop-rule review found no detector correction: the three-clause
+relative-expansion identity is coherent, distinct from `SUPPLY_COMING_IN`,
+and has no separate confirmation layer.
+
+The audit campaign does **not** justify changing the production runtime from
+`1.00` to `0.85` at this time. Keep `0.85` recorded as the empirical
+calibration reference and preserve `1.00` as the current verified runtime
+behavior.
+
+See `docs/DAILY_EVENT_INCREASING_SUPPLY_DETECTOR_VERDICT.md`.
 
 ## Audit principles preserved
 
