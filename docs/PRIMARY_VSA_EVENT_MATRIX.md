@@ -75,17 +75,17 @@ Shared detector confirmations are diagnostic quality observations unless a futur
 
 | EvidenceCode | Detector / source | Production path | Status | Role | Direction | Scoring / weight state | Notes |
 |---|---|---:|---|---|---|---|---|
-| `BUYING_CLIMAX` | `evidence/supply.py::_collect_buying_climax` | YES | Production correction candidate / promoted semantics | Primary weakness / supply | Bearish | Registry `1.00`; dynamic runtime weight | Promoted contract keeps buying-campaign + bullish-bar + very-high-volume + above-average-spread effort core and requires non-strong high-price acceptance (`close_position` not `UPPER`/`ON_HIGH`). Frozen post-change target: 887 events. |
+| `BUYING_CLIMAX` | `evidence/supply.py::_collect_buying_climax` | YES | Production-active / promoted semantics | Primary weakness / supply | Bearish | Registry `1.00`; dynamic runtime weight | Promoted contract keeps buying-campaign + bullish-bar + very-high-volume + above-average-spread effort core and requires non-strong high-price acceptance (`close_position` not `UPPER`/`ON_HIGH`). Frozen post-change target: 887 events. |
 | `SUPPLY_COMING_IN` | `evidence/supply.py::_collect_supply_coming_in` | YES | Production-active / audit-complete | Primary weakness / supply | Bearish | Registry `1.00`; dynamic runtime weight | Point-in-time production emissions validated. Interaction with `INCREASING_SUPPLY` is documented as outcome-confirming; no production penalty. |
 | `INCREASING_SUPPLY` | `evidence/supply.py::_collect_increasing_supply` | YES | Active / audit-complete | Primary weakness / supply | Bearish | Registry/reference `0.85`; configured supply map `0.70`; runtime evidence weight `1.00` | Scoring/ranking sensitivity confirmed. No qualification/actionability change and no interaction penalty. |
 | `HIDDEN_SUPPLY` | `evidence/supply.py::_collect_hidden_supply` | YES | Active / audit-complete / non-scoring | Supporting supply | Bearish | Non-scoring audit conclusion | Current detector remains active, but the audited definition is not promoted as standalone scoring evidence. |
 | `SUPPLY_DRYING_UP` | `evidence/supply.py::_collect_supply_drying_up` | YES | Active / audit-complete | Supporting / exhaustion context | Contextual | Configured supply-map weight `0.60`; runtime evidence weight observed as context-dependent | Production-valid contextual evidence. No global promotion, interaction penalty, or rejection rule introduced. |
-| `UPTHRUST` | `evidence/supply.py::_collect_upthrust` | YES | Production correction candidate / promoted semantics | Supply / distribution / trap | Bearish | Registry `1.00`; professional supply-map weight `0.90`; dynamic runtime weight | Promoted contract is a probe above the latest causally confirmed structural swing high followed by a close back at/below that high. Old bullish-bar/very-high-volume identity gates are removed; they remain descriptive context. Frozen post-change target: 10,526 events. |
+| `UPTHRUST` | `evidence/supply.py::_collect_upthrust` | YES | Production-active / promoted semantics | Supply / distribution / trap | Bearish | Registry `1.00`; professional supply-map weight `0.90`; dynamic runtime weight | Promoted contract is a probe above the latest causally confirmed structural swing high followed by a close back at/below that high. Old bullish-bar/very-high-volume identity gates are removed; they remain descriptive context. Frozen post-change target: 10,526 events. |
 | `NO_DEMAND` | `evidence/supply.py::_collect_no_demand` | YES | Production-active / audit-complete | Demand absence / weakness | Bearish | Registry `1.00`; configured supply-map weight `0.60`; dynamic runtime weight | Correct collector is supply-side. Mandatory: bullish environment, bullish/up bar, low volume, narrow spread. Confirmations are non-mandatory. |
 | `STOPPING_VOLUME` | `evidence/demand.py::_collect_stopping_volume` | YES | Production-integrated / validation-complete | Primary demand | Bullish | Registry/profile `1.00`; dynamic runtime weight | Canonical spec exists. Confirmations are non-mandatory. Point-in-time validation is complete. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | YES | Production-integrated / audit-complete | Primary demand / reversal | Bullish | Base/scoring reference `0.38`; dynamic runtime weight | Post-integration audit validated production emissions and no score mutation failure. Interaction with `STOPPING_VOLUME` is confirming. |
-| `INCREASING_DEMAND` | `evidence/demand.py::_collect_increasing_demand` | YES | Provisional / audit-complete | Primary demand | Bullish | Base/reference `0.85`; provisional conflict penalty `0.10` remains study-only | Production-connected and calibrated, but conflict penalty is not active production scoring unless promoted by a later PR. |
-| `DEMAND_COMING_IN` | `evidence/demand_coming_in.py::collect_demand_coming_in` | YES | Provisional / audit-complete | Primary demand | Bullish | Base/reference `0.38`; no production conflict penalty | Production path validated. Not yet promoted to fully production-approved status. |
+| `INCREASING_DEMAND` | `evidence/demand.py::_collect_increasing_demand` | YES | Detector semantics frozen / M12 PARKED; scoring provisional | Primary demand | Bullish | Base/reference `0.85`; provisional conflict penalty `0.10` remains study-only | M12 stop-rule review retained the four-clause production identity, confirmed distinctness from `DEMAND_COMING_IN`, found no confirmation-layer issue, and found no obvious detector correction. Production emission remains unchanged. |
+| `DEMAND_COMING_IN` | `evidence/demand_coming_in.py::collect_demand_coming_in` | YES | Detector semantics frozen / M12 PARKED; scoring frozen provisional | Primary demand | Bullish | Base/reference `0.38`; no production conflict penalty | M12 stop-rule review retained the four-clause production identity, confirmed distinctness from `INCREASING_DEMAND`, found no confirmation-layer issue, and found no obvious detector correction. Production emission remains unchanged. |
 | `TEST` | `evidence/demand.py::_collect_test` | YES | Production-integrated / frozen semantics | Primary confirmation | Bullish | Non-scoring contextual role | Canonical spec exists. Contextual confirmation only; no score weight promotion. |
 | `SHAKEOUT` | `evidence/demand.py::_collect_shakeout` and `evidence/campaign.py::validate_shakeout` | YES | Production-integrated / validation-complete | Primary reversal / demand | Bullish | Base/reference `0.50` | Recovery-anchored event. Candidate requires selling pressure, bearish/down bar, wide spread, very-high volume, lower low, valid test, and valid recovery. |
 | `NO_SUPPLY` | `evidence/demand.py::_collect_no_supply` | YES | Production-active / audit-complete / contextual-non-scoring | Demand absence / weakness | Bullish | Registry `1.00`; no professional scoring-map entry; dynamic runtime weight | Canonical spec exists. Source requirement label says `Bullish Environment` but production predicate uses `ctx.is_bearish_environment()`. This naming mismatch is documented and unchanged. |
@@ -154,7 +154,9 @@ An event is not production-approved merely because an audit found a positive emp
 - `docs/UPTHRUST_AUDIT.md`
 - `docs/BUYING_CLIMAX_AUDIT.md`
 - `docs/DEMAND_COMING_IN_AUDIT.md`
+- `docs/DAILY_EVENT_DEMAND_COMING_IN_DETECTOR_VERDICT.md`
 - `docs/INCREASING_DEMAND_AUDIT.md`
+- `docs/DAILY_EVENT_INCREASING_DEMAND_DETECTOR_VERDICT.md`
 - `docs/SUPPLY_COMING_IN_AUDIT.md`
 
 
@@ -186,12 +188,13 @@ Frozen production-parity targets:
     UPTHRUST         10,526
     overlap             129
 
-Current branch policy:
+Post-merge policy:
 
-    promoted semantic contracts implemented
-    exact frozen replay required before merge
-    non-target emission drift must equal zero
-    contribution impact must be reviewed
+    promoted semantic contracts are active on main
+    frozen replay matched the promoted candidates exactly
+    non-target emission drift was zero
+    Spring-only downstream quality changes were fully explained
+    contribution impact was reviewed
     DailyBehavior mapping remains unchanged
 
 See:

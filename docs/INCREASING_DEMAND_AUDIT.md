@@ -1,14 +1,15 @@
 # INCREASING_DEMAND Audit
 
-## Final Provisional State
+## Current State
 
-- **Status:** PROVISIONAL
+- **Detector semantics:** FROZEN / M12 PARKED
+- **Scoring policy:** PROVISIONAL
 - **Base weight:** 0.85
-- **Conflict penalty:** 0.10
-- **Effective conflict weight:** 0.765
+- **Conflict penalty:** 0.10 provisional / NOT ACTIVE
+- **Effective conflict weight:** 0.765 study value only
 - **Clean-event weight:** 0.85
 - **Rejection rule:** NO
-- **Production:** NOT REGISTERED / provisional
+- **Production path:** CONNECTED / ACTIVE
 
 ## Detector Definition
 
@@ -84,11 +85,25 @@ Corresponding effective weights:
 
 ## Decision
 
-Freeze `INCREASING_DEMAND` at:
+M12 detector review freezes the current emission identity unchanged:
 
-**Base weight 0.85 + conflict penalty 0.10 + no rejection rule.**
+```text
+Bullish Bar
+High Volume
+Above Average Spread
+Volume Increasing
+```
 
-This remains a provisional calibration result. Do not promote to production registration until the broader production qualification process is completed.
+There is no obvious production-safe detector correction. The detector is
+therefore **PARKED** under the M12 stopping rule.
+
+The `0.85` base weight remains production-connected. The previously audited
+`0.10` conflict penalty remains provisional / inactive and belongs to a
+separate scoring-policy decision.
+
+See:
+
+`docs/DAILY_EVENT_INCREASING_DEMAND_DETECTOR_VERDICT.md`
 
 ## Audit Principles Preserved
 

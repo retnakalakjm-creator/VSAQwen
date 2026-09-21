@@ -2,7 +2,7 @@
 
 ## Status
 
-`INCREASING_DEMAND` is **production-connected but remains provisional**. No new audit replay is authorized unless production semantics, scoring architecture, or the frozen population contract changes.
+`INCREASING_DEMAND` is **production-connected with detector semantics frozen / M12 PARKED**. Its scoring policy remains provisional. No new detector replay is authorized unless new independent evidence, a causal defect, or a first-principles semantic contradiction appears.
 
 ## Existing validated evidence
 
@@ -88,7 +88,8 @@ conflict penalty      = 0.10 provisional / NOT ACTIVE
 rejection             = NO
 qualification change  = NO
 actionability change  = NO
-status                = PROVISIONAL
+detector status       = FROZEN / M12 PARKED
+scoring status        = PROVISIONAL
 ```
 
 ## Why no new audit is required now

@@ -102,7 +102,7 @@ confirmation bar before validating the sequence.
 The implementation must preserve this boundary:
 
 ```python
-point_in_time = metrics.iloc[: current_index + 1].copy()
+point_in_time = metrics.iloc[: current_index + 1]
 ```
 
 This is confirmation-anchored recognition, not candidate-bar look-ahead.
@@ -128,25 +128,17 @@ change. It should include separate calibration evidence and regression tests.
 
 ## Documentation alignment notes
 
-### ABSORPTION matrix conflict
+### ABSORPTION alignment
 
-`docs/ABSORPTION_AUDIT.md` and current source code describe ABSORPTION as
-production-connected / non-scoring / frozen through the demand collection path.
-
-Current source path:
+`docs/ABSORPTION_AUDIT.md`, `docs/PRIMARY_VSA_EVENT_MATRIX.md`, and current
+source now agree that ABSORPTION is production-connected, non-scoring, and
+frozen through:
 
 ```text
 EvidenceEngine.collect()
   -> collect_demand()
   -> collect_absorption(ctx)
 ```
-
-However, `docs/PRIMARY_VSA_EVENT_MATRIX.md` still contains older wording saying
-ABSORPTION has no active production detector / no production path.
-
-This PR records the conflict in `audit.vsa_events`; it does not modify the older
-matrix document. A later documentation-cleanup PR should reconcile the matrix
-with the current code and ABSORPTION audit record.
 
 ### NO_DEMAND path typo
 
@@ -165,6 +157,35 @@ calls `ctx.is_bearish_environment()`.
 This PR documents the mismatch; it does not rename or change the production
 behavior. A future cleanup PR can rename the requirement label if tests confirm
 that downstream output formatting is unaffected.
+
+### BUYING_CLIMAX / UPTHRUST post-M12 baseline
+
+PR #348 replaced the historical identical mandatory contracts with the promoted
+M12 semantics.
+
+Current BUYING_CLIMAX identity is:
+
+- buying campaign;
+- bullish/up bar;
+- very high volume;
+- above-average spread;
+- non-strong high-price acceptance.
+
+Current UPTHRUST identity is structural:
+
+- latest causally confirmed structural high exists;
+- current high probes above that structural high;
+- current close returns to or below that structural high.
+
+UPTHRUST structural references must satisfy:
+
+```text
+confirmation_index <= current bar_index
+pivot bar_index < current bar_index
+```
+
+The old local previous-high hypothesis and old BC-like mandatory UPTHRUST
+contract are historical only and must not be used as the current audit baseline.
 
 ### Campaign snapshots
 

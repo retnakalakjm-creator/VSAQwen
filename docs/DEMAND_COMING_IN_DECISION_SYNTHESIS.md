@@ -2,7 +2,7 @@
 
 ## Status
 
-`DEMAND_COMING_IN` is **production-connected but remains frozen provisional**. The current audit campaign establishes the runtime integration weight and ranking influence. No new replay is authorized unless production semantics, scoring architecture, population contract, an independent validation window, or the counterfactual framework materially changes.
+`DEMAND_COMING_IN` is **production-connected with detector semantics frozen / M12 PARKED**. Its scoring and downstream policy remain frozen provisional. The current audit campaign establishes the runtime integration weight and ranking influence. No new detector replay is authorized unless new independent evidence, a causal defect, or a first-principles semantic contradiction appears.
 
 ## Existing validated evidence
 
@@ -101,7 +101,8 @@ conflict penalty       = 0.00
 rejection              = NO
 qualification change   = NO
 actionability change   = NO
-status                 = FROZEN PROVISIONAL
+detector status        = FROZEN / M12 PARKED
+scoring status         = FROZEN PROVISIONAL
 ```
 
 ## Regression status
@@ -133,6 +134,6 @@ The audit deliberately accepts imperfect but meaningful real-market VSA evidence
 
 ## Final decision
 
-`DEMAND_COMING_IN` remains **FROZEN PROVISIONAL** at `0.38`.
+`DEMAND_COMING_IN` detector semantics remain **FROZEN / M12 PARKED**. Its scoring/integration policy remains **FROZEN PROVISIONAL** at `0.38`.
 
 No production promotion, penalty, rejection, qualification change, actionability change, or semantic change is justified from the current evidence. The next change requires new validated evidence or a material change in production semantics/methodology.

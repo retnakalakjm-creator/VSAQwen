@@ -2,13 +2,14 @@
 
 ## Status
 
-Production correction candidate.
+Production correction merged.
 
-This change implements the semantic contracts promoted by the completed M12
-BC/UPTHRUST research thread.
+PR #348 merged the promoted M12 BC/UPTHRUST semantic contracts into `main`.
 
-Research is closed. The detector definitions are not being tuned further in
-this PR. Merge is gated by exact frozen-snapshot replay and impact validation.
+Research is closed. The detector definitions are not being tuned further.
+The frozen-snapshot replay, exact candidate parity, non-target drift review,
+Spring quality dependency review, and contribution-impact review all passed
+before merge.
 
 ## Why production changes now
 

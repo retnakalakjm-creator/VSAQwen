@@ -8,10 +8,11 @@ This is an audit-only record of the `DEMAND_COMING_IN` evidence event. It record
 
 - Role: Primary demand
 - Direction: Bullish
-- Status: **Provisional**
+- Detector semantics: **FROZEN / M12 PARKED**
+- Scoring status: **FROZEN PROVISIONAL**
 - Production weight: **0.38**
-- Production actionability: **NO PROMOTION**
-- Current detector path: `evidence/demand.py`
+- Production actionability: **NO GENERAL PROMOTION**
+- Current detector path: `evidence/demand_coming_in.py`
 - Weight path: helper-level evidence construction; `WeightCalculator` remains unchanged
 
 ## Semantic audit
@@ -137,14 +138,29 @@ The changed-decision sample is very small and has conflicting evidence: better a
 
 ## Final decision
 
-`DEMAND_COMING_IN` is accepted as a **real-market contextual demand event** with a frozen **provisional audit weight of 0.38**.
+M12 detector review freezes the current emission identity unchanged:
+
+```text
+Bullish Bar
+High Volume
+Above Average Spread
+Strong Close
+```
+
+There is no obvious production-safe detector correction. The detector is
+therefore **PARKED** under the M12 stopping rule.
 
 It remains:
 
 - production-collected;
-- production-weighted at `0.38` for audit/integration purposes;
-- **not promoted to fully validated production actionability**;
-- not subject to another weight-tuning cycle from this sample.
+- production-weighted at `0.38` under the existing frozen provisional policy;
+- subject to the existing contextual suppression policy;
+- **not promoted to general production actionability**;
+- not subject to another detector-specific research cycle from the same evidence.
+
+See:
+
+`docs/DAILY_EVENT_DEMAND_COMING_IN_DETECTOR_VERDICT.md`
 
 ## Real-market VSA constraint
 
