@@ -162,3 +162,38 @@ python scripts/audit_daily_event_cofiring.py --input-dir reports\daily-events\in
 The regenerated L2 output defaults to:
 
     reports\daily-events\cofiring\milestone6_standard_india_large_cap_30_frozen_2026-09-18
+
+
+## Current M12 handoff after NO_SUPPLY closure
+
+The NO_SUPPLY branch of the M12 detector investigation is now closed for the
+current audit cycle.
+
+Authoritative closure record:
+
+    docs/DAILY_EVENT_NO_SUPPLY_RESEARCH_VERDICT.md
+
+That investigation concluded:
+
+- no production NO_SUPPLY correction is currently justified;
+- WEAK_RESULT_ONLY remains research-only;
+- further detector-specific subgroup slicing would create increasing
+  data-mining risk.
+
+The next M12 correctness priority therefore returns to the strongest unresolved
+L2 structural finding:
+
+    BUYING_CLIMAX
+    vs
+    UPTHRUST
+
+Canonical frozen L2 established:
+
+    BUYING_CLIMAX unique events     4,497
+    UPTHRUST unique events          4,497
+    overlap                         4,497
+    relationship                    IDENTICAL_FIRING_SET
+
+The next audit should determine why two named production detectors have the
+same canonical daily firing set before any further NO_SUPPLY research is
+started.
