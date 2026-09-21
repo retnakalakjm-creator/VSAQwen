@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,8 +25,13 @@ def _default_input(basket_name: str) -> Path:
     return Path("reports/daily-events/inventory") / basket_name
 
 
-def _default_output(basket_name: str) -> Path:
-    return Path("reports/daily-events/cofiring") / basket_name
+def _default_output(
+    basket_name: str,
+    *,
+    input_dir: Path,
+) -> Path:
+    source_name = input_dir.name or basket_name
+    return Path("reports/daily-events/cofiring") / source_name
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,8 +52,18 @@ def main(argv: list[str] | None = None) -> int:
 
     input_dir = args.input_dir or _default_input(args.basket)
     ledger = load_frozen_daily_event_ledger(input_dir)
+    if (
+        ledger.source_lineage is None
+        or ledger.source_lineage.snapshot_basket_name != args.basket
+    ):
+        raise ValueError(
+            "L1 snapshot basket does not match requested L2 basket"
+        )
     audit = build_daily_event_cofiring_audit(ledger)
-    output_dir = args.output_dir or _default_output(args.basket)
+    output_dir = args.output_dir or _default_output(
+        args.basket,
+        input_dir=input_dir,
+    )
     paths = write_daily_event_cofiring_audit(audit, output_dir)
 
     print(
@@ -80,6 +96,11 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 "non_gating_confirmation_detector_count": (
                     audit.non_gating_confirmation_detector_count
+                ),
+                "source_lineage": (
+                    None
+                    if audit.source_lineage is None
+                    else asdict(audit.source_lineage)
                 ),
                 "output_files": paths.as_dict(),
                 "is_actionable": False,

@@ -13,11 +13,13 @@ import json
 import textwrap
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from hashlib import sha256
 from itertools import combinations
 from pathlib import Path
 
 import pandas as pd
 
+from config import FULL_HISTORY_PERIOD
 from evidence.absorption import collect_absorption
 from evidence.demand import (
     _collect_increasing_demand,
@@ -40,6 +42,7 @@ from models import EvidenceCode
 
 DAILY_EVENT_COFIRING_AUDIT_ID = "daily-event-frequency-cofiring-gates-v1"
 EXPECTED_L1_AUDIT_ID = "daily-event-inventory-point-in-time-v1"
+EXPECTED_L1_INPUT_SNAPSHOT_AUDIT_ID = "daily-audit-input-snapshot-v1"
 _EVENT_KEY = ("symbol", "bar_index", "session")
 
 
@@ -65,6 +68,18 @@ DETECTOR_GATE_FUNCTIONS: tuple[
 
 
 @dataclass(frozen=True, slots=True)
+class FrozenDailyEventLedgerLineage:
+    input_source: str
+    snapshot_audit_id: str
+    snapshot_manifest_sha256: str
+    snapshot_basket_name: str
+    snapshot_period: str
+    snapshot_cutoff: str
+    l1_summary_sha256: str
+    l1_emissions_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class FrozenDailyEventLedger:
     source_audit_id: str
     requested_symbol_count: int
@@ -74,6 +89,7 @@ class FrozenDailyEventLedger:
     evidence_emission_count: int
     event_bar_count: int
     emissions: pd.DataFrame
+    source_lineage: FrozenDailyEventLedgerLineage | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +165,7 @@ class DailyEventCofiringAudit:
     pairwise_rows: tuple[DailyEventPairwiseRow, ...]
     cluster_rows: tuple[DailyEventClusterSignatureRow, ...]
     gate_rows: tuple[DailyEventGateSemanticsRow, ...]
+    source_lineage: FrozenDailyEventLedgerLineage | None = None
 
     @property
     def is_actionable(self) -> bool:
@@ -173,6 +190,74 @@ class DailyEventCofiringAuditPaths:
         }
 
 
+def _sha256_file(path: Path) -> str:
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def _valid_sha256(value: object) -> bool:
+    text = str(value)
+    if len(text) != 64:
+        return False
+    try:
+        int(text, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _load_l1_source_lineage(
+    summary: dict[str, object],
+    *,
+    summary_path: Path,
+    emissions_path: Path,
+) -> FrozenDailyEventLedgerLineage:
+    provenance = summary.get("input_provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError(
+            "L2 requires L1 frozen snapshot input provenance"
+        )
+    source = str(provenance.get("source", ""))
+    if source != "FROZEN_DAILY_INPUT_SNAPSHOT":
+        raise ValueError(
+            "L2 requires L1 source=FROZEN_DAILY_INPUT_SNAPSHOT"
+        )
+    snapshot_audit_id = str(
+        provenance.get("snapshot_audit_id", "")
+    )
+    if snapshot_audit_id != EXPECTED_L1_INPUT_SNAPSHOT_AUDIT_ID:
+        raise ValueError("L1 snapshot audit_id does not match expected audit")
+    snapshot_manifest_sha256 = str(
+        provenance.get("snapshot_manifest_sha256", "")
+    )
+    if not _valid_sha256(snapshot_manifest_sha256):
+        raise ValueError("L1 snapshot manifest SHA-256 is invalid")
+
+    snapshot_basket_name = str(
+        provenance.get("snapshot_basket_name", "")
+    )
+    snapshot_period = str(provenance.get("snapshot_period", ""))
+    snapshot_cutoff = str(provenance.get("snapshot_cutoff", ""))
+    if not snapshot_basket_name:
+        raise ValueError("L1 snapshot basket name is missing")
+    if snapshot_period != FULL_HISTORY_PERIOD:
+        raise ValueError(
+            "L2 requires the full-history frozen L1 snapshot period"
+        )
+    if not snapshot_cutoff:
+        raise ValueError("L1 snapshot cutoff is missing")
+
+    return FrozenDailyEventLedgerLineage(
+        input_source=source,
+        snapshot_audit_id=snapshot_audit_id,
+        snapshot_manifest_sha256=snapshot_manifest_sha256,
+        snapshot_basket_name=snapshot_basket_name,
+        snapshot_period=snapshot_period,
+        snapshot_cutoff=snapshot_cutoff,
+        l1_summary_sha256=_sha256_file(summary_path),
+        l1_emissions_sha256=_sha256_file(emissions_path),
+    )
+
+
 def load_frozen_daily_event_ledger(
     input_dir: str | Path,
 ) -> FrozenDailyEventLedger:
@@ -191,6 +276,17 @@ def load_frozen_daily_event_ledger(
         raise ValueError("L1 source must remain non-actionable")
     if int(summary.get("failed_symbol_count", -1)) != 0:
         raise ValueError("L2 requires a zero-failure L1 source ledger")
+    if int(summary.get("requested_symbol_count", -1)) != int(
+        summary.get("succeeded_symbol_count", -2)
+    ):
+        raise ValueError(
+            "L2 requires all requested L1 symbols to have succeeded"
+        )
+    source_lineage = _load_l1_source_lineage(
+        summary,
+        summary_path=summary_path,
+        emissions_path=emissions_path,
+    )
 
     emissions = pd.read_csv(emissions_path)
     required_columns = {
@@ -220,6 +316,7 @@ def load_frozen_daily_event_ledger(
         evidence_emission_count=int(summary["evidence_emission_count"]),
         event_bar_count=int(summary["event_bar_count"]),
         emissions=emissions.copy(),
+        source_lineage=source_lineage,
     )
 
 
@@ -522,6 +619,7 @@ def build_daily_event_cofiring_audit(
         pairwise_rows=pairwise_rows,
         cluster_rows=cluster_rows,
         gate_rows=gate_rows,
+        source_lineage=ledger.source_lineage,
     )
 
 
@@ -564,6 +662,11 @@ def write_daily_event_cofiring_audit(
         "non_gating_confirmation_detector_count": (
             audit.non_gating_confirmation_detector_count
         ),
+        "source_lineage": (
+            None
+            if audit.source_lineage is None
+            else asdict(audit.source_lineage)
+        ),
         "is_actionable": False,
     }
     paths.summary_json.write_text(
@@ -600,6 +703,7 @@ def write_daily_event_cofiring_audit(
 __all__ = [
     "DAILY_EVENT_COFIRING_AUDIT_ID",
     "EXPECTED_L1_AUDIT_ID",
+    "EXPECTED_L1_INPUT_SNAPSHOT_AUDIT_ID",
     "DETECTOR_GATE_FUNCTIONS",
     "DailyEventCofiringAudit",
     "DailyEventCofiringAuditPaths",
@@ -607,6 +711,7 @@ __all__ = [
     "DailyEventGateSemanticsRow",
     "DailyEventPairwiseRow",
     "FrozenDailyEventLedger",
+    "FrozenDailyEventLedgerLineage",
     "build_daily_event_cofiring_audit",
     "build_daily_event_gate_semantics",
     "load_frozen_daily_event_ledger",

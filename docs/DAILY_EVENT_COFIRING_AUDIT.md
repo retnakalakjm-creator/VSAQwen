@@ -9,9 +9,9 @@ L2 does not rerun market data and does not change any detector.
 
 ## Frozen input
 
-Default input:
+For the canonical M12 rerun, pass the regenerated frozen L1 directory explicitly:
 
-    reports/daily-events/inventory/<basket>/
+    reports/daily-events/inventory/milestone6_standard_india_large_cap_30_frozen_2026-09-18/
 
 Required L1 artifacts:
 
@@ -21,8 +21,15 @@ Required L1 artifacts:
 The source must be:
 
     audit_id = daily-event-inventory-point-in-time-v1
+    requested_symbol_count = succeeded_symbol_count
     failed_symbol_count = 0
     is_actionable = false
+    input_provenance.source = FROZEN_DAILY_INPUT_SNAPSHOT
+    input_provenance.snapshot_audit_id = daily-audit-input-snapshot-v1
+    input_provenance.snapshot_period = max
+
+L2 rejects the old heterogeneous-cache L1 ledger because it does not carry
+frozen-snapshot provenance.
 
 ## Unique event identity
 
@@ -91,7 +98,28 @@ detector that supplies confirmations is reported as:
 
 This is an audit finding only. L2 does not change evaluate_detector().
 
+## Source lineage
+
+L2 records the exact L1 lineage in its summary:
+
+- snapshot audit id;
+- snapshot manifest SHA-256;
+- snapshot basket;
+- snapshot period and cutoff;
+- SHA-256 of the consumed L1 summary JSON;
+- SHA-256 of the consumed L1 emissions CSV.
+
+This lets downstream L3 prove that it is using the same regenerated canonical
+L1/L2 chain.
+
 ## Outputs
+
+When an explicit frozen L1 input directory is supplied, the default L2 output
+directory uses the same source-directory name under:
+
+    reports/daily-events/cofiring/
+
+Files:
 
     daily_event_cofiring_summary.json
     daily_event_frequencies.csv
@@ -123,3 +151,14 @@ All outputs remain read-only and non-actionable.
 L2 should determine whether the next cut is a correctness fix for accidental
 detector collapse/duplication, or L3 causal forward outcomes for event families
 whose semantics are sufficiently distinct.
+
+
+## Canonical frozen L2 command
+
+```powershell
+python scripts/audit_daily_event_cofiring.py --input-dir reports\daily-events\inventory\milestone6_standard_india_large_cap_30_frozen_2026-09-18
+```
+
+The regenerated L2 output defaults to:
+
+    reports\daily-events\cofiring\milestone6_standard_india_large_cap_30_frozen_2026-09-18

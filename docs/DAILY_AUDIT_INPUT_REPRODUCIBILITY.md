@@ -77,3 +77,39 @@ python -m pytest -q tests/test_daily_input_reproducibility.py
 
 After this layer is validated, the next change should make L1 consume these
 verified snapshots. L2 and L3 can then derive from the same frozen input lineage.
+
+## Run L1 from the frozen bundle
+
+The daily-event inventory runner can consume a verified snapshot bundle directly:
+
+```powershell
+python scripts/audit_daily_event_inventory.py --now 2026-09-18T16:00:00+05:30 --input-snapshot-dir reports\daily-events\input-snapshots\milestone6_standard_india_large_cap_30\2026-09-18
+```
+
+Snapshot mode:
+
+- verifies the manifest and each symbol fingerprint before replay
+- never calls the production `download_data()` path
+- rejects `--refresh`
+- replays independent symbols in spawned worker processes
+- defaults to at most 4 workers while leaving one logical CPU free
+- accepts `--workers N` for an explicit worker count
+- schedules longer histories first to reduce end-of-run stragglers
+- prints per-symbol completion progress to stderr
+- restores basket order before building the final L1 ledger
+- terminates the worker pool on Ctrl+C
+- records the snapshot audit id, manifest SHA-256, basket, period, and cutoff in the L1 summary
+- writes to a separate `*_frozen_<cutoff>` L1 directory by default
+
+Parallelism changes only wall-clock execution. Each worker runs the same existing
+causal K5 prefix replay for one symbol, and the final aggregate is rebuilt in
+the original requested symbol order.
+
+For an explicit four-worker full-basket run:
+
+```powershell
+python scripts/audit_daily_event_inventory.py --now 2026-09-18T16:00:00+05:30 --input-snapshot-dir reports\daily-events\input-snapshots\milestone6_standard_india_large_cap_30\2026-09-18 --workers 4
+```
+
+This makes the L1 ledger traceable to one exact frozen market-data lineage.
+

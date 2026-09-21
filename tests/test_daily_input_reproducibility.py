@@ -9,8 +9,10 @@ from audit.daily_input_reproducibility import (
     DAILY_AUDIT_INPUT_SNAPSHOT_ID,
     DAILY_INPUT_FINGERPRINT_VERSION,
     build_daily_audit_input_bundle,
+    daily_audit_input_manifest_sha256,
     fingerprint_daily_audit_input,
     load_daily_audit_input,
+    load_daily_audit_input_bundle,
 )
 
 
@@ -193,3 +195,44 @@ def test_loader_rejects_tampered_snapshot(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="fingerprint mismatch"):
         load_daily_audit_input(tmp_path, "ABC.NS")
+
+def test_bundle_loader_preserves_manifest_metadata(tmp_path) -> None:
+    provider = FakeProvider(_downloaded_daily())
+    expected, paths = build_daily_audit_input_bundle(
+        ("ABC.NS",),
+        basket_name="test-basket",
+        cutoff="2026-09-18",
+        output_dir=tmp_path,
+        provider=provider,
+    )
+
+    loaded = load_daily_audit_input_bundle(tmp_path)
+
+    assert loaded == expected
+    assert len(daily_audit_input_manifest_sha256(tmp_path)) == 64
+    assert paths.manifest_json.exists()
+
+
+def test_bundle_loader_rejects_manifest_symbol_count_drift(
+    tmp_path,
+) -> None:
+    provider = FakeProvider(_downloaded_daily())
+    _, paths = build_daily_audit_input_bundle(
+        ("ABC.NS",),
+        basket_name="test-basket",
+        cutoff="2026-09-18",
+        output_dir=tmp_path,
+        provider=provider,
+    )
+    payload = json.loads(
+        paths.manifest_json.read_text(encoding="utf-8")
+    )
+    payload["symbol_count"] = 2
+    paths.manifest_json.write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="symbol_count"):
+        load_daily_audit_input_bundle(tmp_path)
+

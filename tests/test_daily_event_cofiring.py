@@ -7,9 +7,11 @@ import pandas as pd
 from audit.daily_event_cofiring import (
     DAILY_EVENT_COFIRING_AUDIT_ID,
     FrozenDailyEventLedger,
+    FrozenDailyEventLedgerLineage,
     build_daily_event_cofiring_audit,
     build_daily_event_gate_semantics,
     load_frozen_daily_event_ledger,
+    write_daily_event_cofiring_audit,
 )
 
 
@@ -129,6 +131,14 @@ def test_loader_requires_zero_failure_non_actionable_l1_source(
         "evaluated_bar_count": 10,
         "evidence_emission_count": len(emissions),
         "event_bar_count": 4,
+        "input_provenance": {
+            "source": "FROZEN_DAILY_INPUT_SNAPSHOT",
+            "snapshot_audit_id": "daily-audit-input-snapshot-v1",
+            "snapshot_manifest_sha256": "a" * 64,
+            "snapshot_basket_name": "test-basket",
+            "snapshot_period": "max",
+            "snapshot_cutoff": "2026-09-18T00:00:00",
+        },
         "is_actionable": False,
     }
     (tmp_path / "daily_event_inventory_summary.json").write_text(
@@ -141,6 +151,13 @@ def test_loader_requires_zero_failure_non_actionable_l1_source(
 
     assert ledger.failed_symbol_count == 0
     assert len(ledger.emissions) == len(emissions)
+    assert ledger.source_lineage is not None
+    assert ledger.source_lineage.input_source == (
+        "FROZEN_DAILY_INPUT_SNAPSHOT"
+    )
+    assert ledger.source_lineage.snapshot_period == "max"
+    assert len(ledger.source_lineage.l1_summary_sha256) == 64
+    assert len(ledger.source_lineage.l1_emissions_sha256) == 64
 
 
 def test_audit_remains_non_actionable() -> None:
@@ -148,3 +165,77 @@ def test_audit_remains_non_actionable() -> None:
 
     assert audit.audit_id == DAILY_EVENT_COFIRING_AUDIT_ID
     assert audit.is_actionable is False
+
+
+def test_loader_rejects_legacy_l1_without_frozen_provenance(
+    tmp_path,
+) -> None:
+    emissions = _emissions()
+    summary = {
+        "audit_id": "daily-event-inventory-point-in-time-v1",
+        "requested_symbol_count": 1,
+        "succeeded_symbol_count": 1,
+        "failed_symbol_count": 0,
+        "evaluated_bar_count": 10,
+        "evidence_emission_count": len(emissions),
+        "event_bar_count": 4,
+        "is_actionable": False,
+    }
+    (tmp_path / "daily_event_inventory_summary.json").write_text(
+        json.dumps(summary),
+        encoding="utf-8",
+    )
+    emissions.to_csv(
+        tmp_path / "daily_event_emissions.csv",
+        index=False,
+    )
+
+    try:
+        load_frozen_daily_event_ledger(tmp_path)
+    except ValueError as exc:
+        assert "frozen snapshot input provenance" in str(exc)
+    else:
+        raise AssertionError("legacy L1 must not be accepted by L2")
+
+
+def test_l2_summary_preserves_exact_l1_lineage(tmp_path) -> None:
+    lineage = FrozenDailyEventLedgerLineage(
+        input_source="FROZEN_DAILY_INPUT_SNAPSHOT",
+        snapshot_audit_id="daily-audit-input-snapshot-v1",
+        snapshot_manifest_sha256="a" * 64,
+        snapshot_basket_name="test-basket",
+        snapshot_period="max",
+        snapshot_cutoff="2026-09-18T00:00:00",
+        l1_summary_sha256="b" * 64,
+        l1_emissions_sha256="c" * 64,
+    )
+    ledger = FrozenDailyEventLedger(
+        source_audit_id="daily-event-inventory-point-in-time-v1",
+        requested_symbol_count=1,
+        succeeded_symbol_count=1,
+        failed_symbol_count=0,
+        evaluated_bar_count=10,
+        evidence_emission_count=len(_emissions()),
+        event_bar_count=4,
+        emissions=_emissions(),
+        source_lineage=lineage,
+    )
+
+    audit = build_daily_event_cofiring_audit(ledger)
+    paths = write_daily_event_cofiring_audit(audit, tmp_path)
+    summary = json.loads(
+        paths.summary_json.read_text(encoding="utf-8")
+    )
+
+    assert audit.source_lineage == lineage
+    assert summary["source_lineage"] == {
+        "input_source": "FROZEN_DAILY_INPUT_SNAPSHOT",
+        "snapshot_audit_id": "daily-audit-input-snapshot-v1",
+        "snapshot_manifest_sha256": "a" * 64,
+        "snapshot_basket_name": "test-basket",
+        "snapshot_period": "max",
+        "snapshot_cutoff": "2026-09-18T00:00:00",
+        "l1_summary_sha256": "b" * 64,
+        "l1_emissions_sha256": "c" * 64,
+    }
+

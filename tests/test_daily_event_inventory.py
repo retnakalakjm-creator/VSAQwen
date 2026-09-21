@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import inspect
+import json
 
 import pandas as pd
 
 from audit.daily_event_inventory import (
     ACTIVE_DAILY_COLLECTOR_SOURCES,
     DAILY_EVENT_INVENTORY_AUDIT_ID,
+    DailyEventInventoryInputProvenance,
     build_daily_event_inventory_audit,
     write_daily_event_inventory_audit,
 )
@@ -207,3 +209,36 @@ def test_inventory_remains_non_actionable_and_writes_ledgers(tmp_path) -> None:
     duplicates = pd.read_csv(paths.duplicates_csv)
     assert EvidenceCode.ABSORPTION.value in set(inventory["code"])
     assert duplicates.iloc[0]["emission_count"] == 2
+
+def test_inventory_summary_records_frozen_input_provenance(
+    tmp_path,
+) -> None:
+    provenance = DailyEventInventoryInputProvenance(
+        source="FROZEN_DAILY_INPUT_SNAPSHOT",
+        snapshot_audit_id="daily-audit-input-snapshot-v1",
+        snapshot_manifest_sha256="a" * 64,
+        snapshot_basket_name="test-basket",
+        snapshot_period="max",
+        snapshot_cutoff="2026-09-18T00:00:00",
+    )
+    audit = build_daily_event_inventory_audit(
+        requested_symbols=("AAA.NS",),
+        archives=(_archive(),),
+        input_provenance=provenance,
+    )
+
+    paths = write_daily_event_inventory_audit(audit, tmp_path)
+    summary = json.loads(
+        paths.summary_json.read_text(encoding="utf-8")
+    )
+
+    assert audit.input_provenance == provenance
+    assert summary["input_provenance"] == {
+        "source": "FROZEN_DAILY_INPUT_SNAPSHOT",
+        "snapshot_audit_id": "daily-audit-input-snapshot-v1",
+        "snapshot_manifest_sha256": "a" * 64,
+        "snapshot_basket_name": "test-basket",
+        "snapshot_period": "max",
+        "snapshot_cutoff": "2026-09-18T00:00:00",
+    }
+

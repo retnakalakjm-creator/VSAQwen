@@ -218,6 +218,82 @@ def _read_manifest(root: Path) -> dict[str, object]:
     return payload
 
 
+def daily_audit_input_manifest_sha256(
+    input_dir: str | Path,
+) -> str:
+    manifest_path = Path(input_dir) / "daily_audit_input_manifest.json"
+    return sha256(manifest_path.read_bytes()).hexdigest()
+
+
+def load_daily_audit_input_bundle(
+    input_dir: str | Path,
+) -> DailyAuditInputBundle:
+    root = Path(input_dir)
+    payload = _read_manifest(root)
+    raw_fingerprints = payload.get("fingerprints")
+    if not isinstance(raw_fingerprints, list):
+        raise ValueError("daily audit input manifest missing fingerprints")
+
+    fingerprints: list[DailyAuditInputFingerprint] = []
+    for item in raw_fingerprints:
+        if not isinstance(item, dict):
+            raise ValueError("daily audit input fingerprint must be an object")
+        fingerprints.append(
+            DailyAuditInputFingerprint(
+                symbol=_normalize_symbol(str(item["symbol"])),
+                version=str(item["version"]),
+                period=str(item["period"]),
+                cutoff=str(item["cutoff"]),
+                row_count=int(item["row_count"]),
+                first_session=(
+                    None
+                    if item.get("first_session") is None
+                    else str(item["first_session"])
+                ),
+                last_session=(
+                    None
+                    if item.get("last_session") is None
+                    else str(item["last_session"])
+                ),
+                sha256=str(item["sha256"]),
+                relative_path=str(item["relative_path"]),
+                columns=tuple(str(value) for value in item["columns"]),
+            )
+        )
+
+    symbol_count = int(payload["symbol_count"])
+    if symbol_count != len(fingerprints):
+        raise ValueError(
+            "daily audit input symbol_count does not match fingerprints"
+        )
+
+    symbols = tuple(item.symbol for item in fingerprints)
+    if len(set(symbols)) != len(symbols):
+        raise ValueError("daily audit input manifest symbols must be unique")
+    paths = tuple(item.relative_path for item in fingerprints)
+    if len(set(paths)) != len(paths):
+        raise ValueError(
+            "daily audit input snapshot paths must be unique"
+        )
+
+    period = str(payload["period"])
+    cutoff = str(payload["cutoff"])
+    if any(item.period != period for item in fingerprints):
+        raise ValueError("daily audit input period mismatch")
+    if any(item.cutoff != cutoff for item in fingerprints):
+        raise ValueError("daily audit input cutoff mismatch")
+
+    return DailyAuditInputBundle(
+        audit_id=str(payload["audit_id"]),
+        basket_name=str(payload["basket_name"]),
+        provider=str(payload["provider"]),
+        period=period,
+        cutoff=cutoff,
+        symbol_count=symbol_count,
+        fingerprints=tuple(fingerprints),
+    )
+
+
 def build_daily_audit_input_bundle(
     symbols: Sequence[str] | Iterable[str],
     *,
@@ -309,23 +385,18 @@ def load_daily_audit_input(
 ) -> pd.DataFrame:
     root = Path(input_dir)
     normalized_symbol = _normalize_symbol(symbol)
-    payload = _read_manifest(root)
-    fingerprints = payload.get("fingerprints")
-    if not isinstance(fingerprints, list):
-        raise ValueError("daily audit input manifest missing fingerprints")
-
+    bundle = load_daily_audit_input_bundle(root)
     matches = [
         item
-        for item in fingerprints
-        if isinstance(item, dict)
-        and str(item.get("symbol", "")).strip().upper() == normalized_symbol
+        for item in bundle.fingerprints
+        if item.symbol == normalized_symbol
     ]
     if len(matches) != 1:
         raise ValueError(
             f"expected exactly one manifest row for {normalized_symbol}"
         )
     record = matches[0]
-    snapshot_path = root / str(record["relative_path"])
+    snapshot_path = root / record.relative_path
     frame = pd.read_csv(
         snapshot_path,
         parse_dates=["session"],
@@ -337,9 +408,9 @@ def load_daily_audit_input(
     actual = fingerprint_daily_audit_input(
         normalized_symbol,
         frame,
-        period=str(record["period"]),
-        cutoff=str(record["cutoff"]),
-        relative_path=str(record["relative_path"]),
+        period=record.period,
+        cutoff=record.cutoff,
+        relative_path=record.relative_path,
     )
     expected_fields = (
         "version",
@@ -354,9 +425,9 @@ def load_daily_audit_input(
     mismatches = [
         field
         for field in expected_fields
-        if getattr(actual, field) != record.get(field)
+        if getattr(actual, field) != getattr(record, field)
     ]
-    expected_columns = tuple(record.get("columns", ()))
+    expected_columns = record.columns
     if actual.columns != expected_columns:
         mismatches.append("columns")
     if mismatches:
@@ -374,6 +445,8 @@ __all__ = [
     "DailyAuditInputBundlePaths",
     "DailyAuditInputFingerprint",
     "build_daily_audit_input_bundle",
+    "daily_audit_input_manifest_sha256",
     "fingerprint_daily_audit_input",
     "load_daily_audit_input",
+    "load_daily_audit_input_bundle",
 ]
