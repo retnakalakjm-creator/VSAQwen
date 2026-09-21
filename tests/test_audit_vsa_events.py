@@ -33,6 +33,7 @@ EXPECTED_EVENT_CODES = {
     "UPTHRUST",
     "NO_DEMAND",
     "SUPPLY_COMING_IN",
+    "HIDDEN_SUPPLY",
     "ABSORPTION",
 }
 
@@ -78,6 +79,10 @@ def test_source_documents_include_existing_audit_records() -> None:
     assert "docs/specifications/005_no_supply.md" in contracts["NO_SUPPLY"].source_documents
     assert "docs/ABSORPTION_AUDIT.md" in contracts["ABSORPTION"].source_documents
     assert "docs/NO_DEMAND_AUDIT.md" in contracts["NO_DEMAND"].source_documents
+    assert (
+        "docs/DAILY_EVENT_HIDDEN_SUPPLY_DETECTOR_VERDICT.md"
+        in contracts["HIDDEN_SUPPLY"].source_documents
+    )
 
 
 def test_shakeout_is_documented_as_delayed_recognition_not_candidate_bar_signal() -> None:
@@ -221,3 +226,24 @@ def test_no_demand_contract_records_audit_path_typo() -> None:
     assert any("evidence/demand.py::_collect_no_demand" in note for note in contract.known_review_notes)
     assert hasattr(supply, "_collect_no_demand")
     assert not hasattr(demand, "_collect_no_demand")
+
+
+def test_hidden_supply_contract_matches_current_source() -> None:
+    contract = contracts_by_code()["HIDDEN_SUPPLY"]
+
+    assert contract.module == "evidence.supply"
+    assert contract.detector == "_collect_hidden_supply"
+    assert contract.recognition_timing == CURRENT_BAR
+    assert contract.diagnostic_confirmations == ()
+    assert contract.uses_future_bars is False
+    assert contract.mandatory_requirements == (
+        "bullish/up bar",
+        "high volume",
+        "lower/weak close",
+    )
+
+    source = inspect.getsource(supply._collect_hidden_supply)
+    assert "is_up_bar(bar)" in source
+    assert "is_high_volume(bar)" in source
+    assert "closes_lower(bar)" in source
+    assert "EvidenceCode.HIDDEN_SUPPLY" in source

@@ -354,6 +354,31 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         ),
     ),
     VSAEventContract(
+        evidence_code="HIDDEN_SUPPLY",
+        module="evidence.supply",
+        detector="_collect_hidden_supply",
+        direction="bearish",
+        recognition_timing=CURRENT_BAR,
+        emitted_bar="current candidate bar",
+        mandatory_requirements=(
+            "bullish/up bar",
+            "high volume",
+            "lower/weak close",
+        ),
+        diagnostic_confirmations=(),
+        uses_future_bars=False,
+        future_bar_policy="No forward bars are required; all predicates use the current bar only.",
+        source_documents=(
+            "docs/DAILY_EVENT_HIDDEN_SUPPLY_DETECTOR_VERDICT.md",
+            "docs/PRIMARY_VSA_EVENT_MATRIX.md",
+        ),
+        known_review_notes=(
+            "M12 retained and froze the current supporting-supply detector semantics.",
+            "The detector emits directly through add_evidence and has no separate confirmation layer.",
+            "Standalone professional-scoring promotion remains a separate policy question.",
+        ),
+    ),
+    VSAEventContract(
         evidence_code="ABSORPTION",
         module="evidence.absorption",
         detector="collect_absorption",
