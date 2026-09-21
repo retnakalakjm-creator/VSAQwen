@@ -2,7 +2,7 @@
 
 ## Final status
 
-`SUPPLY_COMING_IN` is production-active and audit-complete for the current detector definition.
+`SUPPLY_COMING_IN` is production-active with **target-bar detector semantics frozen / M12 PARKED**. Its current scoring architecture remains unchanged.
 
 ```text
 production path              = YES
@@ -51,11 +51,12 @@ The 181 non-emissions among campaign-qualified bars are **normal detector reject
 
 The current point-in-time `SUPPLY_COMING_IN` detector requires:
 
-1. Down / bearish bar.
-2. High volume.
-3. Above-average spread.
-4. Weak close.
-5. Increasing volume versus the previous bar.
+1. Buying campaign.
+2. Down / bearish bar.
+3. High volume.
+4. Above-average spread.
+5. Weak close.
+6. Increasing volume versus the previous bar.
 
 The audit deliberately preserves meaningful imperfect real-market evidence rather than requiring textbook-perfect VSA formations.
 
@@ -246,7 +247,20 @@ interaction penalty       = NONE
 rejection rule            = NO
 production mutation       = NONE
 production-path audit     = PASS
-status                    = PRODUCTION-ACTIVE / AUDIT-COMPLETE
+detector status           = FROZEN / M12 PARKED
+scoring status            = PRODUCTION-ACTIVE / UNCHANGED
 ```
 
-Future changes to the detector semantics, interaction policy, or weighting strategy must start a new audit cycle rather than bypassing the audit-first process.
+The M12 stop-rule review found no target-bar detector correction. The six-clause
+identity is coherent, distinct from `INCREASING_SUPPLY`, and has no separate
+confirmation layer.
+
+The canonical point-in-time replay retains only target-bar evidence from a
+prefix ending at that target. Broader older-bar campaign-snapshot reuse inside
+the same recent-window collection is a separate evidence-history architecture
+question and does not reopen this target-bar detector verdict.
+
+See `docs/DAILY_EVENT_SUPPLY_COMING_IN_DETECTOR_VERDICT.md`.
+
+Future changes to detector semantics, interaction policy, or weighting strategy
+must start a new audit cycle rather than bypassing the audit-first process.

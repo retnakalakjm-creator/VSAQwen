@@ -350,7 +350,13 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         future_bar_policy="No forward bars are required; all predicates use current and previous/context bars only.",
         source_documents=(
             "docs/SUPPLY_COMING_IN_AUDIT.md",
+            "docs/DAILY_EVENT_SUPPLY_COMING_IN_DETECTOR_VERDICT.md",
             "docs/PRIMARY_VSA_EVENT_MATRIX.md",
+        ),
+        known_review_notes=(
+            "M12 retained and froze the target-bar detector semantics.",
+            "The Buying Campaign clause is mandatory production identity, not a diagnostic confirmation.",
+            "Canonical event replay retains only target-bar evidence from a prefix ending at that target.",
         ),
     ),
     VSAEventContract(

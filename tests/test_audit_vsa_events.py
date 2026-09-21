@@ -93,6 +93,10 @@ def test_source_documents_include_existing_audit_records() -> None:
         "docs/SUPPLY_DRYING_UP_AUDIT.md"
         in contracts["SUPPLY_DRYING_UP"].source_documents
     )
+    assert (
+        "docs/DAILY_EVENT_SUPPLY_COMING_IN_DETECTOR_VERDICT.md"
+        in contracts["SUPPLY_COMING_IN"].source_documents
+    )
 
 
 def test_shakeout_is_documented_as_delayed_recognition_not_candidate_bar_signal() -> None:
@@ -300,3 +304,31 @@ def test_supply_drying_up_contract_matches_current_source() -> None:
     assert "is_low_volume(bar)" in source
     assert "is_narrow_spread(bar)" in source
     assert "EvidenceCode.SUPPLY_DRYING_UP" in source
+
+
+def test_supply_coming_in_contract_matches_current_source() -> None:
+    contract = contracts_by_code()["SUPPLY_COMING_IN"]
+
+    assert contract.module == "evidence.supply"
+    assert contract.detector == "_collect_supply_coming_in"
+    assert contract.recognition_timing == CURRENT_BAR
+    assert contract.diagnostic_confirmations == ()
+    assert contract.uses_future_bars is False
+    assert contract.mandatory_requirements == (
+        "buying campaign",
+        "down bar",
+        "high volume",
+        "above-average spread",
+        "weak close",
+        "volume increasing versus previous bar",
+    )
+
+    source = inspect.getsource(supply._collect_supply_coming_in)
+    assert 'name="Buying Campaign"' in source
+    assert "snapshot.has_buying_campaign()" in source
+    assert 'name="Down Bar"' in source
+    assert 'name="High Volume"' in source
+    assert 'name="Above Average Spread"' in source
+    assert 'name="Weak Close"' in source
+    assert 'name="Volume Increasing"' in source
+    assert "EvidenceCode.SUPPLY_COMING_IN" in source
