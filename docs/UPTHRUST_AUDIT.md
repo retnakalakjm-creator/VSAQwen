@@ -155,3 +155,39 @@ However, under the current production scoring formula, reducing SUPPLY score mov
 Production wiring and semantic correctness are PASS.
 Standalone decision value is currently negative versus the eligible market.
 The `INCREASING_DEMAND` overlap is a material empirical relationship but remains study-only.
+
+
+## M12 semantic-collision addendum
+
+Canonical M12 daily-event auditing established that current UPTHRUST and
+BUYING_CLIMAX mandatory contracts are identical and therefore produce the same
+4,497-event firing set on the frozen 30-symbol daily basket.
+
+The earlier UPTHRUST production-path audit remains valid for wiring and
+point-in-time mechanics, but its conclusion that semantic correctness is PASS
+is now qualified by this later system-level collision finding.
+
+L15 tested the existing unique UPTHRUST confirmation:
+
+    Lower Close Than Previous
+
+as a mandatory differentiator.
+
+It survived only:
+
+    177 / 4,497 = 3.94%
+
+and only:
+
+    56 / 4,497 = 1.25%
+
+became genuinely UPTHRUST-only.
+
+That candidate is therefore not promoted.
+
+Authoritative first-principles redesign record:
+
+    docs/DAILY_EVENT_BC_UPTHRUST_SEMANTIC_DESIGN.md
+
+Until a separate production PR is validated, treat UPTHRUST as production
+active but semantically collapsed with BUYING_CLIMAX.

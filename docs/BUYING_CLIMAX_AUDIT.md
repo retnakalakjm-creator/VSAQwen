@@ -54,3 +54,30 @@ Therefore the `0.20` interaction penalty is **provisional analysis policy only**
 ## Documentation rule
 
 Do not describe `BUYING_CLIMAX` as non-scoring merely because the empirical reference weight is `0.38` or because the standalone candidate population is below market baseline. It is production-active and dynamically weighted. The empirical `0.38` value is not the current production runtime weight.
+
+
+## M12 semantic-collision addendum
+
+Canonical M12 daily-event auditing later established that the current
+BUYING_CLIMAX and UPTHRUST production mandatory contracts are identical and
+therefore produce the same 4,497-event firing set on the frozen 30-symbol daily
+basket.
+
+This supersedes any implication in older interaction summaries that same-bar
+UPTHRUST overlap independently validates BUYING_CLIMAX semantics.
+
+Current interpretation:
+
+- BUYING_CLIMAX remains production-active;
+- its production wiring is valid;
+- its semantic identity is not sufficiently distinct from UPTHRUST;
+- L15 rejected simply promoting `Increasing Volume` and
+  `Lower Close Than Previous` as the complete production repair;
+- L16 defines the intended first-principles distinction.
+
+Authoritative design record:
+
+    docs/DAILY_EVENT_BC_UPTHRUST_SEMANTIC_DESIGN.md
+
+Until a separate production PR is validated, treat the pair as mechanically
+active but semantically collapsed.
