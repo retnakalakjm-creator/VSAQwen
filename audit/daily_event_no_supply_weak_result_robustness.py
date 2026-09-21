@@ -31,7 +31,7 @@ from audit.daily_event_no_supply_matched_environment import (
     DAILY_NO_SUPPLY_MATCHED_ENVIRONMENT_AUDIT_ID,
 )
 from evidence.rules import is_weak_close, volume_decreasing
-from models import ClosePosition
+from models import ClosePosition, VolumeClass
 
 
 DAILY_NO_SUPPLY_WEAK_RESULT_ROBUSTNESS_AUDIT_ID = (
@@ -509,23 +509,32 @@ def build_semantic_rows() -> tuple[NoSupplyWeakResultSemanticRow, ...]:
             )
         )
 
-    previous = SimpleNamespace(volume=100.0)
+    previous = SimpleNamespace(volume=VolumeClass.VERY_LOW)
     for current_volume, label in (
-        (90.0, "CURRENT_LT_PREVIOUS"),
-        (100.0, "CURRENT_EQ_PREVIOUS"),
-        (110.0, "CURRENT_GT_PREVIOUS"),
+        (
+            VolumeClass.ULTRA_LOW,
+            "CURRENT_CLASS_LOWER_THAN_PREVIOUS",
+        ),
+        (
+            VolumeClass.VERY_LOW,
+            "CURRENT_CLASS_EQUAL_PREVIOUS",
+        ),
+        (
+            VolumeClass.LOW,
+            "CURRENT_CLASS_HIGHER_THAN_PREVIOUS",
+        ),
     ):
         current = SimpleNamespace(volume=current_volume)
         decreasing = bool(volume_decreasing(current, previous))
         rows.append(
             NoSupplyWeakResultSemanticRow(
-                semantic_dimension="VOLUME_RELATION",
+                semantic_dimension="VOLUME_CLASS_RELATION",
                 input_state=label,
                 predicate_result=not decreasing,
                 interpretation=(
-                    "passes NOT volume_decreasing"
+                    "passes NOT volume_decreasing by VolumeClass ordinal"
                     if not decreasing
-                    else "fails NOT volume_decreasing"
+                    else "fails NOT volume_decreasing by VolumeClass ordinal"
                 ),
             )
         )
@@ -533,13 +542,15 @@ def build_semantic_rows() -> tuple[NoSupplyWeakResultSemanticRow, ...]:
     if not all(
         row.predicate_result
         for row in rows
-        if row.semantic_dimension == "VOLUME_RELATION"
+        if row.semantic_dimension == "VOLUME_CLASS_RELATION"
         and row.input_state in {
-            "CURRENT_EQ_PREVIOUS",
-            "CURRENT_GT_PREVIOUS",
+            "CURRENT_CLASS_EQUAL_PREVIOUS",
+            "CURRENT_CLASS_HIGHER_THAN_PREVIOUS",
         }
     ):
-        raise RuntimeError("NOT volume_decreasing semantic contract changed")
+        raise RuntimeError(
+            "NOT volume_decreasing VolumeClass contract changed"
+        )
 
     return tuple(rows)
 
@@ -955,7 +966,7 @@ def write_no_supply_weak_result_robustness_audit(
         ),
         "weak_close_positions": ["ON_LOW", "LOWER"],
         "not_volume_decreasing_relation": (
-            "current.volume >= previous.volume"
+            "current VolumeClass ordinal >= previous VolumeClass ordinal"
         ),
         "low_volume_remains_mandatory": True,
         "source_lineage": asdict(audit.source_lineage),

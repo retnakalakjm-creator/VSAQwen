@@ -38,10 +38,13 @@ Production source semantics are:
     Volume Decreasing
         -> current.volume < previous.volume
 
+Here `BarContext.volume` is a `VolumeClass` enum, not raw volume.
+
 Therefore:
 
     NOT Volume Decreasing
-        -> current.volume >= previous.volume
+        -> current VolumeClass ordinal
+           >= previous VolumeClass ordinal
 
 The mandatory NO_SUPPLY requirements still include:
 
@@ -55,12 +58,15 @@ So the empirical L10 candidate is more precisely described as:
     AND low volume relative to the production volume baseline
     AND narrow spread
     AND close in LOWER or ON_LOW position
-    AND current volume >= previous-bar volume
+    AND current volume classification is not lower than
+        the previous bar's volume classification
 
-This must not be shortened to "high volume" or "rising volume".
+This must not be interpreted as a raw-volume comparison.
 
-The current bar can still be classified as Low Volume while being flat or higher
-than the immediately previous bar.
+For example, the current raw volume may be lower than the previous bar while
+both bars still classify into the same volume bucket, or while the current bar
+has a higher ordinal volume class because classifications are based on the
+production rolling/percentile context.
 
 ## Why the label needs care
 
@@ -275,11 +281,14 @@ For:
 
     NOT volume_decreasing
 
-using previous volume = 100:
+using previous VolumeClass = VERY_LOW:
 
-    current 90     false
-    current 100    true
-    current 110    true
+    current ULTRA_LOW    false
+    current VERY_LOW     true
+    current LOW          true
+
+This validates the production VolumeClass ordinal comparison. It does not
+assert anything about raw-volume equality or increase.
 
 Any source-level semantic drift causes L10 to fail.
 

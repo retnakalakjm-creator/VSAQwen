@@ -67,12 +67,12 @@ def test_semantic_rows_define_actual_predicate_contract() -> None:
     volume = {
         row.input_state: row.predicate_result
         for row in rows
-        if row.semantic_dimension == "VOLUME_RELATION"
+        if row.semantic_dimension == "VOLUME_CLASS_RELATION"
     }
     assert volume == {
-        "CURRENT_LT_PREVIOUS": False,
-        "CURRENT_EQ_PREVIOUS": True,
-        "CURRENT_GT_PREVIOUS": True,
+        "CURRENT_CLASS_LOWER_THAN_PREVIOUS": False,
+        "CURRENT_CLASS_EQUAL_PREVIOUS": True,
+        "CURRENT_CLASS_HIGHER_THAN_PREVIOUS": True,
     }
 
 
