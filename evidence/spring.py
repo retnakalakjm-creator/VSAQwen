@@ -171,7 +171,7 @@ def collect_spring(ctx: BackgroundContext, metrics: pd.DataFrame) -> list[Eviden
     current_index = ctx.current.bar_index
     if current_index <= 0:
         return []
-    point_in_time = metrics.iloc[: current_index + 1].copy()
+    point_in_time = metrics.iloc[: current_index + 1]
     start = max(1, current_index - _PRODUCTION_CANDIDATE_LOOKBACK)
 
     same_bar_supply = (

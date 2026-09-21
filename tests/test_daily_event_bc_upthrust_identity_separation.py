@@ -26,21 +26,43 @@ def _names(code: str, kind: str) -> tuple[str, ...]:
     )
 
 
-def test_bc_and_upthrust_share_exact_mandatory_contract() -> None:
+def test_historical_collision_contract_is_no_longer_live_production() -> None:
     bc = _names(BC_CODE, "MANDATORY")
     ut = _names(UT_CODE, "MANDATORY")
 
-    assert bc == SHARED_MANDATORY_REQUIREMENTS
-    assert ut == SHARED_MANDATORY_REQUIREMENTS
-    assert bc == ut
+    assert SHARED_MANDATORY_REQUIREMENTS == (
+        "Buying Campaign",
+        "Bullish Bar",
+        "Very High Volume",
+        "Above Average Spread",
+    )
+    assert bc != SHARED_MANDATORY_REQUIREMENTS
+    assert ut != SHARED_MANDATORY_REQUIREMENTS
+    assert bc != ut
+
+    assert bc[-1] == "Non-Strong High Acceptance"
+    assert ut == (
+        "Confirmed Structural High",
+        "Probe Above Structural High",
+        "Failed Acceptance Above Structural High",
+    )
 
 
-def test_bc_and_upthrust_have_two_shared_and_one_unique_confirmation() -> None:
-    bc = _names(BC_CODE, "CONFIRMATION")
-    ut = _names(UT_CODE, "CONFIRMATION")
+def test_historical_unique_confirmation_hypothesis_remains_frozen() -> None:
+    assert SHARED_CONFIRMATIONS == ("Wide Spread", "Weak Close")
+    assert BC_UNIQUE_CONFIRMATION == "Increasing Volume"
+    assert UT_UNIQUE_CONFIRMATION == "Lower Close Than Previous"
 
-    assert bc == (*SHARED_CONFIRMATIONS, BC_UNIQUE_CONFIRMATION)
-    assert ut == (*SHARED_CONFIRMATIONS, UT_UNIQUE_CONFIRMATION)
+    assert _names(BC_CODE, "CONFIRMATION") == (
+        "Wide Spread",
+        "Weak Close",
+        "Increasing Volume",
+    )
+    assert _names(UT_CODE, "CONFIRMATION") == (
+        "Weak Close",
+        "Very High Volume",
+        "Above Average Spread",
+    )
 
 
 def test_unique_confirmation_partition_truth_table() -> None:

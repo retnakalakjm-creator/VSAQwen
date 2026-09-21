@@ -1,8 +1,9 @@
 """Parallel orchestration for frozen daily-event inventory replay.
 
 The worker boundary is intentionally audit-only. Each process independently
-loads and verifies one frozen snapshot, then runs the existing causal K5 prefix
-replay unchanged. Parent aggregation restores requested symbol order.
+loads and verifies one frozen snapshot, then runs either the cached causal
+replay or the legacy prefix replay oracle. Parent aggregation restores
+requested symbol order.
 """
 
 from __future__ import annotations
@@ -21,10 +22,15 @@ from audit.daily_input_reproducibility import (
 from audit.offline_daily_evidence import (
     OfflineDailyEvidenceArchive,
     produce_offline_daily_evidence,
+    produce_offline_daily_evidence_cached,
 )
 
 
 ProgressWriter = Callable[[str], None]
+
+REPLAY_MODE_CACHED = "cached"
+REPLAY_MODE_PREFIX = "prefix"
+REPLAY_MODES = (REPLAY_MODE_CACHED, REPLAY_MODE_PREFIX)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,12 +98,17 @@ def _scheduled_symbols(
 
 
 def _snapshot_worker_task(
-    task: tuple[str, str, str, int],
+    task: tuple[str, str, str, int, str],
 ) -> _SnapshotWorkerCompletion:
-    symbol, input_snapshot_dir, now, min_target_index = task
+    symbol, input_snapshot_dir, now, min_target_index, replay_mode = task
     try:
         daily = load_daily_audit_input(input_snapshot_dir, symbol)
-        archive = produce_offline_daily_evidence(
+        producer = (
+            produce_offline_daily_evidence_cached
+            if replay_mode == REPLAY_MODE_CACHED
+            else produce_offline_daily_evidence
+        )
+        archive = producer(
             symbol=symbol,
             daily=daily,
             now=now,
@@ -166,10 +177,15 @@ def run_frozen_snapshot_replay(
     now: str,
     min_target_index: int,
     workers: int | None = None,
+    replay_mode: str = REPLAY_MODE_CACHED,
     progress_writer: ProgressWriter | None = None,
 ) -> FrozenSnapshotReplayResult:
     requested = _normalize_symbols(symbols)
     scheduled = _scheduled_symbols(requested, bundle)
+    if replay_mode not in REPLAY_MODES:
+        raise ValueError(
+            f"replay_mode must be one of {REPLAY_MODES}, got {replay_mode!r}"
+        )
     worker_count = (
         default_snapshot_worker_count(len(requested))
         if workers is None
@@ -182,12 +198,13 @@ def run_frozen_snapshot_replay(
     if progress_writer is not None:
         progress_writer(
             "[daily-event-inventory] frozen replay: "
-            f"{len(requested)} symbols, {worker_count} workers"
+            f"{len(requested)} symbols, {worker_count} workers, "
+            f"mode={replay_mode}"
         )
 
     root = str(Path(input_snapshot_dir))
     tasks = tuple(
-        (symbol, root, now, min_target_index)
+        (symbol, root, now, min_target_index, replay_mode)
         for symbol in scheduled
     )
     archives_by_symbol: dict[str, OfflineDailyEvidenceArchive] = {}
@@ -266,6 +283,9 @@ def run_frozen_snapshot_replay(
 
 __all__ = [
     "FrozenSnapshotReplayResult",
+    "REPLAY_MODE_CACHED",
+    "REPLAY_MODE_PREFIX",
+    "REPLAY_MODES",
     "default_snapshot_worker_count",
     "run_frozen_snapshot_replay",
 ]

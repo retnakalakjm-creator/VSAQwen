@@ -31,7 +31,7 @@ class EvidenceRegistry:
     def __len__(self) -> int:
         return len(self.profiles)
 
-BUYING_CLIMAX = EvidenceProfile(EvidenceCode.BUYING_CLIMAX, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.95, 1.00, 100, "Buying Climax", "Professional distribution after an extended advance.")
+BUYING_CLIMAX = EvidenceProfile(EvidenceCode.BUYING_CLIMAX, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.95, 1.00, 100, "Buying Climax", "Climactic buying effort after an advance without strong high-price acceptance.")
 SUPPLY_COMING_IN = EvidenceProfile(EvidenceCode.SUPPLY_COMING_IN, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.80, 1.00, 80, "Supply Coming In", "Professional selling pressure entering the market.")
 HIDDEN_SUPPLY = EvidenceProfile(EvidenceCode.HIDDEN_SUPPLY, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.70, 0.75, 60, "Hidden Supply", "Selling pressure hidden inside the current bar.")
 INCREASING_SUPPLY = EvidenceProfile(EvidenceCode.INCREASING_SUPPLY, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.80, 0.85, 75, "Increasing Supply", "Selling pressure is increasing across recent bars.")
@@ -39,7 +39,7 @@ SUPPLY_DRYING_UP = EvidenceProfile(EvidenceCode.SUPPLY_DRYING_UP, EvidenceCatego
 SUPPLY_HIGH_VOLUME = EvidenceProfile(EvidenceCode.SUPPLY_HIGH_VOLUME, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.70, 0.70, 50, "High Volume Supply", "Supply is entering the market on elevated volume.")
 SUPPLY_WIDE_SPREAD = EvidenceProfile(EvidenceCode.SUPPLY_WIDE_SPREAD, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.70, 0.70, 45, "Wide Spread Supply", "Wide spread reflects aggressive professional selling.")
 SUPPLY_ABSORPTION = EvidenceProfile(EvidenceCode.SUPPLY_ABSORPTION, EvidenceCategory.SUPPLY, EvidenceDirection.BULLISH, 0.90, 0.95, 95, "Supply Absorption", "Professional money is absorbing available supply.")
-UPTHRUST = EvidenceProfile(EvidenceCode.UPTHRUST, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.82, 1.0, 80, "Upthrust", "An upward price move that fails and closes weak, indicating supply.")
+UPTHRUST = EvidenceProfile(EvidenceCode.UPTHRUST, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.82, 1.0, 80, "Upthrust", "A probe above confirmed structural resistance that fails to hold above it.")
 NO_DEMAND = EvidenceProfile(EvidenceCode.NO_DEMAND, EvidenceCategory.SUPPLY, EvidenceDirection.BEARISH, 0.73, 1.0, 60, "No Demand", "An advance showing insufficient buying interest.")
 SUPPLY_PROFILES = (BUYING_CLIMAX, SUPPLY_COMING_IN, HIDDEN_SUPPLY, INCREASING_SUPPLY, SUPPLY_DRYING_UP, SUPPLY_HIGH_VOLUME, SUPPLY_WIDE_SPREAD, SUPPLY_ABSORPTION, UPTHRUST, NO_DEMAND)
 

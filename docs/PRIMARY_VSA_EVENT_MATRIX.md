@@ -75,12 +75,12 @@ Shared detector confirmations are diagnostic quality observations unless a futur
 
 | EvidenceCode | Detector / source | Production path | Status | Role | Direction | Scoring / weight state | Notes |
 |---|---|---:|---|---|---|---|---|
-| `BUYING_CLIMAX` | `evidence/supply.py::_collect_buying_climax` | YES | Production-active / semantic collision under redesign | Primary weakness / supply | Bearish | Registry `1.00`; dynamic runtime weight | Current mandatory contract is identical to UPTHRUST, producing the same canonical 4,497-event daily firing set. L16 defines a first-principles semantic redesign; no production change yet. |
+| `BUYING_CLIMAX` | `evidence/supply.py::_collect_buying_climax` | YES | Production correction candidate / promoted semantics | Primary weakness / supply | Bearish | Registry `1.00`; dynamic runtime weight | Promoted contract keeps buying-campaign + bullish-bar + very-high-volume + above-average-spread effort core and requires non-strong high-price acceptance (`close_position` not `UPPER`/`ON_HIGH`). Frozen post-change target: 887 events. |
 | `SUPPLY_COMING_IN` | `evidence/supply.py::_collect_supply_coming_in` | YES | Production-active / audit-complete | Primary weakness / supply | Bearish | Registry `1.00`; dynamic runtime weight | Point-in-time production emissions validated. Interaction with `INCREASING_SUPPLY` is documented as outcome-confirming; no production penalty. |
 | `INCREASING_SUPPLY` | `evidence/supply.py::_collect_increasing_supply` | YES | Active / audit-complete | Primary weakness / supply | Bearish | Registry/reference `0.85`; configured supply map `0.70`; runtime evidence weight `1.00` | Scoring/ranking sensitivity confirmed. No qualification/actionability change and no interaction penalty. |
 | `HIDDEN_SUPPLY` | `evidence/supply.py::_collect_hidden_supply` | YES | Active / audit-complete / non-scoring | Supporting supply | Bearish | Non-scoring audit conclusion | Current detector remains active, but the audited definition is not promoted as standalone scoring evidence. |
 | `SUPPLY_DRYING_UP` | `evidence/supply.py::_collect_supply_drying_up` | YES | Active / audit-complete | Supporting / exhaustion context | Contextual | Configured supply-map weight `0.60`; runtime evidence weight observed as context-dependent | Production-valid contextual evidence. No global promotion, interaction penalty, or rejection rule introduced. |
-| `UPTHRUST` | `evidence/supply.py::_collect_upthrust` | YES | Production-active / semantic collision under redesign | Supply / distribution / trap | Bearish | Registry `1.00`; professional supply-map weight `0.90`; dynamic runtime weight | Current mandatory contract is identical to BUYING_CLIMAX. L15 showed the existing `Lower Close Than Previous` unique clause is too narrow as a repair. L16 redesigns identity around higher-price probe/rejection; no production change yet. |
+| `UPTHRUST` | `evidence/supply.py::_collect_upthrust` | YES | Production correction candidate / promoted semantics | Supply / distribution / trap | Bearish | Registry `1.00`; professional supply-map weight `0.90`; dynamic runtime weight | Promoted contract is a probe above the latest causally confirmed structural swing high followed by a close back at/below that high. Old bullish-bar/very-high-volume identity gates are removed; they remain descriptive context. Frozen post-change target: 10,526 events. |
 | `NO_DEMAND` | `evidence/supply.py::_collect_no_demand` | YES | Production-active / audit-complete | Demand absence / weakness | Bearish | Registry `1.00`; configured supply-map weight `0.60`; dynamic runtime weight | Correct collector is supply-side. Mandatory: bullish environment, bullish/up bar, low volume, narrow spread. Confirmations are non-mandatory. |
 | `STOPPING_VOLUME` | `evidence/demand.py::_collect_stopping_volume` | YES | Production-integrated / validation-complete | Primary demand | Bullish | Registry/profile `1.00`; dynamic runtime weight | Canonical spec exists. Confirmations are non-mandatory. Point-in-time validation is complete. |
 | `SELLING_CLIMAX` | `evidence/demand.py::_collect_selling_climax` | YES | Production-integrated / audit-complete | Primary demand / reversal | Bullish | Base/scoring reference `0.38`; dynamic runtime weight | Post-integration audit validated production emissions and no score mutation failure. Interaction with `STOPPING_VOLUME` is confirming. |
@@ -158,27 +158,43 @@ An event is not production-approved merely because an audit found a positive emp
 - `docs/SUPPLY_COMING_IN_AUDIT.md`
 
 
-## BUYING_CLIMAX / UPTHRUST semantic-collision policy
+## BUYING_CLIMAX / UPTHRUST production-correction policy
 
-M12 supersedes the older high-level `audit-complete` status for this pair.
+M12 established and then closed the semantic-collision research thread.
 
-Canonical frozen daily evidence established:
+Canonical pre-change state:
 
     BUYING_CLIMAX     4,497
     UPTHRUST          4,497
     overlap           4,497
 
-The production wiring remains active and causal, but the two labels are not
-currently semantically distinct.
+Final promoted semantics:
 
-Current policy:
+    BUYING_CLIMAX
+        climactic buying effort
+        +
+        non-strong high-price acceptance
 
-    production-active
-    mechanically valid
-    semantically collapsed
-    redesign in research
-    no production correction yet
+    UPTHRUST
+        probe above latest causally confirmed structural swing high
+        +
+        close back at/below that high
+
+Frozen production-parity targets:
+
+    BUYING_CLIMAX       887
+    UPTHRUST         10,526
+    overlap             129
+
+Current branch policy:
+
+    promoted semantic contracts implemented
+    exact frozen replay required before merge
+    non-target emission drift must equal zero
+    contribution impact must be reviewed
+    DailyBehavior mapping remains unchanged
 
 See:
 
-    docs/DAILY_EVENT_BC_UPTHRUST_SEMANTIC_DESIGN.md
+    docs/DAILY_EVENT_BC_UPTHRUST_PRODUCTION_CORRECTION.md
+

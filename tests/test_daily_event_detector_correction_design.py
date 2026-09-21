@@ -155,15 +155,14 @@ def test_design_audit_detects_exact_three_contract_findings(
         confirmation_dir=l3_dir,
     )
 
-    assert audit.finding_count == 3
-    assert audit.mandatory_collision_pair_count == 1
-    assert audit.gate_candidate_count == 14
-    assert audit.collision_projection_row_count == 49
+    assert audit.finding_count == 2
+    assert audit.mandatory_collision_pair_count == 0
+    assert audit.gate_candidate_count == 0
+    assert audit.collision_projection_row_count == 0
     assert audit.correction_candidate_count == 3
 
     by_type = {item.issue_type: item for item in audit.findings}
-    collision = by_type["IDENTICAL_MANDATORY_CONTRACT"]
-    assert collision.codes == ("buying_climax", "upthrust")
+    assert "IDENTICAL_MANDATORY_CONTRACT" not in by_type
 
     environment = by_type[
         "ENVIRONMENT_LABEL_PREDICATE_POLARITY_MISMATCH"
@@ -180,7 +179,7 @@ def test_design_audit_detects_exact_three_contract_findings(
     assert redundant.related_requirement_name == "Narrow Spread"
 
 
-def test_collision_candidates_include_distinctive_bc_ut_pair(
+def test_collision_design_is_empty_after_bc_ut_production_fix(
     tmp_path,
 ) -> None:
     l3_dir, l4b_dir = _write_source_chain(tmp_path)
@@ -189,28 +188,9 @@ def test_collision_candidates_include_distinctive_bc_ut_pair(
         confirmation_dir=l3_dir,
     )
 
-    distinctive = [
-        item for item in audit.gate_candidates
-        if item.is_distinctive_only
-    ]
-    assert len(distinctive) == 2
-
-    by_code = {item.code: item for item in distinctive}
-    assert by_code["buying_climax"].required_confirmations == (
-        "Increasing Volume",
-    )
-    assert by_code["upthrust"].required_confirmations == (
-        "Lower Close Than Previous",
-    )
-
-    row = next(
-        item for item in audit.collision_rows
-        if item.is_distinctive_pair
-    )
-    assert row.code_a_count == 1
-    assert row.code_b_count == 1
-    assert row.overlap_count == 1
-    assert row.jaccard == 1.0
+    assert audit.mandatory_collision_pair_count == 0
+    assert audit.gate_candidates == ()
+    assert audit.collision_rows == ()
 
 
 def test_no_supply_candidates_separate_metadata_from_replay(

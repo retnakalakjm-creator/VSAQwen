@@ -17,6 +17,8 @@ from audit.daily_event_inventory import (  # noqa: E402
     write_daily_event_inventory_audit,
 )
 from audit.daily_event_inventory_runner import (  # noqa: E402
+    REPLAY_MODES,
+    REPLAY_MODE_CACHED,
     run_frozen_snapshot_replay,
 )
 from audit.daily_input_reproducibility import (  # noqa: E402
@@ -65,7 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Inventory existing daily Evidence events and measure point-in-time "
-            "emissions using the existing K5 prefix replay."
+            "emissions. Frozen snapshots default to the cached causal replay; "
+            "the legacy prefix replay remains available for parity checks."
         )
     )
     parser.add_argument(
@@ -89,6 +92,15 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Frozen snapshot replay worker processes. "
             "Defaults to up to 4, leaving one CPU free."
+        ),
+    )
+    parser.add_argument(
+        "--replay-mode",
+        choices=REPLAY_MODES,
+        default=REPLAY_MODE_CACHED,
+        help=(
+            "Frozen snapshot replay engine. 'cached' computes metrics/swing/"
+            "structure once per symbol; 'prefix' preserves the legacy oracle."
         ),
     )
     parser.add_argument("--refresh", action="store_true")
@@ -158,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
             now=args.now,
             min_target_index=args.min_target_index,
             workers=args.workers,
+            replay_mode=args.replay_mode,
             progress_writer=lambda message: print(
                 message,
                 file=sys.stderr,
@@ -247,6 +260,11 @@ def main(argv: list[str] | None = None) -> int:
                     else asdict(audit.input_provenance)
                 ),
                 "snapshot_worker_count": snapshot_worker_count,
+                "snapshot_replay_mode": (
+                    None
+                    if args.input_snapshot_dir is None
+                    else args.replay_mode
+                ),
                 "output_files": paths.as_dict(),
                 "is_actionable": False,
             },

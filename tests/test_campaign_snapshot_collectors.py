@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import evidence.demand as demand
 import evidence.supply as supply
+from models import ClosePosition
 
 
 class _Snapshot:
@@ -13,7 +14,7 @@ class _Snapshot:
 
 
 def _ctx() -> SimpleNamespace:
-    bar = SimpleNamespace()
+    bar = SimpleNamespace(close_position=ClosePosition.MIDDLE)
     previous = SimpleNamespace()
     return SimpleNamespace(current=bar, previous=previous)
 

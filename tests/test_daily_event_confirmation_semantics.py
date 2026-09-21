@@ -40,29 +40,42 @@ def test_contract_inventory_covers_exact_l3_detector_surface() -> None:
     }
 
 
-def test_buying_climax_and_upthrust_share_mandatory_contract_only() -> None:
+def test_buying_climax_and_upthrust_have_distinct_production_contracts() -> None:
     _, grouped = _rows_by_code()
 
-    def contract(code: str, kind: str) -> tuple[tuple[str, str], ...]:
+    def names(code: str, kind: str) -> tuple[str, ...]:
         return tuple(
-            (row.requirement_name, row.passed_expression)
+            row.requirement_name
             for row in grouped[code]
             if row.requirement_kind == kind
         )
 
-    assert contract("buying_climax", "MANDATORY") == contract(
+    assert names("buying_climax", "MANDATORY") == (
+        "Buying Campaign",
+        "Bullish Bar",
+        "Very High Volume",
+        "Above Average Spread",
+        "Non-Strong High Acceptance",
+    )
+    assert names("upthrust", "MANDATORY") == (
+        "Confirmed Structural High",
+        "Probe Above Structural High",
+        "Failed Acceptance Above Structural High",
+    )
+    assert names("buying_climax", "MANDATORY") != names(
         "upthrust",
         "MANDATORY",
     )
-    assert contract("buying_climax", "CONFIRMATION") != contract(
-        "upthrust",
-        "CONFIRMATION",
+
+    assert names("buying_climax", "CONFIRMATION") == (
+        "Wide Spread",
+        "Weak Close",
+        "Increasing Volume",
     )
-    assert contract("buying_climax", "CONFIRMATION")[-1][0] == (
-        "Increasing Volume"
-    )
-    assert contract("upthrust", "CONFIRMATION")[-1][0] == (
-        "Lower Close Than Previous"
+    assert names("upthrust", "CONFIRMATION") == (
+        "Weak Close",
+        "Very High Volume",
+        "Above Average Spread",
     )
 
 
@@ -152,11 +165,11 @@ def test_semantics_audit_joins_contract_to_l3_without_replay(
     assert len(audit.source_lineage.l3_observations_sha256) == 64
 
     by_code = {row.code: row for row in audit.detector_rows}
-    assert by_code["buying_climax"].same_mandatory_codes == (
-        "upthrust",
-    )
-    assert by_code["upthrust"].same_mandatory_codes == (
-        "buying_climax",
+    assert by_code["buying_climax"].same_mandatory_codes == ()
+    assert by_code["upthrust"].same_mandatory_codes == ()
+    assert (
+        by_code["buying_climax"].mandatory_contract_sha256
+        != by_code["upthrust"].mandatory_contract_sha256
     )
     assert by_code["stopping_volume"].confirmation_requirement_count == 4
     assert by_code["no_demand"].confirmation_requirement_count == 2

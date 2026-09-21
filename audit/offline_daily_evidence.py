@@ -36,6 +36,7 @@ from trend import TrendAnalyzer
 
 DEFAULT_DAILY_EVIDENCE_MIN_TARGET_INDEX = 20
 DAILY_EVIDENCE_PRODUCER_ID = "existing-vsa-stack-prefix-replay-v1"
+DAILY_EVIDENCE_CACHED_PRODUCER_ID = "existing-vsa-stack-causal-cache-replay-v1"
 _REQUIRED_DAILY_COLUMNS = (
     COL_OPEN,
     COL_HIGH,
@@ -196,6 +197,63 @@ def evaluate_daily_evidence_prefix(
     )
 
 
+def _confirmation_index(item: object) -> int:
+    swing = getattr(item, "swing", item)
+    return int(swing.confirmation_index)
+
+
+def _validate_confirmation_order(
+    items: tuple[object, ...] | list[object],
+) -> None:
+    previous = -1
+    for item in items:
+        current = _confirmation_index(item)
+        if current < previous:
+            raise ValueError(
+                "confirmed swing inputs must be confirmation ordered"
+            )
+        previous = current
+
+
+def _evaluate_cached_target(
+    *,
+    metrics: pd.DataFrame,
+    swings: tuple,
+    structural_swings: tuple,
+    swing_count: int,
+    structural_count: int,
+    target_index: int,
+    cached_trend,
+    cached_structural_count: int,
+):
+    """Evaluate one target from causal cached metrics/swing/structure state."""
+
+    metrics_prefix = metrics.iloc[: target_index + 1]
+    causal_swings = swings[:swing_count]
+    causal_structural = structural_swings[:structural_count]
+
+    trend = cached_trend
+    if trend is None or structural_count != cached_structural_count:
+        trend = TrendAnalyzer().analyze_from_swings(
+            metrics_prefix,
+            causal_swings,
+            structural_swings=causal_structural,
+        )
+
+    result = EvidenceEngine().collect(
+        metrics=metrics_prefix,
+        validation_metrics=metrics_prefix,
+        trend=trend,
+        structural_swings=causal_structural,
+    )
+    evidence = tuple(
+        item
+        for item in result.evidence
+        if item.bar_index == target_index
+    )
+    return evidence, trend, structural_count
+
+
 def fingerprint_daily_evidence_source(
     symbol: str,
     completed_daily: pd.DataFrame,
@@ -308,7 +366,139 @@ def produce_offline_daily_evidence(
     )
 
 
+def produce_offline_daily_evidence_cached(
+    *,
+    symbol: str,
+    daily: pd.DataFrame,
+    now: datetime | pd.Timestamp | str | None = None,
+    calendar: TradingCalendar | None = None,
+    min_target_index: int = DEFAULT_DAILY_EVIDENCE_MIN_TARGET_INDEX,
+) -> OfflineDailyEvidenceArchive:
+    """Replay Evidence causally while caching metrics, swings, and structure.
+
+    This path is semantically equivalent to the legacy prefix producer, but it
+    avoids recomputing the full metric/swing/structure stack from bar zero for
+    every target session.
+
+    Metrics are computed once from the completed history. MetricsEngine uses
+    trailing/shifted historical calculations, and parity tests lock that a full
+    calculation's prefix equals a standalone prefix calculation.
+
+    SwingEngine and StructureFilter are also computed once. Only swings whose
+    confirmation_index is already visible at the target bar are exposed to the
+    target evaluation. Trend is recomputed only when the causal structural
+    prefix changes.
+
+    EvidenceEngine still receives only the point-in-time metric prefix and the
+    causal swing/structure/trend state, preserving detector visibility rules.
+    """
+
+    clean_symbol = _normalize_symbol(symbol)
+    if min_target_index < 0:
+        raise ValueError("min_target_index cannot be negative")
+
+    _validate_daily_ohlcv(daily)
+    exchange_calendar = calendar or NSETradingCalendar()
+    completed = completed_daily_only(
+        daily,
+        now=now,
+        calendar=exchange_calendar,
+    )
+    if completed.empty:
+        raise ValueError("no completed daily bars are available")
+    _validate_daily_ohlcv(completed)
+
+    if min_target_index >= len(completed):
+        return OfflineDailyEvidenceArchive(
+            symbol=clean_symbol,
+            producer_id=DAILY_EVIDENCE_CACHED_PRODUCER_ID,
+            completed_daily=completed.copy(),
+            source_fingerprint=fingerprint_daily_evidence_source(
+                clean_symbol,
+                completed,
+            ),
+            min_target_index=min_target_index,
+            observations=(),
+        )
+
+    metrics = MetricsEngine().calculate(_metrics_input(completed))
+    swings = tuple(SwingEngine().calculate(metrics))
+    structural_swings = tuple(
+        StructureFilter().filter(list(swings), metrics)
+    )
+
+    _validate_confirmation_order(swings)
+    _validate_confirmation_order(structural_swings)
+
+    observations: list[DailyEvidenceBarObservation] = []
+    cached_trend = None
+    cached_structural_count = -1
+    swing_count = 0
+    structural_count = 0
+
+    for target_index in range(min_target_index, len(completed)):
+        while (
+            swing_count < len(swings)
+            and _confirmation_index(swings[swing_count]) <= target_index
+        ):
+            swing_count += 1
+        while (
+            structural_count < len(structural_swings)
+            and _confirmation_index(
+                structural_swings[structural_count]
+            ) <= target_index
+        ):
+            structural_count += 1
+
+        (
+            evidence,
+            cached_trend,
+            cached_structural_count,
+        ) = _evaluate_cached_target(
+            metrics=metrics,
+            swings=swings,
+            structural_swings=structural_swings,
+            swing_count=swing_count,
+            structural_count=structural_count,
+            target_index=target_index,
+            cached_trend=cached_trend,
+            cached_structural_count=cached_structural_count,
+        )
+
+        wrong_bar = [
+            item.bar_index
+            for item in evidence
+            if item.bar_index != target_index
+        ]
+        if wrong_bar:
+            raise ValueError(
+                "cached daily evidence evaluator returned non-target-bar "
+                f"evidence at target {target_index}: {wrong_bar}"
+            )
+
+        observations.append(
+            DailyEvidenceBarObservation(
+                bar_index=target_index,
+                session=_session_identity(completed.index[target_index]),
+                evidence=evidence,
+            )
+        )
+
+    return OfflineDailyEvidenceArchive(
+        symbol=clean_symbol,
+        producer_id=DAILY_EVIDENCE_CACHED_PRODUCER_ID,
+        completed_daily=completed.copy(),
+        source_fingerprint=fingerprint_daily_evidence_source(
+            clean_symbol,
+            completed,
+        ),
+        min_target_index=min_target_index,
+        observations=tuple(observations),
+    )
+
+
 __all__ = [
+    "DAILY_EVIDENCE_CACHED_PRODUCER_ID",
     "DAILY_EVIDENCE_PRODUCER_ID",
     "DEFAULT_DAILY_EVIDENCE_MIN_TARGET_INDEX",
     "DailyEvidenceBarObservation",
@@ -317,4 +507,5 @@ __all__ = [
     "evaluate_daily_evidence_prefix",
     "fingerprint_daily_evidence_source",
     "produce_offline_daily_evidence",
+    "produce_offline_daily_evidence_cached",
 ]

@@ -12,25 +12,34 @@ from .campaign import has_buying_campaign
 from .campaign_snapshot import CampaignSnapshot
 
 from .rules import (
-    closes_lower, closes_lower_than_previous, has_strong_spread, is_above_average_spread, is_bullish_bar, is_confirmed_uptrend, is_down_bar, 
-    is_high_volume, is_low_volume, is_narrow_spread, 
-    is_up_bar, is_very_high_volume, is_weak_close, is_wide_spread, makes_higher_high, 
-    spread_increasing, volume_decreasing, volume_increasing,
+    closes_lower,
+    has_strong_spread,
+    is_above_average_spread,
+    is_bullish_bar,
+    is_down_bar,
+    is_high_volume,
+    is_low_volume,
+    is_narrow_spread,
+    is_up_bar,
+    is_very_high_volume,
+    is_weak_close,
+    spread_increasing,
+    volume_decreasing,
+    volume_increasing,
 )
 from .helpers import (
-    EvidenceCollector,
     add_evidence,
     evaluate_detector,
     requirement,
     requirements_passed,
 )
 from models import (
-    BackgroundContext,    
+    BackgroundContext,
+    ClosePosition,
     Evidence,
-    EvidenceCategory,
     EvidenceCode,
-    EvidenceDirection,
-    
+    StructuralSwing,
+    SwingType,
 )
 
 # -------------------------------------------------------------------------
@@ -74,7 +83,7 @@ def collect_supply(
         )
 
         evidence.extend(
-            _collect_upthrust(bar_ctx, campaign_snapshot)
+            _collect_upthrust(bar_ctx)
         )
 
         evidence.extend(
@@ -91,11 +100,12 @@ def _collect_buying_climax(
     ctx: BackgroundContext,
     campaign_snapshot: CampaignSnapshot | None = None,
 ) -> list[Evidence]:
+    """Detect climactic buying effort without strong high-price acceptance."""
 
     evidence: list[Evidence] = []
 
     bar = ctx.current
-    previous = ctx.previous   
+    previous = ctx.previous
     snapshot = campaign_snapshot or CampaignSnapshot.from_context(ctx)
 
     requirements = (
@@ -114,6 +124,11 @@ def _collect_buying_climax(
         requirement(
             name="Above Average Spread",
             passed=is_above_average_spread(bar),
+        ),
+        requirement(
+            name="Non-Strong High Acceptance",
+            passed=bar.close_position
+            not in (ClosePosition.UPPER, ClosePosition.ON_HIGH),
         ),
     )
 
@@ -341,33 +356,61 @@ def _collect_no_demand(
 # -------------------------------------------------------------------------
 # Upthrust
 # -------------------------------------------------------------------------
+def _latest_confirmed_structural_high(
+    ctx: BackgroundContext,
+) -> StructuralSwing | None:
+    """Return the latest structural high already visible at the current bar."""
+
+    eligible = (
+        item
+        for item in ctx.structural_swings
+        if item.swing.type is SwingType.HIGH
+        and item.swing.confirmation_index <= ctx.current.bar_index
+        and item.swing.bar_index < ctx.current.bar_index
+    )
+    return max(
+        eligible,
+        key=lambda item: (
+            item.swing.confirmation_index,
+            item.swing.bar_index,
+        ),
+        default=None,
+    )
+
+
 def _collect_upthrust(
     ctx: BackgroundContext,
-    campaign_snapshot: CampaignSnapshot | None = None,
 ) -> list[Evidence]:
+    """Detect rejection after a probe above confirmed structural resistance."""
 
     evidence: list[Evidence] = []
-
     bar = ctx.current
-    previous = ctx.previous
-    snapshot = campaign_snapshot or CampaignSnapshot.from_context(ctx)
+
+    structural_high = _latest_confirmed_structural_high(ctx)
+    structural_high_price = (
+        None
+        if structural_high is None
+        else float(structural_high.swing.price)
+    )
 
     requirements = (
         requirement(
-            name="Buying Campaign",
-            passed=snapshot.has_buying_campaign(),
+            name="Confirmed Structural High",
+            passed=structural_high_price is not None,
         ),
         requirement(
-            name="Bullish Bar",
-            passed=is_bullish_bar(bar),
+            name="Probe Above Structural High",
+            passed=(
+                structural_high_price is not None
+                and float(bar.high) > structural_high_price
+            ),
         ),
         requirement(
-            name="Very High Volume",
-            passed=is_very_high_volume(bar),
-        ),
-        requirement(
-            name="Above Average Spread",
-            passed=is_above_average_spread(bar),
+            name="Failed Acceptance Above Structural High",
+            passed=(
+                structural_high_price is not None
+                and float(bar.close_price) <= structural_high_price
+            ),
         ),
     )
 
@@ -376,16 +419,16 @@ def _collect_upthrust(
 
     confirmations = (
         requirement(
-            name="Wide Spread",
-            passed=has_strong_spread(bar),
-        ),
-        requirement(
             name="Weak Close",
             passed=is_weak_close(bar),
         ),
         requirement(
-            name="Lower Close Than Previous",
-            passed=closes_lower_than_previous(bar, previous),
+            name="Very High Volume",
+            passed=is_very_high_volume(bar),
+        ),
+        requirement(
+            name="Above Average Spread",
+            passed=is_above_average_spread(bar),
         ),
     )
 
@@ -398,6 +441,7 @@ def _collect_upthrust(
     )
 
     return evidence
+
 
 # ==========================================================
 # Public API
