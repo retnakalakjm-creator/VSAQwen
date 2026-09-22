@@ -3,7 +3,7 @@
 **Status:** Active / Living Document  
 **Primary product direction:** Weekly-timeframe VSA background/qualification followed by daily-timeframe entry timing.  
 **Update policy:** Update this document whenever a roadmap PR is started, merged, validated, superseded, or materially redesigned.  
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-22
 
 ---
 
@@ -1643,10 +1643,14 @@ See `docs/PROGRESSION_SHADOW_REPLAY_TRANSPORT.md`.
 # M12 — Daily Event Validation & Enrichment
 
 **Priority:** P1  
-**Status:** IN PROGRESS
+**Status:** VALIDATED
 
 Objective: validate the daily Evidence vocabulary itself before any daily entry
 promotion.
+
+M12 is now closed as the event-quality / detector-validation milestone. The old
+L10 daily-entry promotion item is moved into M13 so detector correctness and
+entry-policy promotion remain separate decisions.
 
 M12 distinguishes:
 
@@ -1699,7 +1703,7 @@ See `docs/DAILY_EVENT_INVENTORY_AUDIT.md`.
 
 ### PR-L2 — Daily Event Frequency, Co-Firing & Gate Semantics Audit
 
-**Status:** IN PROGRESS
+**Status:** MERGED + MANUALLY VALIDATED
 
 L2 consumes the frozen L1 emission ledger rather than rerunning market data.
 
@@ -1727,19 +1731,157 @@ L2 changes no detector semantics.
 
 See `docs/DAILY_EVENT_COFIRING_AUDIT.md`.
 
-Planned follow-on cuts after L2 evidence review:
+M12 closure after L2:
 
 ```text
-L3  Causal daily event outcome audit
-L4  Named VSA detector semantics / correctness fixes where justified
-L5  Daily Effort/Result semantics audit
-L6  Daily Absorption semantics audit
-L7  Daily structural-confirmation audit
-L8  Behavior-dimension recalibration
-L9  Multi-bar daily event/sequence semantics
-L10 Daily entry promotion study, only if evidence supports it
+L3  Causal event / confirmation review                  COMPLETE
+L4  Named VSA detector correctness sweep               COMPLETE / FROZEN
+L5  Effort/Result semantics                            AUDIT-COMPLETE / CONTEXTUAL
+L6  Absorption semantics                               FROZEN READ-ONLY / NON-SCORING
+L7  Structural/progression semantics                   AUDITED / SHADOW
+L8  Behavior-dimension recalibration                   PARKED
+L9  Multi-bar sequence / exact evidence identity       AUDITED
+L10 Daily entry promotion                              MOVED TO M13
 ```
 
+Closure decisions:
+
+- detector semantics use the M12 stop rule; promoted fixes are frozen and parked
+  detectors are not reopened without independent evidence;
+- PR #363 made VSA fallback history causal and directionally symmetric;
+- PRs #364-#367 showed substantial exact-event identity loss inside coarse
+  DailyBehavior dimensions, but robustness controls did not justify a new
+  `BehaviorMechanism` production/shadow taxonomy, so that line is PARKED;
+- Effort/Result remains contextual/non-scoring;
+- ABSORPTION remains production-visible read-only/non-scoring;
+- no M12 study promoted a new scanner score, ranking rule, weekly qualification
+  rule, daily actionability rule, alert, or order path.
+
+---
+
+# M13 — Daily Entry Production-Readiness Study
+
+**Priority:** P1  
+**Status:** PLANNED
+
+## Objective
+
+Test whether the already-validated shadow daily timing layer adds decision value
+*after* the weekly setup is already authoritative.
+
+The production question is:
+
+```text
+authoritative production weekly candidate
+        ↓
+materialized ARMED WeeklySetup
+        ↓
+causally visible through WeeklyDailyCoordinator
+        ↓
+completed daily bars
+        ↓
+existing DailyBehavior
+        ↓
+fresh aligned behavior on current bar
+        ↓
+existing F3 shadow trigger
+        ↓
+next valid trading session
+        ↓
+does timing improve outcome quality?
+```
+
+M13 does not begin by promoting a trigger. It begins by measuring whether waiting
+for the existing daily trigger improves entry timing versus matched weekly-setup
+controls.
+
+### Weekly Foundation prerequisite
+
+The weekly research prerequisite is closed:
+
+```text
+WF7  CLOSED — no production weekly qualification/actionability rule promoted
+WF8  SKIPPED — no new weekly decision authority required
+```
+
+The existing production boundary remains authoritative:
+
+```text
+ScannerCandidate
+→ production actionability
+→ WeeklySetup materializer
+→ WeeklyDailyCoordinator
+```
+
+### PR-M13A — Daily Entry Production-Readiness Historical Study
+
+**Status:** PLANNED
+
+First study outputs should preserve, per authoritative weekly setup:
+
+```text
+setup identity / direction / availability
+time to first fresh aligned daily trigger
+behavior dimensions at trigger
+exact EvidenceCode provenance
+signal session
+next-session execution session
+no-trigger / expired-without-trigger state
+```
+
+Outcome horizons:
+
+```text
+1 / 3 / 5 / 10 / 15 daily sessions
+direction-adjusted return
+MFE
+MAE
+```
+
+Primary comparison:
+
+```text
+TRIGGERED
+weekly setup + fresh aligned daily behavior
+
+vs
+
+MATCHED CONTROL
+equivalent weekly setup context without that daily timing condition
+```
+
+The study must separate daily-timing value from weekly-setup quality. Matching or
+stratification should therefore preserve weekly direction and as much point-in-time
+weekly context as practical, with symbol/time/regime controls where supported.
+
+### Promotion gate
+
+Production daily actionability is considered only if the daily timing layer shows:
+
+```text
+causal next-session execution
++
+useful trigger coverage
++
+better entry timing and/or lower adverse excursion
++
+stable forward-outcome separation
++
+symbol breadth
++
+out-of-sample stability
++
+reasonable bullish/bearish robustness
+```
+
+Until that evidence exists:
+
+```text
+DailyBehavior          = shadow/read-only
+DailyTriggerReplay     = shadow/read-only
+daily actionability    = false
+alerts/orders          = unchanged
+```
 
 ---
 
@@ -1826,7 +1968,8 @@ Avoid:
 | 51 | PR-K28 / #325 | P1 | Add causal candlestick/volume progression replay visualization | VALIDATED |
 | 52 | PR-K29 / #326 | P1 | Add causal play/pause/speed/scrubber replay transport | VALIDATED |
 | 53 | PR-L1 / #327 | P1 | Inventory daily events and point-in-time detector reachability | VALIDATED |
-| 54 | PR-L2 | P1 | Audit daily event frequency, co-firing, clustering, and confirmation-gate semantics | IN PROGRESS |
+| 54 | PR-L2 | P1 | Audit daily event frequency, co-firing, clustering, and confirmation-gate semantics | VALIDATED |
+| 55 | PR-M13A | P1 | Measure production-weekly → shadow-daily trigger timing value against matched controls | PLANNED |
 
 ---
 
@@ -1932,44 +2075,32 @@ measurable benchmark improvement
 | 2026-09-19 | #325 | M11 | VALIDATED | K28 added weekly candlesticks, volume, and semantic event markers driven only by the causal visibleFrames slice. Manual validation confirmed candles/volume advance one bar at a time, markers remain hidden before the event bar, and sequence switching resets the cursor. |
 | 2026-09-19 | #326 | M11 | VALIDATED | K29 added causal replay transport controls over the existing cursor. Local guardrails/build/manual replay validation passed after updating the stale K25 control-location assertion; no production semantics changed. |
 | 2026-09-19 | #327 | M12 | VALIDATED | L1 completed 30/30 symbols across 106,125 evaluated daily bars with 83,475 raw emissions and zero failures. All 20 active codes were observed. It exposed 2,947 duplicate ABSORPTION groups, 10 behavior-mapped inactive codes, 3 direction-incompatible behavior mappings, and detector-overlap questions for L2. |
-| 2026-09-19 | PR-L2 | M12 | IN PROGRESS | Consume frozen L1 emissions to measure unique-event frequency, symbol concentration, pairwise co-firing, identical/nested firing sets, cluster signatures, and whether detector confirmation clauses currently gate emission. |
+| 2026-09-22 | #327–#367 | M12 | VALIDATED | Daily event inventory, co-firing/confirmation review, detector correctness/corrections, causal fallback repair, exact-evidence collision studies, and robustness review completed. Detector layer is frozen under the stop rule; BehaviorMechanism is PARKED; no scoring/actionability promotion was justified. |
 
 ---
 
 # 7. Current Next Action
 
-## NEXT: PR-L2 — Daily Event Frequency, Co-Firing & Gate Semantics Audit
+## NEXT: PR-M13A — Daily Entry Production-Readiness Historical Study
 
 Checklist:
 
-- [x] Mark #327 / L1 validated and merged.
-- [x] Consume frozen L1 summary + emission ledger only.
-- [x] Require zero-failure, non-actionable L1 source.
-- [x] Preserve raw emission counts.
-- [x] Deduplicate symbol/bar/session/code only for overlap statistics.
-- [x] Measure unique per-code event frequency.
-- [x] Measure per-code symbol concentration.
-- [x] Build all emitted-code pairwise overlaps.
-- [x] Compute directional containment percentages.
-- [x] Compute Jaccard overlap.
-- [x] Classify identical firing sets.
-- [x] Classify strict subset / nested firing sets.
-- [x] Classify partial overlap and disjoint pairs.
-- [x] Build recurring unique-code cluster signatures.
-- [x] Introspect mandatory detector requirements.
-- [x] Introspect confirmation requirements.
-- [x] Audit whether shared confirmations currently gate emission.
-- [x] Keep every L2 output read-only and non-actionable.
-- [x] Add no market-data access or detector mutation.
-- [x] Add L2 module/script to Ruff CI gate.
-- [ ] Run Ruff and focused L2/L1 tests locally.
-- [ ] Run L2 against the frozen 30-symbol L1 artifacts.
-- [ ] Confirm BUYING_CLIMAX / UPTHRUST relationship.
-- [ ] Confirm ABSORPTION raw-vs-unique counts.
-- [ ] Review all strict subset relationships.
-- [ ] Review confirmation-sensitive detector gate statuses.
-- [ ] Decide whether L3 is outcomes or a P0/P1 detector correctness fix.
-- [ ] Merge only after manual validation.
+- [x] Keep production weekly qualification authoritative after WF7 closure.
+- [x] Skip new WF8 weekly decision authority.
+- [x] Preserve ScannerCandidate → WeeklySetup materialization as the weekly/daily seam.
+- [x] Keep DailyBehavior and DailyTriggerReplay non-actionable.
+- [x] Close M12 detector/event research under the stop rule.
+- [x] Park BehaviorMechanism after #367 robustness evidence.
+- [ ] Build a causal historical ledger of authoritative weekly setups and first fresh daily triggers.
+- [ ] Preserve exact weekly setup identity, daily signal session, and next-session execution session.
+- [ ] Measure time-to-trigger and no-trigger / expired-without-trigger populations.
+- [ ] Compare triggered entries with matched weekly-context controls.
+- [ ] Measure 1/3/5/10/15-session direction-adjusted return, MFE, and MAE.
+- [ ] Separate bullish and bearish results.
+- [ ] Review symbol concentration and equal-weight / symbol-balanced results.
+- [ ] Add out-of-sample or time-partition robustness before any promotion decision.
+- [ ] Keep every study output read-only and non-actionable.
+- [ ] Do not change scoring, ranking, qualification, alerts, or orders in M13A.
 
 ---
 
@@ -2027,5 +2158,5 @@ ProVSA should ultimately demonstrate:
 ---
 
 **Document owner:** ProVSA project  
-**Current milestone:** M12 — Daily Event Validation & Enrichment  
-**Current PR:** PR-L2 — Daily Event Frequency, Co-Firing & Gate Semantics Audit
+**Current milestone:** M13 — Daily Entry Production-Readiness Study  
+**Current PR:** None — next planned cut is PR-M13A
