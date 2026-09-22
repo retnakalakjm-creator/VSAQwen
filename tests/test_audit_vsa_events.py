@@ -76,6 +76,10 @@ def test_source_documents_include_existing_audit_records() -> None:
 
     assert "docs/specifications/001_stopping_volume.md" in contracts["STOPPING_VOLUME"].source_documents
     assert (
+        "docs/DAILY_EVENT_STOPPING_VOLUME_DETECTOR_VERDICT.md"
+        in contracts["STOPPING_VOLUME"].source_documents
+    )
+    assert (
         "docs/SELLING_CLIMAX_PRODUCTION_RECORD.md"
         in contracts["SELLING_CLIMAX"].source_documents
     )
@@ -401,3 +405,40 @@ def test_selling_climax_contract_matches_current_source() -> None:
 
     helper_source = inspect.getsource(helpers.add_evidence)
     assert "EvidenceCode.SELLING_CLIMAX: 0.38" in helper_source
+
+
+def test_stopping_volume_contract_matches_current_source() -> None:
+    contract = contracts_by_code()["STOPPING_VOLUME"]
+
+    assert contract.module == "evidence.demand"
+    assert contract.detector == "_collect_stopping_volume"
+    assert contract.direction == "bullish"
+    assert contract.recognition_timing == CURRENT_BAR
+    assert contract.mandatory_requirements == (
+        "selling campaign",
+        "bearish/down bar",
+        "high volume",
+        "above-average spread",
+        "close not on weak/lower area",
+    )
+    assert contract.diagnostic_confirmations == (
+        "very high volume",
+        "wide spread",
+        "volume increasing versus previous bar",
+        "higher low versus previous bar",
+    )
+    assert contract.uses_future_bars is False
+
+    source = inspect.getsource(demand._collect_stopping_volume)
+    assert 'name="Selling Campaign"' in source
+    assert "snapshot.has_selling_campaign()" in source
+    assert 'name="Bearish Bar"' in source
+    assert 'name="High Volume"' in source
+    assert 'name="Above Average Spread"' in source
+    assert 'name="Close Off Low"' in source
+    assert "not is_weak_close(bar)" in source
+    assert 'name="Very High Volume"' in source
+    assert 'name="Wide Spread"' in source
+    assert 'name="Volume Increasing"' in source
+    assert 'name="Higher Low"' in source
+    assert "EvidenceCode.STOPPING_VOLUME" in source
