@@ -323,11 +323,13 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         future_bar_policy="No forward bars are required; all predicates use current and previous/context bars only.",
         source_documents=(
             "docs/NO_DEMAND_AUDIT.md",
+            "docs/DAILY_EVENT_NO_DEMAND_DETECTOR_VERDICT.md",
             "docs/PRIMARY_VSA_EVENT_MATRIX.md",
         ),
         known_review_notes=(
+            "M12 retained and froze the current detector semantics.",
             "Confirmations are not gating in evaluate_detector; they are diagnostic unless promoted in a later PR.",
-            "NO_DEMAND_AUDIT.md lists evidence/demand.py::_collect_no_demand, but current source defines it in evidence/supply.py.",
+            "A historical audit-path typo was corrected; the canonical collector is evidence.supply._collect_no_demand.",
         ),
     ),
     VSAEventContract(

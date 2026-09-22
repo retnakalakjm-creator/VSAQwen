@@ -82,6 +82,10 @@ def test_source_documents_include_existing_audit_records() -> None:
     assert "docs/ABSORPTION_AUDIT.md" in contracts["ABSORPTION"].source_documents
     assert "docs/NO_DEMAND_AUDIT.md" in contracts["NO_DEMAND"].source_documents
     assert (
+        "docs/DAILY_EVENT_NO_DEMAND_DETECTOR_VERDICT.md"
+        in contracts["NO_DEMAND"].source_documents
+    )
+    assert (
         "docs/DAILY_EVENT_HIDDEN_SUPPLY_DETECTOR_VERDICT.md"
         in contracts["HIDDEN_SUPPLY"].source_documents
     )
@@ -232,12 +236,38 @@ def test_absorption_contract_records_connected_non_scoring_alignment() -> None:
     assert "EvidenceCode.ABSORPTION" in absorption_source
 
 
-def test_no_demand_contract_records_audit_path_typo() -> None:
+def test_no_demand_contract_matches_current_source() -> None:
     contract = contracts_by_code()["NO_DEMAND"]
 
     assert contract.module == "evidence.supply"
-    assert any("NO_DEMAND_AUDIT.md" in note for note in contract.known_review_notes)
-    assert any("evidence/demand.py::_collect_no_demand" in note for note in contract.known_review_notes)
+    assert contract.detector == "_collect_no_demand"
+    assert contract.direction == "bearish"
+    assert contract.recognition_timing == CURRENT_BAR
+    assert contract.mandatory_requirements == (
+        "bullish environment",
+        "bullish/up bar",
+        "low volume",
+        "narrow spread",
+    )
+    assert contract.diagnostic_confirmations == (
+        "volume decreasing versus previous bar",
+        "weak close",
+    )
+    assert contract.uses_future_bars is False
+    assert any(
+        "historical audit-path typo was corrected" in note
+        for note in contract.known_review_notes
+    )
+
+    source = inspect.getsource(supply._collect_no_demand)
+    assert 'name="Bullish Environment"' in source
+    assert "ctx.is_bullish_environment()" in source
+    assert 'name="Bullish Bar"' in source
+    assert 'name="Low Volume"' in source
+    assert 'name="Narrow Spread"' in source
+    assert 'name="Volume Decreasing"' in source
+    assert 'name="Weak Close"' in source
+    assert "EvidenceCode.NO_DEMAND" in source
     assert hasattr(supply, "_collect_no_demand")
     assert not hasattr(demand, "_collect_no_demand")
 

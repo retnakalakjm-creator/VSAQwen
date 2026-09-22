@@ -2,7 +2,7 @@
 
 ## Final status
 
-`NO_DEMAND` is production-active and audit-complete for the current detector and scoring architecture. The audit established the event's candidate quality, semantic integrity, interaction behavior, decision-value characteristics, weight sensitivity, and production-path readiness without changing production detector semantics.
+`NO_DEMAND` is production-active with **detector semantics frozen / M12 PARKED**. The audit established candidate quality, semantic integrity, interaction behavior, decision-value characteristics, weight sensitivity, and production-path readiness without changing production detector semantics.
 
 ```text
 production path                 = YES
@@ -237,10 +237,19 @@ qualification change              = NONE observed in separate validation
 actionability change              = NONE observed in separate validation
 ranking / strength sensitivity    = YES
 production weight change          = NONE
-status                            = PRODUCTION-ACTIVE / AUDIT-COMPLETE
+detector status                   = FROZEN / M12 PARKED
+scoring status                    = PRODUCTION-ACTIVE / UNCHANGED
 ```
 
-The current audit campaign does **not** justify changing the production scoring weight away from `0.60`, nor does it justify forcing dynamic emitted weights to equal the scoring-map value.
+The M12 stop-rule review retained the four mandatory clauses, confirmed that
+the two confirmations remain diagnostic/non-gating, found no identity collision,
+and found no obvious production-safe detector correction.
+
+The current audit campaign does **not** justify changing the production scoring
+weight away from `0.60`, nor does it justify forcing dynamic emitted weights
+to equal the scoring-map value.
+
+See `docs/DAILY_EVENT_NO_DEMAND_DETECTOR_VERDICT.md`.
 
 ## Audit principles preserved
 
