@@ -84,6 +84,10 @@ def test_source_documents_include_existing_audit_records() -> None:
         in contracts["SELLING_CLIMAX"].source_documents
     )
     assert "docs/specifications/002_shakeout.md" in contracts["SHAKEOUT"].source_documents
+    assert (
+        "docs/DAILY_EVENT_SHAKEOUT_DETECTOR_VERDICT.md"
+        in contracts["SHAKEOUT"].source_documents
+    )
     assert "docs/specifications/003_test.md" in contracts["TEST"].source_documents
     assert "docs/specifications/004_spring.md" in contracts["SPRING"].source_documents
     assert "docs/specifications/005_no_supply.md" in contracts["NO_SUPPLY"].source_documents
@@ -171,6 +175,13 @@ def test_shakeout_validation_is_sliced_to_current_bar_before_forward_validation(
     assert "point_in_time_metrics = validation_metrics.iloc[: current_index + 1]" in source
     assert "validate_shakeout(metrics=point_in_time_metrics" in source
     assert "validation.recovery.recovery_index != current_index" in source
+
+    snapshot_source = inspect.getsource(demand._candidate_campaign_snapshot)
+    assert "validation_metrics.iloc[start : candidate_index + 1]" in snapshot_source
+    assert "item.swing.confirmation_index <= candidate_index" in snapshot_source
+
+    trend_source = inspect.getsource(demand._candidate_trend_direction)
+    assert "item.swing.confirmation_index <= candidate_index" in trend_source
 
 
 def test_contract_detector_names_exist_in_source_modules() -> None:
@@ -442,3 +453,52 @@ def test_stopping_volume_contract_matches_current_source() -> None:
     assert 'name="Volume Increasing"' in source
     assert 'name="Higher Low"' in source
     assert "EvidenceCode.STOPPING_VOLUME" in source
+
+
+def test_shakeout_recovery_contract_matches_validated_source() -> None:
+    contract = contracts_by_code()["SHAKEOUT"]
+
+    assert contract.module == "evidence.demand / evidence.campaign"
+    assert contract.detector == "_collect_shakeout / validate_shakeout"
+    assert contract.direction == "bullish"
+    assert contract.recognition_timing == RECOVERY_ANCHORED
+    assert contract.diagnostic_confirmations == ()
+    assert contract.uses_future_bars is False
+    assert contract.mandatory_requirements == (
+        "candidate bearish/down bar",
+        "selling pressure present",
+        "wide spread",
+        "very high volume",
+        "lower low versus previous bar",
+        "valid low-volume/low-spread test after candidate",
+        "valid recovery after test",
+    )
+
+    finder_source = inspect.getsource(demand._find_recovery_anchored_shakeout)
+    assert 'name="Bearish Bar"' in finder_source
+    assert 'name="Selling Pressure Present"' in finder_source
+    assert 'name="Wide Spread"' in finder_source
+    assert 'name="Very High Volume"' in finder_source
+    assert 'name="Lower Low"' in finder_source
+    assert "validation.recovery.recovery_index != current_index" in finder_source
+
+    recovery_source = inspect.getsource(campaign._validate_shakeout_recovery)
+    assert "direction == 1" in recovery_source
+    assert "close_position >= config.SHAKEOUT_RECOVERY_MIN_CLOSE_POSITION" in recovery_source
+    assert "bar_close > test_close" in recovery_source
+    assert "bar_low >= test_low" in recovery_source
+
+    # These legacy/reserved settings exist in config but are not part of the
+    # validated production recovery gate.
+    assert "SHAKEOUT_RECOVERY_MIN_UP_BARS" not in recovery_source
+    assert "SHAKEOUT_RECOVERY_MIN_STRONG_CLOSES" not in recovery_source
+
+
+def test_shakeout_emits_on_recovery_bar_with_sequence_provenance() -> None:
+    source = inspect.getsource(demand._collect_shakeout)
+
+    assert "validation.test.test_index is not None" in source
+    assert "validation.recovery.recovery_index is not None" in source
+    assert "test_index=validation.test.test_index" in source
+    assert "recovery_index=validation.recovery.recovery_index" in source
+    assert "quality = calculate_shakeout_quality(validation=validation)" in source

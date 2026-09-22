@@ -212,10 +212,14 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         ),
         source_documents=(
             "docs/specifications/002_shakeout.md",
+            "docs/DAILY_EVENT_SHAKEOUT_DETECTOR_VERDICT.md",
             "docs/PRIMARY_VSA_EVENT_MATRIX.md",
         ),
         known_review_notes=(
+            "M12 retained and froze the validated recovery-anchored semantics.",
             "Do not emit SHAKEOUT on the original candidate bar unless a future PR explicitly models pending events.",
+            "Candidate campaign/trend/structure context is reconstructed causally at the candidate index.",
+            "Legacy SHAKEOUT_RECOVERY_MIN_UP_BARS and SHAKEOUT_RECOVERY_MIN_STRONG_CLOSES settings are not current production gates.",
         ),
     ),
     VSAEventContract(
