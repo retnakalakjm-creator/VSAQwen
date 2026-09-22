@@ -1,29 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import replace
-
 import pandas as pd
 import config
 
 from engine.columns import COL_CORPORATE_ACTION_ANOMALY
-from evidence.engine import EvidenceEngine
 from market_structure.incremental_trend import IncrementalTrendAnalyzer
 from market_structure.progression import calculate_professional_progression
 from market_structure.swing_engine import SwingEngine
 from models import Evidence, EvidenceCode, EvidenceCategory, EvidenceDirection
 from scanner import ScannerCandidate, ScannerEngine
-from scanner_exceptions import (
-    ScannerResumeCheckpointMissingError,
-    ScannerResumeMetricsError,
-)
 from scanner_state import (
-    SCANNER_STATE_SCHEMA_VERSION,
     ScannerState,
     StructuralEventState,
-    stamp_scanner_state,
 )
-from model.evidence_result_model import EvidenceResult
-from trend import TrendAnalyzer
+from scanner_transition_resume import ScannerTransitionResumeAdapter
+from scanner_transition_snapshot import ScannerTransitionSnapshotAdapter
 
 
 class IncrementalScannerEngine:
@@ -95,72 +86,19 @@ class IncrementalScannerEngine:
         return swing_engine.snapshot_state(symbol=symbol, timeframe=timeframe)
 
     def snapshot(self, metrics: pd.DataFrame, *, target_index: int, symbol: str, timeframe: str) -> ScannerState:
-        if target_index < self._scanner.MIN_REPLAY_BARS:
-            raise ValueError(f"target_index must be >= {self._scanner.MIN_REPLAY_BARS}")
-        if target_index >= len(metrics):
-            raise IndexError("target_index is outside metrics")
+        """Build the canonical durable snapshot through the transition path."""
 
-        prefix = metrics.iloc[: target_index + 1].copy()
-        trend = TrendAnalyzer().analyze(prefix)
-        swing_state = self._snapshot_swing_state(
+        return ScannerTransitionSnapshotAdapter().snapshot(
             metrics,
             target_index=target_index,
             symbol=symbol,
             timeframe=timeframe,
         )
-        state = replace(
-            swing_state,
-            schema_version=SCANNER_STATE_SCHEMA_VERSION,
-            structural_events=self._capture_events(trend.structure.structural_swings, prefix),
-        )
-        return stamp_scanner_state(state, prefix)
 
     def resume_latest(self, metrics: pd.DataFrame, state: ScannerState) -> ScannerCandidate:
-        weeks = [str(value) for value in metrics["week_beginning"]]
-        if len(weeks) != len(set(weeks)):
-            raise ScannerResumeMetricsError(
-                "current metrics contain duplicate checkpoint bar identities"
-            )
-        index_by_week = {week: i for i, week in enumerate(weeks)}
-        checkpoint_index = index_by_week.get(state.last_closed_bar)
-        if checkpoint_index is None:
-            raise ScannerResumeCheckpointMissingError(
-                f"ScannerState checkpoint bar is not present in current metrics: {state.last_closed_bar}"
-            )
+        """Resume using the canonical transition-state implementation."""
 
-        trend = self._trend.analyze_from_state(metrics, state)
-        evidence = EvidenceEngine().collect(metrics=metrics, trend=trend, structural_swings=tuple(trend.structure.structural_swings))
-
-        new_events = self._capture_events(trend.structure.structural_swings, metrics)
-        new_events = tuple(
-            event
-            for event in new_events
-            if index_by_week.get(event.bar_key, -1) > checkpoint_index
-        )
-
-        events: dict[tuple[str, EvidenceCode], StructuralEventState] = {
-            (event.bar_key, event.code): event for event in state.structural_events
-        }
-        events.update({(event.bar_key, event.code): event for event in new_events})
-        ordered_events = tuple(events[key] for key in sorted(events, key=lambda value: (value[0], str(value[1]))))
-
-        target_index = len(metrics) - 1
-        signal_bar_anomaly = self._signal_bar_anomaly(metrics, target_index)
-        history = [
-            EvidenceResult(
-                context=evidence.context,
-                evidence=self._events_to_evidence(metrics, ordered_events),
-            ),
-            evidence,
-        ]
-        return self._scanner.evaluate(
-            trend=trend,
-            evidence=evidence,
-            history=history,
-            bar_index=target_index,
-            week=str(metrics.iloc[target_index]["week_beginning"]),
-            signal_bar_anomaly=signal_bar_anomaly,
-        )
+        return ScannerTransitionResumeAdapter().resume_latest(metrics, state)
 
 
 __all__ = ["IncrementalScannerEngine"]

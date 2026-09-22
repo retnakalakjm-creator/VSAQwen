@@ -26,6 +26,7 @@ from scanner_state import (
     ScannerState,
     ScannerStateStore,
     StructuralEventState,
+    VSAEventState,
     SCANNER_STATE_SCHEMA_VERSION,
 )
 
@@ -42,6 +43,17 @@ def _state() -> ScannerState:
         description="structural quality weakened",
         quality=1.0,
     )
+    recent_vsa = VSAEventState(
+        bar_key="2026-08-28",
+        code=EvidenceCode.NO_SUPPLY,
+        category=EvidenceCategory.SUPPLY,
+        direction=EvidenceDirection.BULLISH,
+        strength=0.7,
+        weight=1.0,
+        observation="No Supply",
+        description="causal VSA fallback state",
+        quality=1.0,
+    )
     return ScannerState(
         schema_version=SCANNER_STATE_SCHEMA_VERSION,
         symbol="TCS.NS",
@@ -53,6 +65,7 @@ def _state() -> ScannerState:
             ConfirmedSwingState("2026-08-07", "2026-08-14", SwingType.LOW, 95.0),
         ),
         structural_events=(event,),
+        recent_vsa_events=(recent_vsa,),
     )
 
 

@@ -89,6 +89,7 @@ def _state_signature(state: ScannerState) -> tuple[object, ...]:
         None if state.candidate is None else state.candidate.to_dict(),
         tuple(item.to_dict() for item in state.confirmed_swings),
         tuple(item.to_dict() for item in state.structural_events),
+        tuple(item.to_dict() for item in state.recent_vsa_events),
         state.engine_fingerprint,
         state.config_fingerprint,
         state.data_fingerprint,

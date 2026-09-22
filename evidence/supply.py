@@ -49,49 +49,20 @@ from models import (
 def collect_supply(
     ctx: BackgroundContext,
 ) -> list[Evidence]:
-    """
-    Collect supply-side evidence from the recent
-    background bars.
-    """
+    """Collect supply-side evidence for the current point-in-time bar only."""
 
     campaign_snapshot = CampaignSnapshot.from_context(ctx)
     evidence: list[Evidence] = []
 
-    # Skip index 0 because it has no previous bar.
-    for i in range(1, len(ctx.bars)):
-
-        bar_ctx = ctx.with_current(i)
-
-        evidence.extend(
-            _collect_buying_climax(bar_ctx, campaign_snapshot)
-        )
-
-        evidence.extend(
-            _collect_supply_coming_in(bar_ctx, campaign_snapshot)
-        )
-
-        evidence.extend(
-            _collect_hidden_supply(bar_ctx)
-        )
-
-        evidence.extend(
-            _collect_increasing_supply(bar_ctx)
-        )
-
-        evidence.extend(
-            _collect_supply_drying_up(bar_ctx)
-        )
-
-        evidence.extend(
-            _collect_upthrust(bar_ctx)
-        )
-
-        evidence.extend(
-            _collect_no_demand(bar_ctx)
-        )
+    evidence.extend(_collect_buying_climax(ctx, campaign_snapshot))
+    evidence.extend(_collect_supply_coming_in(ctx, campaign_snapshot))
+    evidence.extend(_collect_hidden_supply(ctx))
+    evidence.extend(_collect_increasing_supply(ctx))
+    evidence.extend(_collect_supply_drying_up(ctx))
+    evidence.extend(_collect_upthrust(ctx))
+    evidence.extend(_collect_no_demand(ctx))
 
     return evidence
-
 
 # -------------------------------------------------------------------------
 # Buying Climax

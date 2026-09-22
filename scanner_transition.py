@@ -53,6 +53,7 @@ class ScanState:
     last_bar_index: int | None = None
     qualification: PatternQualificationState = PatternQualificationState()
     structural_events: tuple[StructuralEventState, ...] = ()
+    recent_vsa_evidence: tuple[Evidence, ...] = ()
     swing_state: ScannerState | None = None
     structural_swings: tuple[StructuralSwing, ...] = ()
     structural_scored_swing_count: int = 0
@@ -62,6 +63,7 @@ class ScanState:
         bar_index: int,
         qualification: PatternQualificationState,
         structural_events: tuple[StructuralEventState, ...],
+        recent_vsa_evidence: tuple[Evidence, ...],
         swing_state: ScannerState,
         structural_swings: tuple[StructuralSwing, ...],
         structural_scored_swing_count: int,
@@ -70,6 +72,7 @@ class ScanState:
             last_bar_index=bar_index,
             qualification=qualification,
             structural_events=structural_events,
+            recent_vsa_evidence=recent_vsa_evidence,
             swing_state=swing_state,
             structural_swings=structural_swings,
             structural_scored_swing_count=structural_scored_swing_count,
@@ -235,10 +238,20 @@ class ScannerTransitionEngine:
             state.structural_events,
             structural.evidence,
         )
+        current_vsa = self._scanner._meaningful_vsa_evidence(
+            evidence,
+            bar.index,
+        )
+        recent_vsa_evidence = self._scanner._advance_recent_vsa(
+            state.recent_vsa_evidence,
+            current_vsa,
+            bar_index=bar.index,
+        )
         next_state = state.with_step(
             bar.index,
             qualification,
             structural_events,
+            recent_vsa_evidence,
             swing_state,
             tuple(structural_swings),
             len(swings),
@@ -250,6 +263,7 @@ class ScannerTransitionEngine:
             trend=trend,
             evidence=evidence,
             qualification_state=next_state.qualification,
+            recent_vsa_evidence=next_state.recent_vsa_evidence,
             bar_index=bar.index,
             week=bar.week,
             execution_bar_index=self._scanner._next_bar_index(metrics, bar.index),

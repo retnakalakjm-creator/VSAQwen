@@ -273,7 +273,7 @@ class ScannerEngine:
         self._professional = ProfessionalScoringEngine()
 
     @classmethod
-    def _meaningful_vsa_evidence(cls, result: EvidenceResult, bar_index: int, *, earliest_bar_index: int | None = None) -> tuple[Evidence, ...]:
+    def _is_meaningful_vsa_item(cls, item: Evidence) -> bool:
         readonly_code_values = frozenset(
             _evidence_code_value(code)
             for code in (
@@ -283,12 +283,64 @@ class ScannerEngine:
                 | cls._HIGH_VOLUME_REVERSAL_READ_ONLY_CODES
             )
         )
+        return _evidence_code_value(item.code) not in readonly_code_values
+
+    @classmethod
+    def _meaningful_vsa_evidence(cls, result: EvidenceResult, bar_index: int, *, earliest_bar_index: int | None = None) -> tuple[Evidence, ...]:
         return tuple(
             item
             for item in result.evidence
             if item.bar_index == bar_index
-            and _evidence_code_value(item.code) not in readonly_code_values
+            and cls._is_meaningful_vsa_item(item)
             and (earliest_bar_index is None or item.bar_index >= earliest_bar_index)
+        )
+
+    @classmethod
+    def _historical_vsa_evidence(
+        cls,
+        history,
+        *,
+        bar_index: int | None,
+    ) -> tuple[Evidence, ...]:
+        if bar_index is None:
+            return ()
+
+        earliest = max(0, bar_index - cls.SCORING_LOOKBACK_BARS)
+        captured: dict[tuple[int, object], Evidence] = {}
+        for result in history:
+            for item in result.evidence:
+                if (
+                    earliest <= item.bar_index <= bar_index
+                    and cls._is_meaningful_vsa_item(item)
+                ):
+                    captured[(item.bar_index, item.code)] = item
+
+        return tuple(
+            captured[key]
+            for key in sorted(captured, key=lambda value: (value[0], str(value[1])))
+        )
+
+    @classmethod
+    def _advance_recent_vsa(
+        cls,
+        current: tuple[Evidence, ...],
+        incoming: tuple[Evidence, ...],
+        *,
+        bar_index: int,
+    ) -> tuple[Evidence, ...]:
+        earliest = max(0, bar_index - cls.SCORING_LOOKBACK_BARS)
+        captured: dict[tuple[int, object], Evidence] = {}
+
+        for item in (*current, *incoming):
+            if (
+                earliest <= item.bar_index <= bar_index
+                and cls._is_meaningful_vsa_item(item)
+            ):
+                captured[(item.bar_index, item.code)] = item
+
+        return tuple(
+            captured[key]
+            for key in sorted(captured, key=lambda value: (value[0], str(value[1])))
         )
 
     @staticmethod
@@ -298,16 +350,60 @@ class ScannerEngine:
         return tuple(item for item in result.evidence if item.bar_index == bar_index)
 
     @staticmethod
-    def _campaign_evidence(result: EvidenceResult) -> tuple[Evidence, ...]:
-        return tuple(result.evidence)
+    def _campaign_evidence(
+        result: EvidenceResult,
+        historical_vsa: tuple[Evidence, ...] = (),
+        qualifying_evidence: tuple[Evidence, ...] = (),
+    ) -> tuple[Evidence, ...]:
+        captured: dict[tuple[int, object], Evidence] = {}
+        for item in (*historical_vsa, *qualifying_evidence, *result.evidence):
+            captured[(item.bar_index, item.code)] = item
+        return tuple(
+            captured[key]
+            for key in sorted(captured, key=lambda value: (value[0], str(value[1])))
+        )
 
     @classmethod
-    def _scoring_evidence(cls, current: EvidenceResult, bar_index: int | None, qualifying_evidence: tuple[Evidence, ...] = ()) -> tuple[Evidence, ...]:
+    def _scoring_evidence(
+        cls,
+        current: EvidenceResult,
+        bar_index: int | None,
+        qualifying_evidence: tuple[Evidence, ...] = (),
+        historical_evidence: tuple[Evidence, ...] = (),
+    ) -> tuple[Evidence, ...]:
         if bar_index is None:
             return ()
-        earliest_bar_index = min((item.bar_index for item in qualifying_evidence), default=None)
-        for candidate_bar in range(bar_index, max(-1, bar_index - cls.SCORING_LOOKBACK_BARS - 1), -1):
-            evidence = cls._meaningful_vsa_evidence(current, candidate_bar, earliest_bar_index=earliest_bar_index)
+
+        earliest_bar_index = min(
+            (item.bar_index for item in qualifying_evidence),
+            default=None,
+        )
+        captured: dict[tuple[int, object], Evidence] = {}
+        for item in (*historical_evidence, *current.evidence):
+            if not cls._is_meaningful_vsa_item(item):
+                continue
+            if earliest_bar_index is not None and item.bar_index < earliest_bar_index:
+                continue
+            if item.bar_index > bar_index:
+                continue
+            captured[(item.bar_index, item.code)] = item
+
+        for candidate_bar in range(
+            bar_index,
+            max(-1, bar_index - cls.SCORING_LOOKBACK_BARS - 1),
+            -1,
+        ):
+            evidence = tuple(
+                captured[key]
+                for key in sorted(
+                    (
+                        key
+                        for key in captured
+                        if key[0] == candidate_bar
+                    ),
+                    key=lambda value: str(value[1]),
+                )
+            )
             if evidence:
                 return evidence
         return ()
@@ -429,9 +525,22 @@ class ScannerEngine:
         qualification = self._qualification.evaluate(history)
         structural_qualification_current = self._qualification_is_current(qualification, bar_index)
         target_bar_evidence = self._target_bar_evidence(evidence, bar_index)
-        campaign_evidence = self._campaign_evidence(evidence)
         qualifying_evidence = self._qualifying_evidence(history, qualification)
-        scoring_evidence = self._scoring_evidence(evidence, bar_index, qualifying_evidence)
+        historical_vsa = self._historical_vsa_evidence(
+            history,
+            bar_index=bar_index,
+        )
+        scoring_evidence = self._scoring_evidence(
+            evidence,
+            bar_index,
+            qualifying_evidence,
+            historical_evidence=historical_vsa,
+        )
+        campaign_evidence = self._campaign_evidence(
+            evidence,
+            historical_vsa,
+            qualifying_evidence,
+        )
         professional = self._professional.calculate(trend=trend, evidence=EvidenceResult(context=evidence.context, evidence=scoring_evidence))
 
         if qualification.is_actionable_evidence:
@@ -498,15 +607,10 @@ class ScannerEngine:
         return self._week_at(metrics, next_index)
 
     def _scan_history_to_index(self, metrics: pd.DataFrame, target_index: int) -> tuple[list[EvidenceResult], TrendResult, EvidenceResult]:
-        """Build history while retaining only structural events needed for qualification.
+        """Build structural history plus one bounded causal VSA fallback window."""
 
-        The previous implementation retained the complete EvidenceResult for every
-        replayed bar. On long histories that multiplied memory usage dramatically.
-        Qualification only consumes structural progression events, so historical
-        snapshots are deliberately reduced to those events. The target snapshot
-        remains complete for the API and scoring layers.
-        """
         history: list[EvidenceResult] = []
+        recent_vsa: tuple[Evidence, ...] = ()
         current_trend: TrendResult | None = None
         current_evidence: EvidenceResult | None = None
 
@@ -514,14 +618,38 @@ class ScannerEngine:
             replay = metrics.iloc[: index + 1]
             trend = TrendAnalyzer().analyze(replay)
             structural_swings = list(trend.structure.structural_swings)
-            evidence = EvidenceEngine().collect(metrics=replay, trend=trend, structural_swings=structural_swings)
-            structural_evidence = tuple(item for item in evidence.evidence if item.code in self._STRUCTURAL_CODES)
-            history.append(EvidenceResult(context=evidence.context, evidence=structural_evidence))
+            evidence = EvidenceEngine().collect(
+                metrics=replay,
+                trend=trend,
+                structural_swings=structural_swings,
+            )
+            structural_evidence = tuple(
+                item
+                for item in evidence.evidence
+                if item.code in self._STRUCTURAL_CODES
+            )
+            history.append(
+                EvidenceResult(
+                    context=evidence.context,
+                    evidence=structural_evidence,
+                )
+            )
+            recent_vsa = self._advance_recent_vsa(
+                recent_vsa,
+                self._meaningful_vsa_evidence(evidence, index),
+                bar_index=index,
+            )
             current_trend = trend
             current_evidence = evidence
 
         assert current_trend is not None
         assert current_evidence is not None
+        history.append(
+            EvidenceResult(
+                context=current_evidence.context,
+                evidence=recent_vsa,
+            )
+        )
         return history, current_trend, current_evidence
 
     def scan_to_index(self, metrics: pd.DataFrame, target_index: int) -> ScannerCandidate:
@@ -542,20 +670,47 @@ class ScannerEngine:
         )
 
     def scan(self, metrics: pd.DataFrame) -> list[ScannerCandidate]:
-        history = []
-        candidates = []
+        history: list[EvidenceResult] = []
+        recent_vsa: tuple[Evidence, ...] = ()
+        candidates: list[ScannerCandidate] = []
+
         for index in range(self.MIN_REPLAY_BARS, len(metrics)):
             replay = metrics.iloc[: index + 1]
             trend = TrendAnalyzer().analyze(replay)
             structural_swings = list(trend.structure.structural_swings)
-            evidence = EvidenceEngine().collect(metrics=replay, trend=trend, structural_swings=structural_swings)
-            structural_evidence = tuple(item for item in evidence.evidence if item.code in self._STRUCTURAL_CODES)
-            history.append(EvidenceResult(context=evidence.context, evidence=structural_evidence))
+            evidence = EvidenceEngine().collect(
+                metrics=replay,
+                trend=trend,
+                structural_swings=structural_swings,
+            )
+            structural_evidence = tuple(
+                item
+                for item in evidence.evidence
+                if item.code in self._STRUCTURAL_CODES
+            )
+            history.append(
+                EvidenceResult(
+                    context=evidence.context,
+                    evidence=structural_evidence,
+                )
+            )
+            recent_vsa = self._advance_recent_vsa(
+                recent_vsa,
+                self._meaningful_vsa_evidence(evidence, index),
+                bar_index=index,
+            )
+            evaluation_history = [
+                *history,
+                EvidenceResult(
+                    context=evidence.context,
+                    evidence=recent_vsa,
+                ),
+            ]
             candidates.append(
                 self.evaluate(
                     trend=trend,
                     evidence=evidence,
-                    history=history,
+                    history=evaluation_history,
                     bar_index=index,
                     week=self._week_at(metrics, index),
                     execution_bar_index=self._next_bar_index(metrics, index),

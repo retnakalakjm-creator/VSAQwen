@@ -31,8 +31,8 @@ from models import (
     SwingType,
 )
 
-SCANNER_STATE_SCHEMA_VERSION = 4
-SCANNER_STATE_ENGINE_FINGERPRINT = "scanner-state-v4.incremental-production-v1"
+SCANNER_STATE_SCHEMA_VERSION = 5
+SCANNER_STATE_ENGINE_FINGERPRINT = "scanner-state-v5.causal-vsa-history-v1"
 SCANNER_STATE_DATA_FINGERPRINT_COLUMNS = (
     "week_beginning",
     "open",
@@ -303,6 +303,95 @@ class StructuralEventState:
         )
 
 
+
+@dataclass(frozen=True, slots=True)
+class VSAEventState:
+    """Bounded causal VSA evidence retained for scanner fallback scoring."""
+
+    bar_key: str
+    code: EvidenceCode
+    category: EvidenceCategory
+    direction: EvidenceDirection
+    strength: float
+    weight: float
+    observation: str
+    description: str
+    quality: float
+    test_index: int | None = None
+    recovery_index: int | None = None
+
+    @classmethod
+    def from_evidence(cls, evidence: Evidence) -> "VSAEventState":
+        return cls(
+            bar_key=str(evidence.week_beginning),
+            code=evidence.code,
+            category=evidence.category,
+            direction=evidence.direction,
+            strength=float(evidence.strength),
+            weight=float(evidence.weight),
+            observation=str(evidence.observation),
+            description=str(evidence.description),
+            quality=float(evidence.quality),
+            test_index=evidence.test_index,
+            recovery_index=evidence.recovery_index,
+        )
+
+    def to_evidence(self, bar_index: int) -> Evidence:
+        return Evidence(
+            code=self.code,
+            category=self.category,
+            direction=self.direction,
+            strength=self.strength,
+            weight=self.weight,
+            observation=self.observation,
+            description=self.description,
+            bar_index=bar_index,
+            week_beginning=self.bar_key,
+            test_index=self.test_index,
+            recovery_index=self.recovery_index,
+            quality=self.quality,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bar_key": self.bar_key,
+            "code": self.code.value,
+            "category": int(self.category),
+            "direction": int(self.direction),
+            "strength": self.strength,
+            "weight": self.weight,
+            "observation": self.observation,
+            "description": self.description,
+            "quality": self.quality,
+            "test_index": self.test_index,
+            "recovery_index": self.recovery_index,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "VSAEventState":
+        return cls(
+            bar_key=str(data["bar_key"]),
+            code=EvidenceCode(data["code"]),
+            category=EvidenceCategory(int(data["category"])),
+            direction=EvidenceDirection(int(data["direction"])),
+            strength=float(data["strength"]),
+            weight=float(data["weight"]),
+            observation=str(data["observation"]),
+            description=str(data["description"]),
+            quality=float(data.get("quality", 1.0)),
+            test_index=(
+                None
+                if data.get("test_index") is None
+                else int(data["test_index"])
+            ),
+            recovery_index=(
+                None
+                if data.get("recovery_index") is None
+                else int(data["recovery_index"])
+            ),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class ScannerState:
     """Minimal causal state required to resume incremental scanning."""
@@ -318,6 +407,7 @@ class ScannerState:
     engine_fingerprint: str = SCANNER_STATE_ENGINE_FINGERPRINT
     config_fingerprint: str | None = None
     data_fingerprint: str | None = None
+    recent_vsa_events: tuple[VSAEventState, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -335,6 +425,9 @@ class ScannerState:
             ],
             "structural_events": [
                 event.to_dict() for event in self.structural_events
+            ],
+            "recent_vsa_events": [
+                event.to_dict() for event in self.recent_vsa_events
             ],
         }
 
@@ -359,6 +452,10 @@ class ScannerState:
             structural_events=tuple(
                 StructuralEventState.from_dict(item)
                 for item in data.get("structural_events", ())
+            ),
+            recent_vsa_events=tuple(
+                VSAEventState.from_dict(item)
+                for item in data.get("recent_vsa_events", ())
             ),
             engine_fingerprint=str(
                 data.get("engine_fingerprint", SCANNER_STATE_ENGINE_FINGERPRINT)
@@ -612,6 +709,7 @@ __all__ = [
     "ScannerStateFingerprintMismatch",
     "ScannerStateStore",
     "StructuralEventState",
+    "VSAEventState",
     "scanner_state_config_fingerprint",
     "scanner_state_data_fingerprint",
     "scanner_state_fingerprints",

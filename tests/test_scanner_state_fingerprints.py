@@ -23,6 +23,7 @@ from production_scanner import scan_latest_candidate_production
 from scanner import ScannerEngine
 from scanner_state import (
     SCANNER_STATE_ENGINE_FINGERPRINT,
+    SCANNER_STATE_SCHEMA_VERSION,
     ScannerStateFingerprintMismatch,
     ScannerStateStore,
     scanner_state_data_fingerprint,
@@ -169,3 +170,33 @@ def test_production_scanner_rebuilds_from_full_replay_when_state_is_stale(tmp_pa
     assert refreshed.last_closed_bar == str(metrics.iloc[-1][COL_WEEK])
     assert refreshed.data_fingerprint != stale_state.data_fingerprint
     validate_scanner_state_fingerprints(refreshed, metrics)
+
+
+
+def test_previous_schema_checkpoint_rebuilds_through_full_replay(tmp_path) -> None:
+    metrics = _production_metrics()
+    store = ScannerStateStore(tmp_path)
+    state = _snapshot(metrics, split=72)
+    payload = state.to_dict()
+    payload["schema_version"] = SCANNER_STATE_SCHEMA_VERSION - 1
+
+    path = store.path_for("TEST", "1wk")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import json
+
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2),
+        encoding="utf-8",
+    )
+
+    candidate = scan_latest_candidate_production(
+        metrics,
+        symbol="TEST",
+        timeframe="1wk",
+        state_store=store,
+    )
+    full = ScannerEngine().scan_to_index(metrics, len(metrics) - 1)
+
+    assert candidate is not None
+    assert _candidate_signature(candidate) == _candidate_signature(full)
+    assert store.load("TEST", "1wk").schema_version == SCANNER_STATE_SCHEMA_VERSION

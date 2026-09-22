@@ -180,13 +180,25 @@ def test_transition_rejects_non_sequential_steps() -> None:
         )
 
 
-def test_transition_state_keeps_only_structural_events() -> None:
+def test_transition_state_keeps_structural_and_vsa_state_separate() -> None:
     metrics = _metrics()
     state, _ = ScannerTransitionEngine().run_to_index(metrics, len(metrics) - 1)
 
     assert all(
         event.code in ScannerEngine._STRUCTURAL_CODES
         for event in state.structural_events
+    )
+    assert all(
+        item.code not in ScannerEngine._STRUCTURAL_CODES
+        for item in state.recent_vsa_evidence
+    )
+    assert all(
+        ScannerEngine._is_meaningful_vsa_item(item)
+        for item in state.recent_vsa_evidence
+    )
+    assert all(
+        len(metrics) - 1 - item.bar_index <= ScannerEngine.SCORING_LOOKBACK_BARS
+        for item in state.recent_vsa_evidence
     )
     assert all(
         item.code in ScannerEngine._STRUCTURAL_CODES

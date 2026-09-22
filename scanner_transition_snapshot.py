@@ -14,6 +14,7 @@ from scanner_state import (
     SCANNER_STATE_SCHEMA_VERSION,
     ScannerState,
     StructuralEventState,
+    VSAEventState,
     stamp_scanner_state,
 )
 from scanner_transition import ScanState, ScannerTransitionEngine
@@ -48,6 +49,17 @@ class ScannerTransitionSnapshotAdapter:
         """Return first-class structural-event state for durable persistence."""
 
         return transition_state.structural_events
+
+    @staticmethod
+    def _recent_vsa_events_from_transition(
+        transition_state: ScanState,
+    ) -> tuple[VSAEventState, ...]:
+        """Return the bounded causal VSA window for durable persistence."""
+
+        return tuple(
+            VSAEventState.from_evidence(item)
+            for item in transition_state.recent_vsa_evidence
+        )
 
     def _validate_target_index(
         self,
@@ -100,6 +112,9 @@ class ScannerTransitionSnapshotAdapter:
             swing_state,
             schema_version=SCANNER_STATE_SCHEMA_VERSION,
             structural_events=self._structural_events_from_transition(
+                transition_state,
+            ),
+            recent_vsa_events=self._recent_vsa_events_from_transition(
                 transition_state,
             ),
         )

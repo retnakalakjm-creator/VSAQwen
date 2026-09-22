@@ -83,10 +83,16 @@ class ScannerTransitionResumeAdapter:
             for event in state.structural_events
             if event.bar_key in index_by_week
         )
+        recent_vsa_evidence = tuple(
+            event.to_evidence(index_by_week[event.bar_key])
+            for event in state.recent_vsa_events
+            if event.bar_key in index_by_week
+        )
         return ScanState(
             last_bar_index=checkpoint_index,
             qualification=self._qualification.state_from_events(structural_evidence),
             structural_events=state.structural_events,
+            recent_vsa_evidence=recent_vsa_evidence,
             swing_state=state,
         )
 

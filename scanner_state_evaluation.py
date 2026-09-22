@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from background.qualification import PatternQualificationEngine, PatternQualificationState
 from model.evidence_result_model import EvidenceResult
+from models import Evidence
 from scanner import ANOMALY_SIGNAL_BAR_REASON, ScannerCandidate, ScannerEngine
 from scanner_policy import DEFAULT_VSA_FRESHNESS_POLICY
 from trend import TrendResult
@@ -14,6 +15,7 @@ def evaluate_from_qualification_state(
     trend: TrendResult,
     evidence: EvidenceResult,
     qualification_state: PatternQualificationState,
+    recent_vsa_evidence: tuple[Evidence, ...] = (),
     bar_index: int | None = None,
     week: str | None = None,
     execution_bar_index: int | None = None,
@@ -33,11 +35,16 @@ def evaluate_from_qualification_state(
         bar_index,
     )
     target_bar_evidence = scanner._target_bar_evidence(evidence, bar_index)
-    campaign_evidence = scanner._campaign_evidence(evidence)
     qualifying_evidence = qualification_engine.qualifying_events(qualification_state)
     scoring_evidence = scanner._scoring_evidence(
         evidence,
         bar_index,
+        qualifying_evidence,
+        historical_evidence=recent_vsa_evidence,
+    )
+    campaign_evidence = scanner._campaign_evidence(
+        evidence,
+        recent_vsa_evidence,
         qualifying_evidence,
     )
     professional = scanner._professional.calculate(
