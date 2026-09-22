@@ -132,10 +132,14 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         future_bar_policy="No forward bars are required; all predicates use current and previous/context bars only.",
         source_documents=(
             "docs/specifications/003_test.md",
+            "docs/DAILY_EVENT_TEST_DETECTOR_VERDICT.md",
             "docs/PRIMARY_VSA_EVENT_MATRIX.md",
         ),
         known_review_notes=(
+            "M12 retained and froze the audited five-clause production semantics.",
+            "No Strong Downtrend Contradiction is a mandatory production gate, not a diagnostic confirmation.",
             "Confirmations are not gating in evaluate_detector; they are diagnostic unless promoted in a later PR.",
+            "TEST has no professional demand-map score but remains directional VSA confirmation for an already-qualified setup.",
         ),
     ),
     VSAEventContract(

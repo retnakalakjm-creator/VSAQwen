@@ -2,7 +2,7 @@
 
 ## Status
 
-**Production-integrated — replay verified**
+**Production-integrated — replay verified / M12 detector semantics frozen**
 
 Configured base demand weight: **0.50**
 
@@ -46,11 +46,14 @@ A strong candidate-bar close is **not** mandatory.
 The existing point-in-time SHAKEOUT validator must produce:
 
 - a valid low-effort TEST;
-- a valid recovery;
-- recovery within the configured recovery lookahead;
-- the configured minimum recovery up-bars;
-- the configured minimum recovery strong-close condition;
-- required recovery close-position quality.
+- a valid recovery within the configured recovery forward window;
+- recovery bullish/up direction;
+- recovery close position at or above the configured minimum;
+- recovery close above the TEST close;
+- recovery low at or above the TEST low.
+
+The validated production detector accepts the first recovery bar inside the
+recovery window that satisfies those conditions.
 
 Configured recovery parameters are defined in `config.py`:
 
@@ -62,8 +65,8 @@ SHAKEOUT_TEST_MAX_VOLUME_RATIO = 1.00
 SHAKEOUT_TEST_MAX_SPREAD_RATIO = 1.00
 SHAKEOUT_TEST_MIN_CLOSE_POSITION = 3
 SHAKEOUT_RECOVERY_LOOKAHEAD = 5
-SHAKEOUT_RECOVERY_MIN_UP_BARS = 3
-SHAKEOUT_RECOVERY_MIN_STRONG_CLOSES = 1
+SHAKEOUT_RECOVERY_MIN_UP_BARS = 3            # legacy/reserved; not a current detector gate
+SHAKEOUT_RECOVERY_MIN_STRONG_CLOSES = 1       # legacy/reserved; not a current detector gate
 SHAKEOUT_RECOVERY_MIN_CLOSE_POSITION = 3
 SHAKEOUT_RECOVERY_SPREAD_TARGET = 0.75
 SHAKEOUT_RECOVERY_VOLUME_TARGET = 0.75
@@ -125,8 +128,39 @@ failures:                0
 
 This verifies that the production detector reproduces the validated recovery-anchor population exactly and does not emit SHAKEOUT prematurely at the original candidate bar.
 
+## M12 detector closure
+
+The M12 stop-rule review retained the recovery-anchored production identity,
+confirmed distinctness from current-bar `SELLING_CLIMAX` and
+`STOPPING_VOLUME`, and verified the candidate/test/recovery path remains
+causal.
+
+The prior wording that described minimum recovery up-bar and minimum
+strong-close counts as production gates was stale. Current production
+`_validate_shakeout_recovery()` does not consume those count settings, and the
+validated 18-event recovery-anchor audit used the same `validate_shakeout()`
+semantics.
+
+```text
+semantic contract      RETAIN
+distinctness           PASS
+recovery causality     PASS
+obvious detector fix   NONE
+
+M12 detector status    PARKED
+detector semantics     FROZEN
+production emission    UNCHANGED
+```
+
+The two legacy count settings remain in `config.py` but are not current
+production detection gates. Activating them would require a new audit/replay
+cycle.
+
+See `docs/DAILY_EVENT_SHAKEOUT_DETECTOR_VERDICT.md`.
+
 ## Production rule
 
-SHAKEOUT is now considered a **production-integrated demand-side primary reversal event**.
+SHAKEOUT remains a **production-integrated demand-side primary reversal event**.
 
-Future optimization should revisit thresholds or weight only with a new audit campaign and should not be based solely on the current 18-event sample.
+Future optimization should revisit thresholds or weight only with a new audit
+campaign and should not be based solely on the current 18-event sample.

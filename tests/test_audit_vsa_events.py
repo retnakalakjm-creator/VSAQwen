@@ -4,6 +4,8 @@ import inspect
 
 import pandas as pd
 
+import config
+
 from audit.vsa_events import (
     CONFIRMATION_ANCHORED,
     CURRENT_BAR,
@@ -19,6 +21,7 @@ from evidence import demand
 from evidence import helpers
 from evidence import spring
 from evidence import supply
+from models import EvidenceCode
 
 
 EXPECTED_EVENT_CODES = {
@@ -89,6 +92,10 @@ def test_source_documents_include_existing_audit_records() -> None:
         in contracts["SHAKEOUT"].source_documents
     )
     assert "docs/specifications/003_test.md" in contracts["TEST"].source_documents
+    assert (
+        "docs/DAILY_EVENT_TEST_DETECTOR_VERDICT.md"
+        in contracts["TEST"].source_documents
+    )
     assert "docs/specifications/004_spring.md" in contracts["SPRING"].source_documents
     assert "docs/specifications/005_no_supply.md" in contracts["NO_SUPPLY"].source_documents
     assert "docs/ABSORPTION_AUDIT.md" in contracts["ABSORPTION"].source_documents
@@ -502,3 +509,48 @@ def test_shakeout_emits_on_recovery_bar_with_sequence_provenance() -> None:
     assert "test_index=validation.test.test_index" in source
     assert "recovery_index=validation.recovery.recovery_index" in source
     assert "quality = calculate_shakeout_quality(validation=validation)" in source
+
+
+def test_test_contract_matches_audited_production_source() -> None:
+    contract = contracts_by_code()["TEST"]
+
+    assert contract.module == "evidence.demand"
+    assert contract.detector == "_collect_test"
+    assert contract.direction == "bullish"
+    assert contract.recognition_timing == CURRENT_BAR
+    assert contract.mandatory_requirements == (
+        "selling campaign",
+        "bearish/down bar",
+        "low volume",
+        "narrow spread",
+        "no strong downtrend contradiction",
+    )
+    assert contract.diagnostic_confirmations == (
+        "volume decreasing versus previous bar",
+        "strong close",
+        "higher low versus previous bar",
+    )
+    assert contract.uses_future_bars is False
+
+    source = inspect.getsource(demand._collect_test)
+    assert 'name="Selling Campaign"' in source
+    assert "snapshot.has_selling_campaign()" in source
+    assert 'name="Down Bar"' in source
+    assert 'name="Low Volume"' in source
+    assert 'name="Narrow Spread"' in source
+    assert 'name="No Strong Downtrend Contradiction"' in source
+    assert "is_confirmed_downtrend(trend)" in source
+    assert "_recent_structural_weakness(ctx)" in source
+    assert 'name="Volume Decreasing"' in source
+    assert 'name="Strong Close"' in source
+    assert 'name="Higher Low"' in source
+    assert "EvidenceCode.TEST" in source
+
+
+def test_test_remains_professional_non_scoring_contextual_confirmation() -> None:
+    assert EvidenceCode.TEST not in config.DEMAND_EVIDENCE_WEIGHTS
+
+    helper_source = inspect.getsource(helpers.add_evidence)
+    weight_source = inspect.getsource(helpers.WeightCalculator._test_weight)
+    assert "WeightCalculator.calculate(" in helper_source
+    assert "return max(0.50, min(weight, 2.00))" in weight_source

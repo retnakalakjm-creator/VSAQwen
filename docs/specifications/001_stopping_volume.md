@@ -4,7 +4,7 @@
 
 Version: 2.0
 
-Status: Production
+Status: Production / M12 detector semantics frozen
 
 ---
 
@@ -229,6 +229,32 @@ bar `t`.
 
 Forward 1/2/4/8-bar outcomes are used only for post-event evaluation
 and never for detection.
+
+---
+
+# M12 Detector Closure
+
+The M12 stop-rule review retained the current five-clause mandatory identity,
+confirmed distinctness from `SELLING_CLIMAX`, verified that the four
+confirmations remain diagnostic/non-gating, and found no obvious production-safe
+detector correction.
+
+```text
+semantic contract      RETAIN
+distinctness           PASS
+confirmation behavior  PASS
+obvious detector fix   NONE
+
+M12 detector status    PARKED
+detector semantics     FROZEN
+production emission    UNCHANGED
+```
+
+Current source emits `STOPPING_VOLUME` at the generic/default
+`Evidence.weight = 1.00` path; this matches the profile and professional
+demand-map value. No weight change is part of the detector closure.
+
+See `docs/DAILY_EVENT_STOPPING_VOLUME_DETECTOR_VERDICT.md`.
 
 ---
 
