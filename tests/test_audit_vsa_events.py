@@ -75,6 +75,10 @@ def test_source_documents_include_existing_audit_records() -> None:
     contracts = contracts_by_code()
 
     assert "docs/specifications/001_stopping_volume.md" in contracts["STOPPING_VOLUME"].source_documents
+    assert (
+        "docs/SELLING_CLIMAX_PRODUCTION_RECORD.md"
+        in contracts["SELLING_CLIMAX"].source_documents
+    )
     assert "docs/specifications/002_shakeout.md" in contracts["SHAKEOUT"].source_documents
     assert "docs/specifications/003_test.md" in contracts["TEST"].source_documents
     assert "docs/specifications/004_spring.md" in contracts["SPRING"].source_documents
@@ -362,3 +366,38 @@ def test_supply_coming_in_contract_matches_current_source() -> None:
     assert 'name="Weak Close"' in source
     assert 'name="Volume Increasing"' in source
     assert "EvidenceCode.SUPPLY_COMING_IN" in source
+
+
+def test_selling_climax_contract_matches_current_source() -> None:
+    contract = contracts_by_code()["SELLING_CLIMAX"]
+
+    assert contract.module == "evidence.demand"
+    assert contract.detector == "_collect_selling_climax"
+    assert contract.direction == "bullish"
+    assert contract.recognition_timing == CURRENT_BAR
+    assert contract.mandatory_requirements == (
+        "selling campaign",
+        "bearish/down bar",
+        "very high volume",
+        "above-average spread",
+    )
+    assert contract.diagnostic_confirmations == (
+        "wide spread",
+        "strong close",
+        "increasing volume versus previous bar",
+    )
+    assert contract.uses_future_bars is False
+
+    source = inspect.getsource(demand._collect_selling_climax)
+    assert 'name="Selling Campaign"' in source
+    assert "snapshot.has_selling_campaign()" in source
+    assert 'name="Bearish Bar"' in source
+    assert 'name="Very High Volume"' in source
+    assert 'name="Above Average Spread"' in source
+    assert 'name="Wide Spread"' in source
+    assert 'name="Strong Close"' in source
+    assert 'name="Increasing Volume"' in source
+    assert "EvidenceCode.SELLING_CLIMAX" in source
+
+    helper_source = inspect.getsource(helpers.add_evidence)
+    assert "EvidenceCode.SELLING_CLIMAX: 0.38" in helper_source

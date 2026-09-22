@@ -2,15 +2,16 @@
 
 ## Final status
 
-`SELLING_CLIMAX` is now production-integrated on `main`.
+`SELLING_CLIMAX` is production-integrated on `main` with **detector semantics frozen / M12 PARKED**.
 
 ```text
 production path        = YES
 collector              = evidence/demand.py::_collect_selling_climax
 engine collection      = YES (via collect_demand)
 registry               = YES
-base weight            = 0.38
-production status      = ACTIVE
+profile/emitted weight = 0.38
+detector status         = FROZEN / M12 PARKED
+production status       = ACTIVE
 ```
 
 ## Audit completion
@@ -71,8 +72,30 @@ status                 = PASS
 
 This verifies that the production collector emits the expected `SELLING_CLIMAX` evidence at weight `0.38`, without duplicate emission or unintended score mutation.
 
-## Promotion decision
+## M12 detector closure
 
-`SELLING_CLIMAX` is no longer provisional or frozen. It is an active production demand/reversal event at base weight `0.38`.
+The M12 stop-rule review retained the current four-clause mandatory identity,
+confirmed distinctness from `STOPPING_VOLUME`, verified that the three
+confirmations remain diagnostic/non-gating, and found no obvious production-safe
+detector correction.
 
-Future changes to its semantics or weight must begin a new audit cycle rather than bypassing the audit-first promotion process.
+```text
+semantic contract      RETAIN
+distinctness           PASS
+confirmation behavior  PASS
+obvious detector fix   NONE
+
+M12 detector status    PARKED
+detector semantics     FROZEN
+production emission    UNCHANGED
+```
+
+Current source explicitly emits `SELLING_CLIMAX` at `Evidence.weight = 0.38`
+through `evidence.helpers.add_evidence()`; this is not a dynamic runtime weight.
+
+`SELLING_CLIMAX` remains an active production demand/reversal event.
+
+See `docs/DAILY_EVENT_SELLING_CLIMAX_DETECTOR_VERDICT.md`.
+
+Future changes to its semantics or weight must begin a new audit cycle rather
+than bypassing the audit-first process.

@@ -93,9 +93,16 @@ VSA_EVENT_CONTRACTS: tuple[VSAEventContract, ...] = (
         ),
         uses_future_bars=False,
         future_bar_policy="No forward bars are required; all predicates use current and previous/context bars only.",
-        source_documents=("docs/PRIMARY_VSA_EVENT_MATRIX.md",),
+        source_documents=(
+            "docs/SELLING_CLIMAX_PRODUCTION_RECORD.md",
+            "docs/DAILY_EVENT_SELLING_CLIMAX_DETECTOR_VERDICT.md",
+            "docs/PRIMARY_VSA_EVENT_MATRIX.md",
+        ),
         known_review_notes=(
+            "M12 retained and froze the current detector semantics.",
             "Confirmations are not gating in evaluate_detector; they are diagnostic unless promoted in a later PR.",
+            "STOPPING_VOLUME overlap is confirming rather than an identity collision.",
+            "Production Evidence.weight is fixed at 0.38 by evidence.helpers.add_evidence.",
         ),
     ),
     VSAEventContract(
