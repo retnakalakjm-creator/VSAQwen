@@ -16,15 +16,24 @@ import pandas as pd
 from audit.outcomes import ForwardOutcome, compute_forward_outcome
 from daily_behavior import DailyBehaviorDimension
 from daily_behavior_sequence import DailyBehaviorSequence
+from models import EvidenceCode
 from weekly_setup import WeeklySetupDirection
 
 
 @dataclass(frozen=True, slots=True)
 class DailyBehaviorSequenceStepSignature:
-    """Relative temporal identity for one observed sequence step."""
+    """Relative temporal identity for one observed coarse behavior step."""
 
     offset_from_signal: int
     dimensions: tuple[DailyBehaviorDimension, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DailyBehaviorSequenceEvidenceStepSignature:
+    """Relative temporal identity preserving exact supporting evidence codes."""
+
+    offset_from_signal: int
+    evidence_codes: tuple[EvidenceCode, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +89,31 @@ def daily_behavior_sequence_signature(
         DailyBehaviorSequenceStepSignature(
             offset_from_signal=step.bar_index - sequence.end_bar_index,
             dimensions=step.dimensions,
+        )
+        for step in sequence.steps
+    )
+
+
+def daily_behavior_sequence_evidence_signature(
+    sequence: DailyBehaviorSequence,
+) -> tuple[DailyBehaviorSequenceEvidenceStepSignature, ...]:
+    """Return exact supporting-code identity without changing coarse grouping.
+
+    The existing dimension signature remains the outcome-study grouping key.
+    This second identity preserves named-event provenance so audits can measure
+    where multiple distinct evidence narratives collapse into the same coarse
+    behavior sequence.
+    """
+
+    return tuple(
+        DailyBehaviorSequenceEvidenceStepSignature(
+            offset_from_signal=step.bar_index - sequence.end_bar_index,
+            evidence_codes=tuple(
+                sorted(
+                    {item.code for item in step.evidence},
+                    key=lambda code: str(getattr(code, "value", code)),
+                )
+            ),
         )
         for step in sequence.steps
     )
@@ -216,10 +250,12 @@ def summarize_daily_behavior_sequence_outcomes(
 
 
 __all__ = [
+    "DailyBehaviorSequenceEvidenceStepSignature",
     "DailyBehaviorSequenceOutcomeObservation",
     "DailyBehaviorSequenceOutcomeSummary",
     "DailyBehaviorSequenceStepSignature",
     "build_daily_behavior_sequence_outcomes",
+    "daily_behavior_sequence_evidence_signature",
     "daily_behavior_sequence_signature",
     "sequence_has_fresh_behavior",
     "summarize_daily_behavior_sequence_outcomes",

@@ -21,6 +21,7 @@ from audit.daily_behavior_sequence_outcomes import (
     DailyBehaviorSequenceOutcomeObservation,
     DailyBehaviorSequenceOutcomeSummary,
     build_daily_behavior_sequence_outcomes,
+    daily_behavior_sequence_evidence_signature,
     daily_behavior_sequence_signature,
     sequence_has_fresh_behavior,
     summarize_daily_behavior_sequence_outcomes,
@@ -155,6 +156,7 @@ class DailyBehaviorSequenceStudyBundlePaths:
     sequence_records_csv: Path
     outcomes_csv: Path
     summaries_csv: Path
+    signature_collisions_csv: Path
 
     def as_dict(self) -> dict[str, str]:
         return {key: str(value) for key, value in asdict(self).items()}
@@ -477,6 +479,15 @@ def _signature_text(sequence: DailyBehaviorSequence) -> str:
     )
 
 
+def _evidence_signature_text(sequence: DailyBehaviorSequence) -> str:
+    signature = daily_behavior_sequence_evidence_signature(sequence)
+    return ";".join(
+        f"{step.offset_from_signal}:"
+        + ",".join(str(getattr(code, "value", code)) for code in step.evidence_codes)
+        for step in signature
+    )
+
+
 def _summary_signature_text(
     summary: DailyBehaviorSequenceOutcomeSummary,
 ) -> str:
@@ -485,6 +496,48 @@ def _summary_signature_text(
         + ",".join(dimension.value for dimension in step.dimensions)
         for step in summary.signature
     )
+
+
+def _signature_collision_rows(
+    study: DailyBehaviorSequenceHistoricalStudy,
+) -> list[dict[str, object]]:
+    """Describe coarse signatures that hide multiple exact evidence narratives."""
+
+    grouped: dict[
+        tuple[str, str],
+        dict[str, int],
+    ] = {}
+
+    for symbol_result in study.symbol_results:
+        for record in symbol_result.records:
+            if not record.fresh_behavior:
+                continue
+            key = (
+                record.weekly_direction.value,
+                _signature_text(record.sequence),
+            )
+            evidence_signature = _evidence_signature_text(record.sequence)
+            variants = grouped.setdefault(key, {})
+            variants[evidence_signature] = variants.get(evidence_signature, 0) + 1
+
+    rows: list[dict[str, object]] = []
+    for (direction, coarse_signature), variants in sorted(grouped.items()):
+        if len(variants) <= 1:
+            continue
+        rows.append(
+            {
+                "weekly_direction": direction,
+                "signature": coarse_signature,
+                "distinct_evidence_signature_count": len(variants),
+                "observation_count": sum(variants.values()),
+                "evidence_signatures": " || ".join(
+                    f"{signature} [{count}]"
+                    for signature, count in sorted(variants.items())
+                ),
+                "is_actionable": False,
+            }
+        )
+    return rows
 
 
 def write_daily_behavior_sequence_study_bundle(
@@ -503,8 +556,10 @@ def write_daily_behavior_sequence_study_bundle(
         sequence_records_csv=root / "daily_sequence_records.csv",
         outcomes_csv=root / "daily_sequence_outcomes.csv",
         summaries_csv=root / "daily_sequence_signature_summaries.csv",
+        signature_collisions_csv=root / "daily_sequence_signature_collisions.csv",
     )
 
+    collision_rows = _signature_collision_rows(study)
     summary_payload = {
         "requested_symbols": list(study.requested_symbols),
         "requested_symbol_count": len(study.requested_symbols),
@@ -518,6 +573,10 @@ def write_daily_behavior_sequence_study_bundle(
         "fresh_sequence_count": study.fresh_sequence_count,
         "outcome_observation_count": study.outcome_observation_count,
         "signature_summary_count": len(study.summaries),
+        "coarse_signature_collision_count": len(collision_rows),
+        "collision_observation_count": sum(
+            int(item["observation_count"]) for item in collision_rows
+        ),
         "external_baseline_used": study.external_baseline_used,
         "continue_on_symbol_error": study.continue_on_symbol_error,
         "is_actionable": False,
@@ -559,6 +618,7 @@ def write_daily_behavior_sequence_study_bundle(
                     "fresh_behavior": record.fresh_behavior,
                     "step_count": len(record.sequence.steps),
                     "signature": _signature_text(record.sequence),
+                    "evidence_signature": _evidence_signature_text(record.sequence),
                     "outcome_observation_count": len(record.outcomes),
                     "is_actionable": False,
                 }
@@ -571,6 +631,7 @@ def write_daily_behavior_sequence_study_bundle(
                         "signal_bar_index": observation.signal_bar_index,
                         "weekly_direction": observation.weekly_direction.value,
                         "signature": _signature_text(record.sequence),
+                        "evidence_signature": _evidence_signature_text(record.sequence),
                         "horizon_bars": observation.horizon_bars,
                         "outcome_available": observation.outcome_available,
                         "complete": observation.complete,
@@ -599,6 +660,7 @@ def write_daily_behavior_sequence_study_bundle(
             "fresh_behavior",
             "step_count",
             "signature",
+            "evidence_signature",
             "outcome_observation_count",
             "is_actionable",
         ),
@@ -610,6 +672,7 @@ def write_daily_behavior_sequence_study_bundle(
             "signal_bar_index",
             "weekly_direction",
             "signature",
+            "evidence_signature",
             "horizon_bars",
             "outcome_available",
             "complete",
@@ -639,6 +702,18 @@ def write_daily_behavior_sequence_study_bundle(
         }
         for item in study.summaries
     ]
+    pd.DataFrame(
+        collision_rows,
+        columns=(
+            "weekly_direction",
+            "signature",
+            "distinct_evidence_signature_count",
+            "observation_count",
+            "evidence_signatures",
+            "is_actionable",
+        ),
+    ).to_csv(paths.signature_collisions_csv, index=False)
+
     pd.DataFrame(
         summary_rows,
         columns=(

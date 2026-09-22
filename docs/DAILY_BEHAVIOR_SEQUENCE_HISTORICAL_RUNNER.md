@@ -82,7 +82,14 @@ The bundle writer emits:
 - symbol failure ledger CSV;
 - per-bar sequence record CSV;
 - causal outcome observation CSV;
-- exact-signature descriptive summary CSV.
+- exact coarse-signature descriptive summary CSV;
+- coarse-signature/evidence-signature collision CSV.
+
+Sequence and outcome rows retain the existing coarse `signature` and now also
+expose an `evidence_signature` containing the exact supporting EvidenceCode
+lineage. The collision artifact identifies coarse behavior cohorts that contain
+multiple distinct evidence narratives. Existing outcome grouping remains based
+on the coarse signature.
 
 Every exported research row remains non-actionable.
 
@@ -103,3 +110,6 @@ It does not:
 
 K3 makes sequence/outcome research reproducible. It does not interpret the study
 result as evidence for promotion.
+
+See `docs/DAILY_BEHAVIOR_EVIDENCE_IDENTITY.md` for the audit-only distinction
+between coarse behavior identity and exact supporting-code identity.

@@ -102,6 +102,37 @@ def _bearish_input(symbol: str = "BBB.NS") -> DailyBehaviorSequenceStudyInput:
     )
 
 
+def _bearish_rejection_collision_input(
+    symbol: str = "COLLISION.NS",
+) -> DailyBehaviorSequenceStudyInput:
+    return DailyBehaviorSequenceStudyInput(
+        symbol=symbol,
+        bars=_bars([120.0, 119.0, 118.0, 117.0, 116.0, 115.0, 114.0]),
+        weekly_directions=(
+            DailyBehaviorSequenceDirectionAssignment(
+                bar_index=2,
+                direction=WeeklySetupDirection.BEARISH,
+            ),
+            DailyBehaviorSequenceDirectionAssignment(
+                bar_index=4,
+                direction=WeeklySetupDirection.BEARISH,
+            ),
+        ),
+        evidence=(
+            _evidence(
+                EvidenceCode.BUYING_CLIMAX,
+                EvidenceDirection.BEARISH,
+                2,
+            ),
+            _evidence(
+                EvidenceCode.UPTHRUST,
+                EvidenceDirection.BEARISH,
+                4,
+            ),
+        ),
+    )
+
+
 def test_input_fingerprint_is_deterministic_for_logically_equivalent_ordering() -> None:
     original = _bullish_input()
     reordered = DailyBehaviorSequenceStudyInput(
@@ -242,6 +273,7 @@ def test_study_bundle_writes_reproducible_research_artifacts(tmp_path) -> None:
     assert paths.sequence_records_csv.exists()
     assert paths.outcomes_csv.exists()
     assert paths.summaries_csv.exists()
+    assert paths.signature_collisions_csv.exists()
 
     summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
     assert summary["requested_symbol_count"] == 2
@@ -267,6 +299,34 @@ def test_study_bundle_writes_reproducible_research_artifacts(tmp_path) -> None:
     assert records["is_actionable"].eq(False).all()
     assert outcomes["is_actionable"].eq(False).all()
     assert summaries["is_actionable"].eq(False).all()
+
+
+def test_bundle_reports_coarse_signature_collisions_without_regrouping_outcomes(
+    tmp_path,
+) -> None:
+    study = run_daily_behavior_sequence_historical_study(
+        (_bearish_rejection_collision_input(),),
+        horizons_bars=(1,),
+        lookback_bars=1,
+    )
+
+    paths = write_daily_behavior_sequence_study_bundle(study, tmp_path)
+
+    summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
+    records = pd.read_csv(paths.sequence_records_csv)
+    outcomes = pd.read_csv(paths.outcomes_csv)
+    collisions = pd.read_csv(paths.signature_collisions_csv)
+
+    assert summary["coarse_signature_collision_count"] == 1
+    assert summary["collision_observation_count"] == 2
+    assert records["signature"].nunique() == 1
+    assert records["evidence_signature"].nunique() == 2
+    assert outcomes["signature"].nunique() == 1
+    assert outcomes["evidence_signature"].nunique() == 2
+    assert len(collisions) == 1
+    assert collisions.iloc[0]["distinct_evidence_signature_count"] == 2
+    assert collisions.iloc[0]["observation_count"] == 2
+    assert collisions["is_actionable"].eq(False).all()
 
 
 def test_bundle_preserves_headers_when_no_sequence_records(tmp_path) -> None:

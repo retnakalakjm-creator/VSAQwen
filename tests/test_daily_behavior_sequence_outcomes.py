@@ -2,6 +2,7 @@ import pandas as pd
 
 from audit.daily_behavior_sequence_outcomes import (
     build_daily_behavior_sequence_outcomes,
+    daily_behavior_sequence_evidence_signature,
     daily_behavior_sequence_signature,
     sequence_has_fresh_behavior,
     summarize_daily_behavior_sequence_outcomes,
@@ -11,6 +12,7 @@ from daily_behavior_sequence import (
     DailyBehaviorSequence,
     DailyBehaviorSequenceStep,
 )
+from models import Evidence, EvidenceCategory, EvidenceCode, EvidenceDirection
 from weekly_setup import WeeklySetupDirection
 
 
@@ -43,11 +45,30 @@ def _sequence(
 def _step(
     bar_index: int,
     *dimensions: DailyBehaviorDimension,
+    evidence: tuple[Evidence, ...] = (),
 ) -> DailyBehaviorSequenceStep:
     return DailyBehaviorSequenceStep(
         bar_index=bar_index,
         dimensions=tuple(dimensions),
-        evidence=(),
+        evidence=evidence,
+    )
+
+
+def _evidence(
+    code: EvidenceCode,
+    direction: EvidenceDirection,
+    bar_index: int,
+) -> Evidence:
+    return Evidence(
+        code=code,
+        category=EvidenceCategory.SIGNAL,
+        direction=direction,
+        strength=0.8,
+        weight=1.0,
+        observation=str(code),
+        description=str(code),
+        bar_index=bar_index,
+        week_beginning="2026-01-01",
     )
 
 
@@ -163,6 +184,50 @@ def test_signature_uses_relative_offsets_not_absolute_bar_indices() -> None:
     assert daily_behavior_sequence_signature(first) == daily_behavior_sequence_signature(
         second
     )
+
+
+def test_exact_evidence_signature_preserves_distinct_rejection_narratives() -> None:
+    buying_climax = _sequence(
+        direction=WeeklySetupDirection.BEARISH,
+        end_bar_index=5,
+        steps=(
+            _step(
+                5,
+                DailyBehaviorDimension.REJECTION_OF_OPPOSING_MOVE,
+                evidence=(
+                    _evidence(
+                        EvidenceCode.BUYING_CLIMAX,
+                        EvidenceDirection.BEARISH,
+                        5,
+                    ),
+                ),
+            ),
+        ),
+    )
+    upthrust = _sequence(
+        direction=WeeklySetupDirection.BEARISH,
+        end_bar_index=20,
+        steps=(
+            _step(
+                20,
+                DailyBehaviorDimension.REJECTION_OF_OPPOSING_MOVE,
+                evidence=(
+                    _evidence(
+                        EvidenceCode.UPTHRUST,
+                        EvidenceDirection.BEARISH,
+                        20,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    assert daily_behavior_sequence_signature(
+        buying_climax
+    ) == daily_behavior_sequence_signature(upthrust)
+    assert daily_behavior_sequence_evidence_signature(
+        buying_climax
+    ) != daily_behavior_sequence_evidence_signature(upthrust)
 
 
 def test_summary_uses_complete_outcomes_only_for_return_metrics() -> None:
