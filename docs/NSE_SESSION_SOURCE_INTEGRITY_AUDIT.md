@@ -174,5 +174,5 @@ Run against the frozen snapshot:
 ```powershell
 python scripts\audit_nse_session_integrity.py `
   --input-snapshot-dir reports\daily-events\input-snapshots\milestone6_standard_india_large_cap_30\2026-09-18 `
-  --output-dir reports\nse-session-integrity\bounded-2021-09-01_2026-09-18
+  --output-dir reports\daily-events\nse-session-integrity\bounded-2021-09-01_2026-09-18
 ```
